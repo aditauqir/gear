@@ -45,9 +45,9 @@ branches. Message wording is ignored.
 | 13–36 s | **World g03** (cell G1: K=2, simultaneous turns), all 20 rounds. Quiet rounds after 8 play at 0.6 s |
 | 36–41 s | World g03 final scores, per agent, with and without God |
 | 41–46 s | Card: why world 2 was picked |
-| 46–60 s | **World g12**, rounds 1–8 (the ripple phase) |
+| 46–60 s | **World g12**, rounds 1–8 (behaviour diverging) |
 | 60–69 s | Grid result: divergence over rounds, and Δ welfare per world for every cell |
-| 69–77 s | Takeaways |
+| 69–77 s | Takeaways: "Trajectories diverge; outcomes don't" |
 
 ### How the worlds were picked
 
@@ -75,19 +75,24 @@ typical world.
 
 ### Numbers shown in the grid card
 
-These come from `demo/demo_reel.json`: 10k bootstrap resamples and the exact sign-flip p. They match
-`python -m swarm.analysis.grid_stats`.
+These come from `demo/demo_reel.json`. The CI is the Student-t 95% CI, the primary interval in the
+paper; the p value is an exact sign-flip test. The numbers match `python -m swarm.analysis.grid_stats`.
 
 | cell | Δ welfare, God − no God | n |
 |---|---|---|
-| K=2, sim turns (`runs/grid_oss_sim_k2`) | +0.013 [−0.042, +0.065], p = 0.72 | 16 |
-| ↳ noise replica − no God (same cell) | +0.046 [−0.044, +0.137] | 16 |
-| K=6, sim turns (`runs/grid_oss_sim_k6`) | +0.004 [−0.090, +0.094], p = 0.97 | 16 |
-| K=2, seq turns (`runs/r2_grid_oss_seq_k2`) | +0.012 [−0.117, +0.125], p = 0.89 | 8 |
+| K=2, sim turns (`runs/grid_oss_sim_k2`) | +0.013, t95 [−0.048, +0.073], p = 0.72 | 16 |
+| ↳ God-free re-run (B′) − no God, same cell | +0.046, t95 [−0.055, +0.146], p = 0.38 | 16 |
+| K=6, sim turns (`runs/grid_oss_sim_k6`) | +0.004, t95 [−0.097, +0.105], p = 0.97 | 16 |
+| K=2, seq turns (`runs/r2_grid_oss_seq_k2`) | +0.012, t95 [−0.144, +0.169], p = 0.89 | 8 |
 
-Within 1–2 rounds of God's first move, ≥ 80% of agents act differently. Welfare does not move beyond
-the noise floor. After the first changed prompt, the divergence comes from the lie **plus** ordinary
-sampling noise: the God-free re-run diverges almost completely by round 2.
+**Framing, as in the paper:** trajectories diverge but outcomes don't.
+
+- Within 1–2 rounds of God's first move, ≥ 80% of agents act differently.
+- A God-free re-run (B′) diverges just as completely, starting from round 1 because it shares no
+  cached replies. So the divergence curve alone cannot be read as God's "ripple".
+- The halos in the videos show *that* behaviour differs from the paired no-God branch. They do not
+  show that God alone caused it: once a prompt changes, ordinary sampling adds its own divergence.
+- Welfare does not move beyond the noise floor.
 
 ## Rebuild
 
@@ -98,12 +103,16 @@ $PY -m swarm.viz.reel demo/demo_reel.mp4 --main runs/grid_oss_sim_k2 \
   --cell "K=6, sim turns=runs/grid_oss_sim_k6" --cell "K=2, seq turns=runs/r2_grid_oss_seq_k2"
 $PY -m swarm.viz.animate runs/grid_oss_sim_k2 demo/world_g03_k2.mp4 --world 3 --about "..." --footer "..."
 $PY -m swarm.viz.paper_figs plan/figs --cell "G1 sim K=2=runs/grid_oss_sim_k2" \
-  --cell "G3 sim K=6=runs/grid_oss_sim_k6" --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2" \
-  --world runs/grid_oss_sim_k2:3
+  --cell "G3 sim K=6=runs/grid_oss_sim_k6" --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2"   # [--baseline "B″=noise2"]
 ```
 
-The paper figures in `plan/figs/` are vector PDFs plus 200-dpi PNGs, 7.0 in wide:
+The paper figures in `plan/figs/` are vector PDFs plus 200-dpi PNGs, 7.0 in wide. They are numbered
+as in `paper/draft.md` §5, and every plotted number is in `plan/figs/NUMBERS.txt`.
 
-- `fig_divergence`: share of agents diverged per round, per cell.
-- `fig_delta_welfare`: per-world Δ with the mean and a 95% bootstrap CI.
-- `fig_network_pair`: world g03 at round 3 and round 20, with and without God.
+- `fig2_network`: the median-|Δwelfare| world of G1 (rule-picked: g02) at God's first move and at
+  round 20. Panel A is with God, panel B without.
+- `fig3_divergence`: share of agents diverged by round, per cell, with the B′ baseline. A fork-matched
+  B″ is added with `--baseline` once the sweep produces it.
+- `fig4_welfare`: per-world Δ with the mean and Student-t 95% CI.
+  - Left: H1 against B′.
+  - Right: G3, G2, and the paired interactions H3 and H2.
