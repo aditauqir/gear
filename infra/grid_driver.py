@@ -4,8 +4,13 @@ process group, and kills the group when an abort condition fires.
     OPENROUTER_API_KEY=... PYTHONNOUSERSITE=1 python infra/grid_driver.py \
         --cell grid_oss_sim_k2:1.35:3 --cell grid_oss_sim_k6:0.95:2 --seeds 16 --rounds 20
 
---cell name:cap_usd:branches_per_seed (config configs/<name>.yaml, run id <name>; cap = the cell's
-llm.budget_usd). Abort conditions, checked every 10 s (incremental reads of the run's files):
+--cell name:cap_usd:branches_per_seed[:k=v,...] (config configs/<name>.yaml, run id <name>; cap = the
+cell's llm.budget_usd). Optional k=v (only change the projection's cost model): n=<agents> (default 10;
+calls per round, prompt growth g=<tok/round> (default 55*n) capped at pcap=<tokens> (default 14000)), rounds=<max_rounds> (default --rounds), seeds=<the
+config's run.n_games> (default --seeds), shared=<rounds
+the forks share before God's first act> (default 2), free=1 (the control branch replays from the cache
+via runner.fork.control_god and the God branch's shared prefix is cached too: only God's rounds > shared
+are paid). Abort conditions, checked every 10 s (incremental reads of the run's files):
   ram        MemAvailable < 15 GB
   rg         more than 20 processes named rg
   ledger     global ledger total >= --ledger-stop (default 5.70)
@@ -47,9 +52,10 @@ def log(msg: str) -> None:
         f.write(line + "\n")
 
 
-def call_weight(r: int) -> float:
-    """Smoke cost model per call in round r (micro-$): prompt 686 + 550 (r-1) tokens (cap 14000)."""
-    return min(686 + 550 * (r - 1), 14000) * 0.0142 + 350 * 0.0445
+def call_weight(r: int, n: int = 10, g: int | None = None, pcap: int = 14000) -> float:
+    """Smoke cost model per call in round r (micro-$): prompt 686 + g (r-1) tokens, capped at pcap;
+    g defaults to 55 n tokens/round (550 at N=10, the smoke's measurement)."""
+    return min(686 + (55 * n if g is None else g) * (r - 1), pcap) * 0.0142 + 350 * 0.0445
 
 
 class Tail:
@@ -107,12 +113,22 @@ def ledger_total() -> float:
 
 
 class Cell:
-    def __init__(self, name: str, cap: float, branches: int, seeds: int, rounds: int) -> None:
+    def __init__(self, name: str, cap: float, branches: int, seeds: int, rounds: int,
+                 opts: dict[str, int] | None = None) -> None:
+        o = opts or {}
+        self.n_agents = n = int(o.get("n", 10))
+        self.g, self.pcap = (int(o["g"]) if "g" in o else None), int(o.get("pcap", 14000))
+        rounds = int(o.get("rounds", rounds))
+        seeds = int(o.get("seeds", seeds))
         self.name, self.cap, self.branches, self.seeds, self.rounds = name, cap, branches, seeds, rounds
         self.run_dir = RUNS / name
-        per_branch = sum(10 * call_weight(r) for r in range(1, rounds + 1))
-        shared = sum(10 * call_weight(r) for r in range(1, 3))           # rounds 1-2 replayed by forks
-        self.w_total = seeds * (branches * per_branch - (branches - 1) * shared)
+        k = int(o.get("shared", 2))
+        per_branch = sum(n * call_weight(r, n, self.g, self.pcap) for r in range(1, rounds + 1))
+        shared = sum(n * call_weight(r, n, self.g, self.pcap) for r in range(1, k + 1))  # replayed by forks
+        if int(o.get("free", 0)):
+            self.w_total = seeds * (per_branch - shared)                  # only God's rounds > k are paid
+        else:
+            self.w_total = seeds * (branches * per_branch - (branches - 1) * shared)
         self.tails: dict[Path, Tail] = {}
         self.ledger = Tail(LEDGER)
         self.ledger.pos = 0                      # run ids are unique: count the cell's whole spend
@@ -159,7 +175,8 @@ class Cell:
             self.length += r.get("finish_reason") == "length"
             if not r.get("cache_hit"):
                 self.paid += 1
-                self.w_done += call_weight(int(d["request"]["meta"].get("round") or 1))
+                self.w_done += call_weight(int(d["request"]["meta"].get("round") or 1), self.n_agents,
+                                           self.g, self.pcap)
 
     def projected(self) -> float:
         return self.spent * self.w_total / self.w_done if self.w_done else 0.0
@@ -192,6 +209,14 @@ class Cell:
         if self.resp >= 200 and self.length / self.resp > 0.05:
             return f"trunc: {self.length}/{self.resp} responses"
         return None
+
+
+def parse_cell(spec: str) -> tuple[str, str, str, dict[str, int]]:
+    """name:cap:branches[:k=v,k=v] -> (name, cap, branches, {k: int(v)})."""
+    parts = spec.split(":")
+    name, cap, branches = parts[:3]
+    opts = {k: int(v) for k, v in (kv.split("=") for kv in (parts[3].split(",") if len(parts) > 3 else []))}
+    return name, cap, branches, opts
 
 
 def kill_group(proc: subprocess.Popen) -> None:
@@ -271,16 +296,16 @@ def main() -> int:
     if args.attach:
         cells = []
         for spec in args.cell:
-            name, cap, branches = spec.split(":")
-            cells.append(Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds))
+            name, cap, branches, opts = parse_cell(spec)
+            cells.append(Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds, opts))
         return attach(cells, args.ledger_stop)
     fake = any(s.startswith("roles.agent.backend=fake") for s in args.sets)
     if not fake and not os.environ.get("OPENROUTER_API_KEY"):
         log("OPENROUTER_API_KEY not set")
         return 2
     for spec in args.cell:
-        name, cap, branches = spec.split(":")
-        cell = Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds)
+        name, cap, branches, opts = parse_cell(spec)
+        cell = Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds, opts)
         if (r := cell.abort_reason(args.ledger_stop)) is not None:
             log(f"NOT starting {name}: {r}")
             return 3
@@ -288,7 +313,7 @@ def main() -> int:
                *args.sets]
         out = open(RUNS / f"{cell.name}.log", "a")
         proc = subprocess.Popen(cmd, cwd=REPO, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
-        log(f"START {cell.name} pid/pgid {proc.pid} cap ${cell.cap:.2f} seeds {args.seeds} rounds {args.rounds}")
+        log(f"START {cell.name} pid/pgid {proc.pid} cap ${cell.cap:.2f} seeds {cell.seeds} rounds {cell.rounds}")
         last = 0.0
         while proc.poll() is None:
             time.sleep(10)

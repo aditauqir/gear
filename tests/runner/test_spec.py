@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from swarm.config import REPO_ROOT
@@ -49,3 +51,35 @@ def test_fork_without_god_rejected() -> None:
     cfg, opts = load_experiment(DEMO, ["god.kind=none"])
     with pytest.raises(ValueError):
         build_specs(cfg, opts)
+
+
+GRID_K2 = REPO_ROOT / "configs" / "grid_oss_sim_k2.yaml"
+
+
+def test_control_god_reuses_base_cell_control() -> None:
+    """A sweep cell that changes only `god` and passes the base cell's god section as
+    fork.control_god gets exactly the base cell's control games (game_id, config, seeds)."""
+    base_cfg, base_opts = load_experiment(GRID_K2, ["run.n_games=2"])
+    base = build_specs(base_cfg, base_opts)
+    g1_god = base_cfg.god.model_dump(mode="json")
+    over = ["run.n_games=2", "god.start_round=14", "god.budget.k=1",
+            "god.schedule=[{round: 14, power: message_fraud}]"]
+    plain = build_specs(*load_experiment(GRID_K2, over))
+    cfg, opts = load_experiment(GRID_K2, over + [f"runner.fork.control_god={json.dumps(g1_god)}"])
+    swept = build_specs(cfg, opts)
+    for b, p, s in zip(base, plain, swept, strict=True):
+        bn, pn, sn = (next(x for x in g if x.branch == "nogod") for g in (b, p, s))
+        assert pn.game_id != bn.game_id                      # default: own control
+        assert sn.game_id == bn.game_id and sn.cfg.config_hash() == bn.cfg.config_hash()
+        sg = next(x for x in s if x.branch == "god")
+        assert sg.game_id == bn.game_id and sg.cfg.god.start_round == 14 and sg.cfg.god.kind == "scripted"
+        assert sg.world_seed == bn.world_seed
+
+
+def test_control_god_default_unchanged() -> None:
+    cfg, opts = load_experiment(GRID_K2, ["run.n_games=1"])
+    assert opts.fork.control_god is None
+    a, b, _ = build_specs(cfg, opts)[0]
+    assert b.cfg.god.kind == "none" and b.cfg.god.schedule == cfg.god.schedule
+    assert a.game_id == b.game_id == build_specs(cfg, RunnerOpts.from_dict(
+        {"fork": {"enabled": True, "noise_replica": True, "control_god": None}}))[0][1].game_id

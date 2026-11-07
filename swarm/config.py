@@ -183,13 +183,13 @@ class VLLMCfg(Cfg):
 
 
 class OpenRouterCfg(Cfg):
-    """OpenRouter settings. OFF by default; key only via env/key file; $6 global ledger cap."""
+    """OpenRouter settings. OFF by default; key only via env/key file; $8 global ledger cap."""
     enabled: bool = False                          # OFF by default; any role on openrouter needs True
     base_url: str = "https://openrouter.ai/api/v1"
     model: str = DEFAULT_OPENROUTER_MODEL
     api_key_env: str = "OPENROUTER_API_KEY"        # the key itself is NEVER in config
     max_concurrency: int = Field(8, ge=1)
-    global_cap_usd: float = Field(6.0, ge=0.0)     # across all runs, enforced via the ledger
+    global_cap_usd: float = Field(8.0, ge=0.0)     # across all runs, enforced via the ledger
     ledger_path: str = "runs/openrouter_ledger.jsonl"
     price_in_per_mtok: float = 1.0                 # [E] conservative pre-call estimate; actual cost from provider
     price_out_per_mtok: float = 4.0

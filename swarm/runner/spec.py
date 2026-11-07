@@ -29,6 +29,11 @@ class ForkOpts:
     # False (default): branches run concurrently; the LLM client's single-flight dedup gives B the
     # same pre-fork responses as A. True: A first, then B/B' (warm cache). Forced on if cache is off.
     serial_pair: bool = False
+    # None (default): the control is cfg with god.kind=none. A dict: the control (and the pair's id_hash)
+    # is cfg with god={**cfg.god, **control_god, kind: none}. Sweep cells that change only `god` pass the
+    # base cell's god section here, so they reuse the base cell's exact control games (same game_ids,
+    # seeds and cache keys: the control replays from the cache, and A shares B's cached prefix).
+    control_god: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -51,7 +56,7 @@ class RunnerOpts:
     def to_dict(self) -> dict[str, Any]:
         return {"engine": self.engine, "report": self.report,
                 "fork": {"enabled": self.fork.enabled, "noise_replica": self.fork.noise_replica,
-                         "serial_pair": self.fork.serial_pair}}
+                         "serial_pair": self.fork.serial_pair, "control_god": self.fork.control_god}}
 
 
 @dataclass(frozen=True)
@@ -104,7 +109,7 @@ def build_specs(cfg: RunConfig, opts: RunnerOpts) -> list[list[GameSpec]]:
             continue
         if cfg.god.kind == "none":
             raise ValueError("paired fork needs god.kind != none in the base config")
-        nogod = _with(cfg, god={"kind": "none"})
+        nogod = _with(cfg, god={**(opts.fork.control_god or {}), "kind": "none"})
         h = nogod.config_hash()
         g = [make_spec(cfg, i, BRANCH_GOD, h), make_spec(nogod, i, BRANCH_NOGOD, h)]
         if opts.fork.noise_replica:

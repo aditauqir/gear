@@ -63,7 +63,7 @@ llm:
     enabled: true
     model: openai/gpt-oss-120b
     max_concurrency: 8
-    global_cap_usd: 6.0
+    global_cap_usd: 8.0
     price_in_per_mtok: 0.10
     price_out_per_mtok: 0.50
     reasoning_effort: low

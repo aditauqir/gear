@@ -10,7 +10,7 @@
   `provider_sort` adds `provider: {sort: <value>}` (e.g. "price": cheapest provider first, with
   OpenRouter's normal fallbacks).
 - Spend caps, both checked BEFORE each call against a worst-case estimate:
-    global  `GlobalLedger` over runs/openrouter_ledger.jsonl (append-only, fcntl.flock), default $6
+    global  `GlobalLedger` over runs/openrouter_ledger.jsonl (append-only, fcntl.flock), default $8
     run     `RunBudget` (llm.budget_usd), shared by every client of one run
   Exceeding either raises BudgetExceeded. Actual cost (provider-reported, else the price table)
   is appended to the ledger after the call.
