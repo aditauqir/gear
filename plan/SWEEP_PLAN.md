@@ -1,7 +1,16 @@
 # SWEEP_PLAN: one-factor-at-a-time sweeps around G1 (gpt-oss-120b, 2026-11-07)
 
-**Status (04:50 EST): running repairs and board_off.** Results go in `plan/SWEEP_RESULTS.md`. The
-tomorrow list (§5) is the full plan, ranked, with costs.
+**Status (05:21 EST): DONE.**
+- Sweep total **$2.142** (≤ $2.30); the ledger is $7.20.
+- Results: `plan/SWEEP_RESULTS.md`.
+- Ran:
+  - start1, start8, start14;
+  - K=1, K=4;
+  - board_off (6 worlds);
+  - N=5 and N=20 (N=20 has 4 healthy worlds);
+  - B″ for base@r3 (serving G1, K=1 and K=4), start8, start14 and board_off.
+- Not run (no money): board delay/anon/skip3, keys, rounds, and B″ for the N cells. They are
+  ranked in §5.
 
 **Incidents (all handled; the affected worlds were re-run or excluded):**
 1. **False `budget_exceeded` (b2_sweep_start8: 4 worlds; b2_sweep_start14: 8; sweep_start14: 3 God branches).**

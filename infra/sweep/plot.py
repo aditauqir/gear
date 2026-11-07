@@ -23,7 +23,7 @@ FACTORS = {
     "start": ("God's first intervention round", [("start1", 1), ("base", 3), ("start8", 8), ("start14", 14)]),
     "board": ("Message board variant", [("base", 0), ("board_off", 1), ("board_delay2", 2), ("board_anon", 3),
                                         ("board_skip3", 4)]),
-    "k": ("God budget K (interventions per game)", [("k1", 1), ("base", 2), ("k4", 4)]),
+    "k": ("God budget K (interventions per game)", [("k1", 1), ("base", 2), ("k4", 4), ("k6", 6)]),
     "n": ("Number of agents N", [("n5", 5), ("base", 10), ("n20", 20)]),
     "keys": ("Keys per agent", [("keys3", 3), ("base", 5), ("keys8", 8)]),
     "rounds": ("Rounds per game", [("base", 20), ("r40", 40)]),
@@ -53,7 +53,8 @@ def _point(ax, x: float, s: dict, filled: bool, color: str) -> None:
 
 def plot_pair(stats: dict, factor: str, keys: tuple[str, str], ylabel: str, title: str, out: Path) -> bool:
     xlabel, cells = FACTORS[factor]
-    pts = [(lab, x) for lab, x in cells if lab in stats and stats[lab].get(keys[0], {}).get("n")]
+    pts = [(lab, x) for lab, x in cells if lab in stats
+           and (stats[lab].get(keys[0], {}).get("n") or stats[lab].get(keys[1], {}).get("n"))]
     if len(pts) < 2:
         return False
     xs = [x for _, x in pts]
@@ -63,14 +64,17 @@ def plot_pair(stats: dict, factor: str, keys: tuple[str, str], ylabel: str, titl
     _style(ax, xlabel, ylabel, title)
     lows = []
     for lab, x in pts:
-        s0, s1 = stats[lab][keys[0]], stats[lab].get(keys[1], {})
-        _point(ax, x - off, s0, True, BLUE)
+        s0, s1 = stats[lab].get(keys[0], {}), stats[lab].get(keys[1], {})
+        if s0.get("n"):
+            _point(ax, x - off, s0, True, BLUE)
         if s1.get("n"):
             _point(ax, x + off, s1, False, GRAY)
-        lo = min(s0["t_lo"], s1.get("t_lo", s0["t_lo"]))
+        lo = min(s.get("t_lo", 9) for s in (s0, s1) if s.get("n"))
+        n = (s0 if s0.get("n") else s1)["n"]
         lows.append(lo)
-        ax.annotate(f"n={s0['n']}" + (" (low n)" if s0["n"] < 8 else ""), (x, lo), textcoords="offset points",
-                    xytext=(0, -12), ha="center", fontsize=7, color=MUTED)
+        ax.annotate(f"n={n}" + (" (low n)" if n < 8 else "") + ("" if s0.get("n") else "\nno noise arm"), (x, lo),
+                    textcoords="offset points", xytext=(0, -12 if s0.get("n") else -20), ha="center", fontsize=7,
+                    color=MUTED)
     ax.set_xticks(xs)
     if factor == "board":
         ax.set_xticklabels([BOARD_TICKS[x] for x in xs])
