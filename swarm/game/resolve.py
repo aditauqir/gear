@@ -13,6 +13,10 @@ Per action, in order:
                   notice (conflict_text): the state may have changed since the agent observed it
                   (not for winner_policy=sit_out departures: rules already sent a "left" notice, or
                   the actor itself has left, "actor_left")
+  sit_out mid-turn win: once an action of this turn (a minted defect) or, in simultaneous mode, an
+                  earlier agent's give in this round's resolution completes the agent's needs, it has
+                  left: every remaining action fails "actor_left" (it does not execute) and the agent
+                  gets one "left" notice listing them (rules.midturn_text)
 After the loop: one notice for board-blocked actions, then the post_skip_rounds skip (if a post
 succeeded). The engine emits `events` in order, so the event stream is the one the old inline loop
 produced. Pure apart from mutating `state` (no I/O). Imports: config, schema, game.rules, game.board.
@@ -74,6 +78,7 @@ def resolve_turn(state: GameState, agent: AgentId, actions: Sequence[Action], gr
     used, grep_left = 0, grep
     post_at = board.whole_turn_post(actions, cfg.board)
     blocked: list[Action] = []
+    left_skipped: list[Action] = []                       # sit_out: actions after the agent won and left
     posted = False
     for i, act in enumerate(actions):
         if isinstance(act, GrepLog):                      # free: no action slot
@@ -91,6 +96,8 @@ def resolve_turn(state: GameState, agent: AgentId, actions: Sequence[Action], gr
             continue
         res = _apply_one(state, agent, act, used, cfg, out.events)
         out.results.append(res)
+        if res == (False, "actor_left"):
+            left_skipped.append(act)
         used += 1
         posted = posted or (res[0] and isinstance(act, PostBoard))
         if (not res[0] and cfg.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction))
@@ -98,6 +105,9 @@ def resolve_turn(state: GameState, agent: AgentId, actions: Sequence[Action], gr
             out.events.append(rules.notice(state, agent, "system", conflict_text(act, res[1])))
     if blocked:
         out.events.append(rules.notice(state, agent, "system", board.whole_turn_text(blocked)))
+    if left_skipped:
+        out.events.append(rules.notice(state, agent, "left",
+                                       rules.midturn_text(left_skipped)))
     if posted and cfg.board.post_skip_rounds > 0:
         out.events += board.skip_after_post(state, agent, cfg.board.post_skip_rounds)
     return out

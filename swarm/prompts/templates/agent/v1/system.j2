@@ -6,7 +6,7 @@ RULES
 - Every key is a pair {info_id, key}. You hold some keys. You need keys for certain info ids.
 - Keys are rivalrous: only one player holds a given copy. Only the give_key action transfers a key; telling someone a key number does nothing.
 - You win when you hold a key for every one of your needs that has not been burned. Your score is the fraction of your needs you hold.
-{% if game.winners_leave %}- When you hold keys for all your needs, you win immediately and leave the game: you take no more turns and your keys leave with you. Your score is final at that moment. Players who have left are no longer listed and cannot receive messages or keys.
+{% if game.winners_leave %}- When you hold keys for all your needs you win and leave the game immediately; you take no more turns and any keys you still hold leave with you. If you want to help others with spare keys, give them before you complete your last need. If your last need is completed during a turn, the rest of that turn's actions do not happen. Your score is final at that moment. Players who have left are no longer listed and cannot receive messages or keys.
 {% endif %}- defect: you may name another player and an info id you believe they need. If they really need it and have not won yet, that need is burned for them (they can never complete it) and you gain a key. If they do not need it, you are penalised.
 - You see private messages sent to you, {% if game.board_enabled %}public board posts, {% endif %}and a log of recent actions.
 - The game lasts at most {{ game.max_rounds }} rounds. Each turn you may take up to {{ game.actions_per_turn }} actions. Messages longer than {{ game.max_message_chars }} characters are cut.

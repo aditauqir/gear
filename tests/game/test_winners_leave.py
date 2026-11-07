@@ -65,7 +65,11 @@ def test_winner_leaves_and_takes_no_more_turns(mode):
         assert _results(eng, "dan") == [(1, "give_key", False, "actor_left"),
                                         (1, "send_message", False, "actor_left")]
         dan_notices = [e.data.notice for e in eng.sink.events if e.type == "notice" and e.data.notice.agent == "dan"]
-        assert [n.kind for n in dan_notices] == ["gift_received", "gift_received", "won"]   # no conflict notice
+        # no conflict notice; one "left" notice listing the actions that did not happen
+        assert [n.kind for n in dan_notices] == ["gift_received", "gift_received", "won", "left"]
+        assert dan_notices[-1].text == rules.midturn_text(SCRIPT[(1, "dan")])
+        assert dan_notices[-1].text == ("You won and left the game during this turn, so these actions did "
+                                        "not happen: give_key of info #1 to cat; message to cat.")
     assert not [o for o in dec.obs_of("dan") if o.round >= 2]
 
 
@@ -141,7 +145,33 @@ def test_mid_turn_win_ends_the_turn():
     res = resolve_turn(st, "x", [DefectAction(target="y", info_id=2), GiveKey(to="z", info_id=1)], None, cfg)
     assert res.results == [(True, None), (False, "actor_left")]
     assert st.agents["x"].won_round == 1 and sorted(k.info_id for k in st.agents["x"].keys) == [1, 2]
-    assert {n.agent for n in st.notices if n.kind == "left"} == {"y", "z"}
+    assert sorted(k.info_id for k in st.agents["z"].keys) == [2]          # the give did not execute
+    assert not [e for e in res.events if e.data.type == "key_transfer" and e.data.cause == "give"]
+    left = [n for n in st.notices if n.kind == "left"]
+    assert {n.agent for n in left if n.text == rules.left_text("x")} == {"y", "z"}
+    assert [n.text for n in left if n.agent == "x"] == [rules.midturn_text([GiveKey(to="z", info_id=1)])]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_give_before_last_need_then_win_mid_turn(mode):
+    """Generosity must come first: give a spare, then complete the last need (mint) -> both happen;
+    a give AFTER the completing action does not execute (engine path, both turn modes)."""
+    spec = {"x": ([1, 4], [2]), "y": ([3], [2]), "z": ([2], [3, 4])}
+    script = {(1, "x"): [GiveKey(to="z", info_id=4), DefectAction(target="y", info_id=2)],
+              (2, "x"): [GiveKey(to="z", info_id=1)]}
+    cfg = run_cfg(game={"n_agents": 3, "turn_mode": mode, "max_rounds": 2, "winner_policy": "sit_out"})
+    out, eng = play_game(cfg, fresh_game(spec), Scripted(script))
+    assert _results(eng, "x") == [(1, "give_key", True, None), (1, "defect", True, None)]
+    assert out.per_agent["x"].won_round == 1 and 4 in [k.info_id for k in eng.state.agents["z"].keys]
+    # same turn, reversed order: the give after the completing defect fails actor_left
+    script2 = {(1, "x"): [DefectAction(target="y", info_id=2), GiveKey(to="z", info_id=4)]}
+    out2, eng2 = play_game(cfg, fresh_game(spec), Scripted(script2))
+    assert _results(eng2, "x") == [(1, "defect", True, None), (1, "give_key", False, "actor_left")]
+    assert 4 in [k.info_id for k in eng2.state.agents["x"].keys]
+    assert out2.per_agent["x"].score == 1.0
+    x_left = [e.data.notice.text for e in eng2.sink.events if e.type == "notice"
+              and e.data.notice.agent == "x" and e.data.notice.kind == "left"]
+    assert x_left == [rules.midturn_text([GiveKey(to="z", info_id=4)])]
 
 
 def test_steal_never_takes_from_departed_winner():
@@ -183,6 +213,8 @@ def test_prompt_states_rule_only_under_sit_out(policy):
     cfg = run_cfg(game={"winner_policy": policy})
     text = load_prompt_set("agent/v1").render("system.j2", **system_context(cfg))
     assert (rules.LEFT_RULE in text) == (policy == "sit_out")
+    assert (rules.MIDTURN_RULE in text) == (policy == "sit_out")
+    assert ("give them before you complete your last need" in text) == (policy == "sit_out")
     assert ("leave the game" in text) == (policy == "sit_out")
 
 

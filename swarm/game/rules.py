@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Sequence
 
 from swarm.config import GameCfg
 from swarm.rng import make_msg_id
@@ -100,8 +101,29 @@ def departed(state: GameState, agent: AgentId, cfg: GameCfg) -> bool:
     return cfg.winner_policy == "sit_out" and state.agents[agent].won_round is not None
 
 
-LEFT_RULE = ("When you hold keys for all your needs, you win immediately and leave the game: "
-             "you take no more turns and your keys leave with you.")
+LEFT_RULE = ("When you hold keys for all your needs you win and leave the game immediately; you take no "
+             "more turns and any keys you still hold leave with you. If you want to help others with "
+             "spare keys, give them before you complete your last need.")
+MIDTURN_RULE = ("If your last need is completed during a turn, the rest of that turn's actions do not "
+                "happen.")
+
+
+def _action_phrase(a: Action) -> str:
+    if isinstance(a, GiveKey):
+        return f"give_key of info #{a.info_id} to {a.to}"
+    if isinstance(a, SendMessage):
+        return f"message to {a.to}"
+    if isinstance(a, DefectAction):
+        return f"defect on {a.target} for info #{a.info_id}"
+    if isinstance(a, PostBoard):
+        return "board post"
+    return a.kind
+
+
+def midturn_text(skipped: Sequence[Action]) -> str:
+    """Notice to an agent that won (and left) mid-turn: which of its actions did not happen."""
+    return ("You won and left the game during this turn, so these actions did not happen: "
+            + "; ".join(_action_phrase(a) for a in skipped) + ".")
 
 
 def left_text(agent: AgentId) -> str:
