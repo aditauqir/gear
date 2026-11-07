@@ -78,6 +78,27 @@ def test_body_and_cost(tmp_path):
     assert led[0]["cost_usd"] == pytest.approx(0.0042) and led[0]["call_id"] == "c1"
 
 
+def test_reasoning_effort_and_provider_sort(tmp_path):
+    """Mandatory-reasoning models (gpt-oss) reject reasoning.enabled=false: send effort instead."""
+    seen = []
+
+    def h(r):
+        seen.append(json.loads(r.content))
+        out = body()
+        out["choices"][0]["message"]["reasoning"] = "think think"
+        return httpx.Response(200, json=out)
+
+    c = mk(tmp_path, h, reasoning_effort="low", provider_sort="price")
+    r = run(c.chat(req()))
+    assert seen[0]["reasoning"] == {"effort": "low"} and seen[0]["provider"] == {"sort": "price"}
+    assert r.text == '{"actions": []}' and r.reasoning == "think think"   # JSON is the content only
+    cfg = from_dict({"llm": {"openrouter": {"enabled": True, "reasoning_effort": "low",
+                                            "provider_sort": "price"}}})
+    c2 = OpenRouterClient.from_cfg(cfg.llm.openrouter, api_key=SecretStr(KEY))
+    assert (c2.reasoning_effort, c2.provider_sort) == ("low", "price")
+    assert "provider" not in mk(tmp_path, h).body(req())
+
+
 def test_global_cap_refuses_before_call(tmp_path):
     lp = tmp_path / "ledger.jsonl"
     lp.write_text(json.dumps({"cost_usd": 1.999}) + "\n")

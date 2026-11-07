@@ -4,6 +4,11 @@
   secrets.DEFAULT_OPENROUTER_KEY_FILE). The key lives only inside the client as a SecretStr; it
   is registered with secrets.redact() and is never printed, logged, cached or recorded.
 - `req.thinking` maps to `reasoning: {enabled: bool}`; usage/cost via `usage: {include: true}`.
+  With `reasoning_effort` set (models whose reasoning is mandatory, e.g. openai/gpt-oss-*, reject
+  enabled=false with HTTP 400) it sends `reasoning: {effort: <value>}` instead. The reasoning comes
+  back in message.reasoning; only message.content is parsed as the agent's JSON.
+  `provider_sort` adds `provider: {sort: <value>}` (e.g. "price": cheapest provider first, with
+  OpenRouter's normal fallbacks).
 - Spend caps, both checked BEFORE each call against a worst-case estimate:
     global  `GlobalLedger` over runs/openrouter_ledger.jsonl (append-only, fcntl.flock), default $6
     run     `RunBudget` (llm.budget_usd), shared by every client of one run
@@ -134,7 +139,8 @@ class OpenRouterClient(OpenAICompatClient):
                  ledger: GlobalLedger | None = None, run_budget: RunBudget | None = None,
                  retry: RetryCfg | None = None, cache: ResponseCache | None = None,
                  recorder: Recorder | None = None, run_id: str = "",
-                 transport: httpx.AsyncBaseTransport | None = None, sleep: Any = None) -> None:
+                 transport: httpx.AsyncBaseTransport | None = None, sleep: Any = None,
+                 reasoning_effort: str | None = None, provider_sort: str | None = None) -> None:
         if not enabled:
             raise LLMError("OpenRouter is disabled: set llm.openrouter.enabled=true to use it")
         if api_key is None:
@@ -148,6 +154,8 @@ class OpenRouterClient(OpenAICompatClient):
         self.price_out = price_out_per_mtok
         self.ledger = ledger or GlobalLedger()
         self.run_budget = run_budget
+        self.reasoning_effort = reasoning_effort
+        self.provider_sort = provider_sort
 
     @classmethod
     def from_cfg(cls, cfg: OpenRouterCfg, *, model: str | None = None, budget_usd: float | None = None,
@@ -164,7 +172,8 @@ class OpenRouterClient(OpenAICompatClient):
                    max_concurrency=cfg.max_concurrency, price_in_per_mtok=cfg.price_in_per_mtok,
                    price_out_per_mtok=cfg.price_out_per_mtok,
                    ledger=GlobalLedger(ledger_path, cfg.global_cap_usd), run_budget=run_budget,
-                   retry=retry, cache=cache, recorder=recorder, run_id=run_id)
+                   retry=retry, cache=cache, recorder=recorder, run_id=run_id,
+                   reasoning_effort=cfg.reasoning_effort, provider_sort=cfg.provider_sort)
 
     def _headers(self) -> dict[str, str]:
         h = super()._headers()
@@ -172,7 +181,12 @@ class OpenRouterClient(OpenAICompatClient):
         return h
 
     def _extra_body(self, req: ChatRequest) -> dict[str, Any]:
-        return {"reasoning": {"enabled": bool(req.thinking)}, "usage": {"include": True}}
+        reasoning: dict[str, Any] = ({"effort": self.reasoning_effort} if self.reasoning_effort
+                                     else {"enabled": bool(req.thinking)})
+        body: dict[str, Any] = {"reasoning": reasoning, "usage": {"include": True}}
+        if self.provider_sort:
+            body["provider"] = {"sort": self.provider_sort}
+        return body
 
     def _cost(self, data: dict[str, Any], usage: Usage) -> float:
         reported = (data.get("usage") or {}).get("cost")

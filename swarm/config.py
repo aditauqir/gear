@@ -22,6 +22,29 @@ from swarm.rng import canonical_json, sha256_hex
 
 DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.6-35b-a3b"
 HASH_GLOBAL_CAP_USD = 2.0   # value config_hash() always uses for llm.openrouter.global_cap_usd
+# Operational knobs (spend caps, concurrency, paths, retry, price estimates, run labels): config_hash()
+# always hashes them as these fixed values (the original base.yaml defaults), so changing them never
+# re-keys a game. Everything else (game, reasoning, roles, god, context, models, run.seed/branch/
+# replica) is game semantics and stays in the hash.
+HASH_OPERATIONAL: dict[tuple[str, ...], Any] = {
+    ("run", "name"): "base",
+    ("run", "n_games"): 1,
+    ("run", "out_dir"): "runs",
+    ("run", "max_concurrency_games"): 1,
+    ("llm", "budget_usd"): 2.0,
+    ("llm", "vllm", "base_url"): "http://localhost:8000/v1",
+    ("llm", "vllm", "max_concurrency"): 64,
+    ("llm", "openrouter", "base_url"): "https://openrouter.ai/api/v1",
+    ("llm", "openrouter", "api_key_env"): "OPENROUTER_API_KEY",
+    ("llm", "openrouter", "max_concurrency"): 8,
+    ("llm", "openrouter", "global_cap_usd"): HASH_GLOBAL_CAP_USD,
+    ("llm", "openrouter", "ledger_path"): "runs/openrouter_ledger.jsonl",
+    ("llm", "openrouter", "price_in_per_mtok"): 1.0,
+    ("llm", "openrouter", "price_out_per_mtok"): 4.0,
+    ("llm", "cache"): {"mode": "read_write", "path": "cache/llm.sqlite"},
+    ("llm", "retry"): {"max_retries": 5, "base_delay_s": 1.0, "max_delay_s": 30.0, "timeout_s": 120.0,
+                       "timeout_thinking_s": 300.0},
+}
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -165,6 +188,11 @@ class OpenRouterCfg(Cfg):
     ledger_path: str = "runs/openrouter_ledger.jsonl"
     price_in_per_mtok: float = 1.0                 # [E] conservative pre-call estimate; actual cost from provider
     price_out_per_mtok: float = 4.0
+    # Added after the freeze; None = original behaviour (reasoning {enabled: req.thinking}, default
+    # provider routing) and left out of config_hash. Both change play, so set values are hashed.
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None   # e.g. gpt-oss: reasoning
+    #   is mandatory (enabled=false is HTTP 400); send {effort: ...} instead
+    provider_sort: Literal["price", "throughput", "latency"] | None = None        # OpenRouter provider.sort
 
 
 class FakeCfg(Cfg):
@@ -320,10 +348,21 @@ class RunConfig(Cfg):
             d["game"].pop("board")
         elif self.game.board.post_skip_rounds == 0:             # added later; same rule
             d["game"]["board"].pop("post_skip_rounds")
-        # The global spend cap is not game semantics: hash it as the legacy $2 whatever its value,
-        # so raising the cap ($2 -> $6, 2026-11-07) keeps every hash, game id, seed and cache key.
-        # (llm.budget_usd stays in the hash: past runs overrode it, so dropping it would re-key them.)
-        d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD
+        # Operational knobs are not game semantics: hash them as fixed values (HASH_OPERATIONAL), so
+        # raising a cap, budget or concurrency, renaming a run or moving the cache keeps every hash,
+        # game id, seed and cache key. Configs at the base defaults keep their pre-change hash
+        # (the $2 -> $6 cap raise included). Past OpenRouter runs that pinned budget/prices/
+        # concurrency are re-keyed once; they all predate the 8ebbee7 ledger fix, so their cached
+        # prompts no longer match the current code anyway (CODE_REVIEW #6).
+        for path, value in HASH_OPERATIONAL.items():
+            cur = d
+            for k in path[:-1]:
+                cur = cur[k]
+            cur[path[-1]] = copy.deepcopy(value)
+        orr = d["llm"]["openrouter"]
+        for k in ("reasoning_effort", "provider_sort"):           # added later; board rule
+            if orr[k] is None:
+                orr.pop(k)
         return sha256_hex(canonical_json(d))
 
     def model_for(self, role: str) -> tuple[str, str]:

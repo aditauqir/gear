@@ -101,16 +101,53 @@ def test_sweep_expansion_and_hash():
 
 
 def test_config_hash_ignores_global_cap():
-    """The $2 -> $6 cap raise must not re-key games: hashes pinned from commit 1993b5c (cap $2)."""
+    """The $2 -> $6 cap raise must not re-key games: base hash pinned from commit 1993b5c (cap $2)."""
     from swarm.runner.run import load_experiment
 
-    pinned = {"base": "b442ad7af4a87da8bb2ff289c1e794cd7b98f44742c8a7066966921cfad35ee1",
-              "demo": "e657c252cf92bdb031139dfb827beda2878b0ddd04d8451e06fdedcd6f8d2d38",
-              "demo_openrouter": "29d5b81fed03ede6bbcc85b02f2000dc7fb2020330fc2ee101d0bb523636dbe7"}
+    pinned = {"base": "b442ad7af4a87da8bb2ff289c1e794cd7b98f44742c8a7066966921cfad35ee1"}
     assert RunConfig().config_hash() == pinned["base"]
-    for name, h in pinned.items():
-        for cap in (None, 2.0, 6.0, 100.0):
-            ov = [] if cap is None else [f"llm.openrouter.global_cap_usd={cap}"]
-            assert load_experiment(REPO_ROOT / "configs" / f"{name}.yaml", ov)[0].config_hash() == h, (name, cap)
-    # budget_usd is still part of the hash (past runs overrode it)
-    assert from_dict({}, ["llm.budget_usd=0.75"]).config_hash() != RunConfig().config_hash()
+    for name in ("base", "demo", "demo_openrouter", "demo_or_10x50_sim"):
+        hs = {load_experiment(REPO_ROOT / "configs" / f"{name}.yaml",
+                              [] if cap is None else [f"llm.openrouter.global_cap_usd={cap}"])[0].config_hash()
+              for cap in (None, 2.0, 6.0, 100.0)}
+        assert len(hs) == 1, name
+    assert load_experiment(REPO_ROOT / "configs" / "base.yaml", [])[0].config_hash() == pinned["base"]
+
+
+OPERATIONAL_OVERRIDES = [
+    "run.name=renamed", "run.n_games=7", "run.out_dir=elsewhere", "run.max_concurrency_games=4",
+    "llm.budget_usd=0.75", "llm.vllm.base_url=http://x:1/v1", "llm.vllm.max_concurrency=3",
+    "llm.openrouter.max_concurrency=16", "llm.openrouter.global_cap_usd=9", "llm.openrouter.ledger_path=l.jsonl",
+    "llm.openrouter.price_in_per_mtok=0.02", "llm.openrouter.price_out_per_mtok=0.05",
+    "llm.openrouter.base_url=https://x/v1", "llm.openrouter.api_key_env=OTHER_KEY",
+    "llm.cache.mode=read_only", "llm.cache.path=c/x.sqlite", "llm.retry.max_retries=2", "llm.retry.timeout_s=9",
+]
+SEMANTIC_OVERRIDES = [
+    "run.seed=3", "run.replica=r1", "run.branch=b", "game.n_agents=10", "game.max_rounds=12",
+    "game.turn_mode=simultaneous", "game.board.anonymous=true", "reasoning.cot_mode=none",
+    "roles.agent.model=openai/gpt-oss-120b", "roles.agent.max_tokens=900", "roles.agent.temperature=0.2",
+    "llm.openrouter.model=openai/gpt-oss-120b", "god.kind=none", "god.budget.k=1",
+    "context.budget_tokens=3000", "llm.openrouter.reasoning_effort=low", "llm.openrouter.provider_sort=price",
+]
+
+
+@pytest.mark.parametrize("ov", OPERATIONAL_OVERRIDES)
+def test_config_hash_ignores_operational_knobs(ov):
+    """CODE_REVIEW #6: caps, budgets, concurrency, paths, retry, price estimates and run labels are
+    not game semantics; changing them keeps the hash (game ids, seeds, cache keys)."""
+    base = from_dict({})
+    assert from_dict({}, [ov]).config_hash() == base.config_hash()
+    sim = from_dict({}, ["game.turn_mode=simultaneous"])
+    assert from_dict({}, ["game.turn_mode=simultaneous", ov]).config_hash() == sim.config_hash()
+
+
+@pytest.mark.parametrize("ov", SEMANTIC_OVERRIDES)
+def test_config_hash_keeps_game_semantics(ov):
+    assert from_dict({}, [ov]).config_hash() != RunConfig().config_hash()
+
+
+def test_config_hash_all_operational_at_once_and_new_fields_default_off():
+    allops = from_dict({}, OPERATIONAL_OVERRIDES)
+    assert allops.config_hash() == RunConfig().config_hash()
+    d = RunConfig().model_dump(mode="json")
+    assert d["llm"]["openrouter"]["reasoning_effort"] is None and d["llm"]["openrouter"]["provider_sort"] is None
