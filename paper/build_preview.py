@@ -56,6 +56,8 @@ th { font-weight: 700; }
 figure { margin: 6pt 0 8pt; page-break-inside: avoid; text-align: center; }
 img { max-width: 100%; }
 figure img { width: 100%; max-width: 6.5in; }
+figure.wrap { float: right; width: 4.0in; margin: 2pt 0 6pt 12pt; }
+figure.wrap img { width: 100% !important; }
 figcaption { font-size: 9pt; text-align: left; margin-top: 2pt; line-height: 1.1; }
 code { font-family: 'DejaVu Sans Mono', monospace; font-size: 9pt; }
 hr { display: none; }
@@ -63,9 +65,12 @@ hr { display: none; }
 """
 FONT_LINK = ('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Old+Standard+TT:'
              'ital,wght@0,400;0,700;1,400&display=block">')
+# Figures printed at their natural 4.0 in width with text wrapping beside them (Google Docs
+# "wrap text"); designed for a narrow column.
+WRAP = ("paperfig5_board_mechanism",)
 # Per-figure print widths (share of the 6.5 in text width); unlisted figures use 100%.
 WIDTHS = {"paperfig1_schematic": 80, "paperfig4a_grid_effects": 85, "paperfig4b_sweep_effects": 65,
-          "paperfig5_board_mechanism": 58, "paperfig3_divergence": 95, "paperfig2_network": 75}
+          "paperfig5_board_mechanism": 61.5, "paperfig3_divergence": 95, "paperfig2_network": 75}
 
 
 def clean_markdown(md: str) -> str:
@@ -94,6 +99,8 @@ def to_html(md: str) -> str:
         src = (PAPER / m.group(1)).resolve()
         return f'src="file://{src}"'
     html = re.sub(r'src="(\.\./plan/figs/[^"]+)"', fix, html)
+    for name in WRAP:
+        html = re.sub(r'<figure>(\s*<img[^>]*?' + name + ')', r'<figure class="wrap">\1', html)
     for name, pct in WIDTHS.items():
         html = re.sub(r'<img (src="[^"]*' + name + r'\.png")', rf'<img style="width:{pct}%" \1', html)
     return html

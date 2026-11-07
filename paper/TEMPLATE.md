@@ -85,6 +85,8 @@ The build does the following:
      - Figure 2b was shrunk to 65% width and Figure 3 to 58%;
      - Related Work was condensed, with every citation kept.
    - Result: page 8 is about 44% full.
+   - planA-viz then delivered Figure 3 (`paperfig5_board_mechanism`) re-laid out for a narrow column: 4.0 × 6.0 in, axis text ≥ 9 pt. It is printed at its natural 4.0 in width with text wrapping beside it, starting at Section 5.3. Figure 2a/2b now sit after the Grid and Sweep paragraphs of 5.2, and Figure 4 after the first Discussion paragraph, on the same page as its 5.4 reference. Page 8 is about 46% full.
+   - **In Google Docs:** set Figure 3 to "Wrap text", 4.0 in wide, anchored at the start of 5.3. Do not scale it down, or its labels become illegible.
    - **Next cuts if needed:** move Figure 4 (divergence) or Figure 1 to an appendix; turn the Section 4 Power paragraph into an appendix pointer; shorten Section 3.2 God.
 9. **Export.** File → Download → PDF document. Open the PDF and check:
    - the abstract is 150 to 250 words;
