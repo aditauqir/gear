@@ -108,3 +108,30 @@ def test_cell_round_means(synth_run: Path) -> None:
     finals = [load_branch(b["god"]).welfare(load_branch(b["god"]).R) for b in ws.values()]
     assert abs(m["god"]["welfare"][-1] - sum(finals) / len(finals)) < 1e-9
     assert m["god"]["welfare"][0] == 0 and m["god"]["n"] == [float(len(ws))]
+
+
+def test_cell_spec_joins_external_branch(synth_run: Path) -> None:
+    from swarm.viz.metrics import cell_deltas, parse_spec, worlds
+
+    sp = parse_spec(f"{synth_run},{synth_run}@noise#0-0")
+    assert sp.run == synth_run and sp.extra == (("noisefork", synth_run, "noise"),) and sp.seeds == frozenset({0})
+    ws = worlds(sp)
+    assert set(ws) <= {0} and all(b["noisefork"] == b["noise"] for b in ws.values())
+    a = cell_deltas(sp, "god", "noisefork")
+    b = cell_deltas(synth_run, "god", "noise")
+    assert a == {i: b[i] for i in a}
+    c = load_cell(sp, with_health=False)
+    for i, w in c["worlds"].items():
+        assert "noisefork" in w["pairs"]
+        d = deltas(c, "div_post_fork", "god", "noisefork")[i]
+        assert abs(d - (w["pairs"]["god"]["div_post_fork"] - w["pairs"]["noisefork"]["div_post_fork"])) < 1e-12
+
+
+def test_fig5_sweep_renders(synth_run: Path, tmp_path: Path) -> None:
+    from swarm.viz.paper_figs import fig5_sweep
+
+    sp = f"{synth_run},{synth_run}@noise"
+    paths, stats = fig5_sweep([("group", "cond", sp)], ("variant", str(synth_run), str(synth_run)), tmp_path)
+    assert all(p.stat().st_size > 2000 for p in paths)
+    design = [st for lab, st in stats if lab.startswith("design")]
+    assert all(st["mean"] == 0 for st in design)          # a cell against itself: no design effect

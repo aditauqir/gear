@@ -288,12 +288,52 @@ def branch_dirs(run_dir: str | Path) -> dict[int, dict[str, Path]]:
     return out
 
 
-def worlds(run_dir: str | Path) -> dict[int, dict[str, Path]]:
+@dataclass(frozen=True)
+class CellSpec:
+    """A cell = the run dir holding god/nogod, plus optional branches taken from other run dirs by game_idx
+    (e.g. the fork-matched noise B'' that the sweep ran separately), plus an optional world filter."""
+    run: Path
+    extra: tuple[tuple[str, Path, str], ...] = ()        # (alias, run_dir, branch name in that run)
+    seeds: frozenset[int] | None = None
+
+    @property
+    def name(self) -> str:
+        return self.run.name
+
+
+def parse_seeds(s: str) -> frozenset[int]:
+    out: set[int] = set()
+    for part in s.split(","):
+        a, _, b = part.partition("-")
+        out |= set(range(int(a), int(b or a) + 1))
+    return frozenset(out)
+
+
+def parse_spec(s: str | Path | CellSpec, alias: str = "noisefork") -> CellSpec:
+    """'RUN[,NOISE_RUN[@BRANCH]][#0-7]' (as sweep_stats): NOISE_RUN's BRANCH (default noisefork) joins the cell as
+    `alias`. A Path or bare run dir is a plain cell."""
+    if isinstance(s, CellSpec):
+        return s
+    s = str(s)
+    s, _, seeds = s.partition("#")
+    run, _, noise = s.partition(",")
+    extra: tuple[tuple[str, Path, str], ...] = ()
+    if noise and noise != "none":
+        nrun, _, br = noise.partition("@")
+        extra = ((alias, Path(nrun or run), br or "noisefork"),)
+    return CellSpec(Path(run), extra, parse_seeds(seeds) if seeds else None)
+
+
+def worlds(run_dir: str | Path | CellSpec) -> dict[int, dict[str, Path]]:
     """game_idx -> branch -> dir, finished and healthy branches only; seeds with an unhealthy branch dropped
-    (as grid_stats); worlds without both god and nogod finished are left out."""
+    (as grid_stats); worlds without both god and nogod finished are left out. Extra branches of a CellSpec join
+    by game_idx (a missing or unfinished extra branch just leaves that world without it)."""
+    spec = parse_spec(run_dir)
     out: dict[int, dict[str, Path]] = {}
     bad: set[int] = set()
-    for i, brs in branch_dirs(run_dir).items():
+    for i, brs in branch_dirs(spec.run).items():
+        if spec.seeds is not None and i not in spec.seeds:
+            continue
         for br, d in brs.items():
             if not is_done(d):
                 continue
@@ -301,6 +341,14 @@ def worlds(run_dir: str | Path) -> dict[int, dict[str, Path]]:
                 bad.add(i)
                 continue
             out.setdefault(i, {})[br] = d
+    for alias, run, br in spec.extra:
+        for i in out:
+            d = Path(run) / "games" / f"g{i:02d}-{br}"
+            if d.is_dir() and is_done(d):
+                if game_health(d)["reasons"]:
+                    bad.add(i)
+                else:
+                    out[i][alias] = d
     return {i: b for i, b in out.items() if i not in bad and "god" in b and "nogod" in b}
 
 
@@ -309,7 +357,7 @@ def welfare(game_dir: Path) -> float:
     return sum(a["score"] for a in pa) / max(1, len(pa))
 
 
-def cell_deltas(run_dir: str | Path, a: str = "god", b: str = "nogod") -> dict[int, float]:
+def cell_deltas(run_dir: str | Path | CellSpec, a: str = "god", b: str = "nogod") -> dict[int, float]:
     return {i: welfare(br[a]) - welfare(br[b]) for i, br in worlds(run_dir).items() if a in br and b in br}
 
 
@@ -328,7 +376,7 @@ def cum_curves(run_dir: str | Path, a: str = "god", b: str = "nogod") -> dict[in
     return out
 
 
-def aligned_curves(run_dir: str | Path, br: str = "god") -> tuple[dict[int, list[float]], list[int]]:
+def aligned_curves(run_dir: str | Path | CellSpec, br: str = "god") -> tuple[dict[int, list[float]], list[int]]:
     """Share of agents diverged from no-God per round, re-indexed to rounds since the branch forked:
     God branch = God's first successful move; other branches = their first round whose actions differ
     (the God-free re-run B' forks at round 1 because it shares no cached replies). -> ({world: curve}, forks)."""
@@ -356,7 +404,7 @@ def mean_curve(curves: dict[int, list[float]]) -> list[float]:
     return [statistics.fmean(ys[min(r, len(ys) - 1)] for ys in curves.values()) for r in range(L)]
 
 
-def cell_round_means(run_dir: str | Path, fields: tuple[str, ...] = ("welfare", "winners", "gives", "defects"),
+def cell_round_means(run_dir: str | Path | CellSpec, fields: tuple[str, ...] = ("welfare", "winners", "gives", "defects"),
                      ) -> dict[str, dict[str, list[float]]]:
     """Mean per-round trajectory over worlds, per branch: {branch: {field: [mean at round 0..R]}}."""
     acc: dict[str, list[list[dict[str, float]]]] = {}
@@ -401,6 +449,7 @@ def run_config(run_dir: str | Path) -> dict[str, Any]:
     sched = god.get("schedule") or []
     return {"n_agents": g.get("n_agents"), "max_rounds": g.get("max_rounds"), "turn_mode": g.get("turn_mode"),
             "keys_per_agent": g.get("keys_per_agent"),
+            "board_enabled": (g.get("board") or {}).get("enabled", True) if isinstance(g.get("board"), dict) else True,
             "noise_replica": fork.get("noise_replica"), "god_k": (god.get("budget") or {}).get("k"),
             "god_start": god.get("start_round"),
             "schedule": [f"{s.get('power')}@r{s.get('round')}" for s in sched if isinstance(s, dict)]}
@@ -420,10 +469,15 @@ def world_hash(game_dir: str | Path) -> str:
     return ""
 
 
-def paired_or_unpaired(ca: dict[str, Any], cb: dict[str, Any], metric: str) -> tuple[str, dict[str, Any]]:
-    """Contrast of cell b's God effect against cell a's: paired by world when the worlds are identical
-    (world_hash), else the difference of the two means with a Welch t 95% CI. Returns (kind, stats)."""
-    da, db = deltas(ca, metric, "god"), deltas(cb, metric, "god")
+def paired_or_unpaired(ca: dict[str, Any], cb: dict[str, Any], metric: str,
+                       branch: str | None = None) -> tuple[str, dict[str, Any]]:
+    """Contrast of cell b's God effect against cell a's (or, with `branch`, of that branch's raw values, e.g.
+    branch="nogod" = the design effect of b's settings without God): paired by world when the worlds are
+    identical (world_hash), else the difference of the two means with a Welch t 95% CI. Returns (kind, stats)."""
+    if branch:
+        da, db = branch_values(ca, metric, branch), branch_values(cb, metric, branch)
+    else:
+        da, db = deltas(ca, metric, "god"), deltas(cb, metric, "god")
     shared = [i for i in sorted(set(da) & set(db))
               if ca["worlds"][i].get("world_hash") and ca["worlds"][i]["world_hash"] == cb["worlds"][i].get("world_hash")]
     if len(shared) >= 2:
@@ -441,10 +495,11 @@ def paired_or_unpaired(ca: dict[str, Any], cb: dict[str, Any], metric: str) -> t
                         "mde": float("nan")}
 
 
-def load_cell(run_dir: str | Path, with_health: bool = True, with_pairs: bool = True) -> dict[str, Any]:
+def load_cell(run_dir: str | Path | CellSpec, with_health: bool = True, with_pairs: bool = True) -> dict[str, Any]:
     """Everything the dashboard needs for one cell. Branches still running are counted but not loaded."""
-    run_dir = Path(run_dir)
-    all_b = branch_dirs(run_dir)
+    spec = parse_spec(run_dir)
+    run_dir = spec.run
+    all_b = {i: b for i, b in branch_dirs(run_dir).items() if spec.seeds is None or i in spec.seeds}
     status = Counter()
     for brs in all_b.values():
         for d in brs.values():
@@ -452,10 +507,11 @@ def load_cell(run_dir: str | Path, with_health: bool = True, with_pairs: bool = 
                 status[json.loads((d / "meta.json").read_text()).get("status", "?")] += 1
             except (OSError, ValueError):
                 status["no meta"] += 1
-    ws = worlds(run_dir)
+    ws = worlds(spec)
     unhealthy = sorted({i for i, brs in all_b.items() for d in brs.values()
                         if is_done(d) and game_health(d)["reasons"]})
-    cell: dict[str, Any] = {"name": run_dir.name, "path": str(run_dir), "config": run_config(run_dir),
+    cell: dict[str, Any] = {"name": run_dir.name, "path": str(run_dir), "spec": spec, "config": run_config(run_dir),
+                            "extra": [f"{a} = {Path(r).name}/{b}" for a, r, b in spec.extra],
                             "status": dict(status), "n_worlds_total": len(all_b), "unhealthy_worlds": unhealthy,
                             "worlds": {}, "health": {}}
     for i, brs in sorted(ws.items()):
@@ -479,6 +535,8 @@ def deltas(cell: dict[str, Any], metric: str, a: str = "god", b: str = "nogod") 
         if metric in PAIR_METRICS:
             if a in w["pairs"] and b == "nogod":
                 out[i] = w["pairs"][a][metric]
+            elif a in w["pairs"] and b in w["pairs"]:          # e.g. God's divergence minus the noise's
+                out[i] = w["pairs"][a][metric] - w["pairs"][b][metric]
         elif a in w["branches"] and b in w["branches"]:
             out[i] = w["branches"][a][metric] - w["branches"][b][metric]
     return out

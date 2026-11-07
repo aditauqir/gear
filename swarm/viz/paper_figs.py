@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import statistics
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
@@ -37,6 +38,7 @@ from swarm.viz.metrics import (  # noqa: E402,F401  (cell_deltas, summarize, ...
     load_branch,
     mean_curve,
     paired_diff,
+    parse_spec,
     summarize,
     welfare,
     worlds,
@@ -48,7 +50,8 @@ WIDE = 7.0   # in, two-column figure width
 plt.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42, "font.size": 8, "axes.titlesize": 8.5,
                      "axes.labelsize": 8, "xtick.labelsize": 7, "ytick.labelsize": 7, "legend.fontsize": 7})
 CELL_COLORS = [C["a"], "#eb6834", C["give"]]   # blue, orange, aqua: validated all-pairs (first three slots)
-NOISE = ["#9a9993", "#52514e"]                 # B', B'' baselines: neutral grays (reference, not a series)
+NOISE = ["#9a9993", "#52514e"]
+PRIMARY = "#184f95"   # God − B'' rows (primary contrast): dark step of the blue ramp                 # B', B'' baselines: neutral grays (reference, not a series)
 
 
 def _save(fig, out_dir: Path, name: str) -> list[Path]:
@@ -68,27 +71,32 @@ def fig3_divergence(cells: list[tuple[str, Path]], out_dir: Path,
     """Share of agents diverged from no-God vs rounds since each branch forked (God: its first move; baselines:
     their first differing round), so God and noise curves start from the same point."""
     fig, axes = plt.subplots(1, len(cells), figsize=(WIDE, 2.3), sharey=True, squeeze=False)
-    for k, ((name, run), ax) in enumerate(zip(cells, axes[0], strict=True)):
+    handles: dict[str, Any] = {}
+    for (name, run), ax in zip(cells, axes[0], strict=True):
         series = []
         for j, (lab, br) in enumerate(baselines):
             c, f = aligned_curves(run, br)
             if c:
-                series.append((f"{lab} vs B", c, f, NOISE[j % len(NOISE)]))
+                series.append((f"{lab}", c, f, NOISE[j % len(NOISE)]))
         c, f = aligned_curves(run, "god")
-        series.append(("A vs B (God)", c, f, CELL_COLORS[k % len(CELL_COLORS)]))
+        series.append(("A: God (forks at its first move F)", c, f, CELL_COLORS[0]))
         for lab, curves, forks, col in series:
             for ys in curves.values():
                 ax.plot(range(len(ys)), ys, color=col, lw=0.6, alpha=0.3)
             mean = mean_curve(curves)
             fk = statistics.median(forks)
-            ax.plot(range(len(mean)), mean, color=col, lw=2, label=f"{lab}: forks r{fk:g}, n={len(curves)}")
-        ax.set_title(name, loc="left")
-        ax.set_xlabel("rounds since the branch forked")
+            ax.plot(range(len(mean)), mean, color=col, lw=2, label=lab)
+            if lab.startswith("A"):
+                ax.set_title(f"{name}\nF = r{fk:g}, n = {len(curves)}", loc="left", fontsize=8)
+        ax.set_xlabel("rounds since fork F")
         ax.set_xlim(-0.3, XMAX + 0.3)
         ax.set_xticks(range(0, XMAX + 1, 2))
         ax.set_ylim(-0.02, 1.05)
-        ax.legend(loc="lower right", handlelength=1.4)
-    axes[0][0].set_ylabel("share of agents diverged\nfrom B (any action so far)")
+        for ln in ax.get_legend_handles_labels()[0]:
+            handles.setdefault(ln.get_label(), ln)
+    fig.legend(handles=list(handles.values()), loc="lower center", ncol=len(handles), frameon=False,
+               bbox_to_anchor=(0.5, -0.06), fontsize=7)
+    axes[0][0].set_ylabel("share of agents acting\ndifferently from B (so far)")
     fig.tight_layout(w_pad=0.6)
     return _save(fig, out_dir, "fig3_divergence")
 
@@ -125,11 +133,15 @@ def fig4_welfare(cells: list[tuple[str, Path]], out_dir: Path,
     (n1, r1), rest = cells[0], cells[1:]
     d1 = cell_deltas(r1)
     short = {name: name.split()[0] for name, _ in cells}           # "G1 sim K=2" -> "G1"
-    left = [("A − B (God)", d1, CELL_COLORS[0])]
+    baselines = list(baselines)
+    left = [("A − B (God − no God)", d1, CELL_COLORS[0])]
     for j, (lab, br) in enumerate(baselines):
         nz = cell_deltas(r1, br, "nogod")
         if nz:
             left.append((f"{lab} − B", nz, NOISE[j % len(NOISE)]))
+    an = cell_deltas(r1, "god", "noisefork")
+    if an:
+        left.append(("A − B″ (God − matched noise)", an, PRIMARY))
     right = []
     for k, (name, run) in enumerate(rest, start=1):
         right.append((f"{name}: A − B", cell_deltas(run), CELL_COLORS[k % len(CELL_COLORS)]))
@@ -146,13 +158,96 @@ def fig4_welfare(cells: list[tuple[str, Path]], out_dir: Path,
     axr = fig.add_axes([0.72, bot, 0.18, top - bot])
     lim = max(0.5, max(abs(x) for _, d, _ in left + right for x in d.values()) + 0.05)
     stats = _forest(axl, left, len(left), (-lim, lim)) + _forest(axr, right, h, (-lim, lim))
-    axl.set_title(f"H1: {n1}, God vs. noise", loc="left", x=-0.9)
+    axl.set_title(f"H1: {n1}, God vs. noise", loc="left", x=-1.05)
     axr.set_title("Dose (H1′, H3) and turn mode (H2)", loc="left", x=-1.1)
     hs = [Line2D([], [], marker="o", ls="", color=INK2, alpha=0.6, ms=4, label="one world"),
           Line2D([], [], marker="D", color=INK, ms=5, lw=1.8, label="mean, Student-t 95% CI; sign-flip p")]
-    fig.legend(handles=hs, loc="upper left", ncol=1, frameon=False,
-               bbox_to_anchor=(0.04, top - hl - 0.62 / H - 0.06))     # in the space under the shorter left panel
+    if len(left) < h:                                                  # in the space under the shorter left panel
+        fig.legend(handles=hs, loc="upper left", ncol=1, frameon=False, bbox_to_anchor=(0.04, top - hl - 0.62 / H - 0.06))
+    else:
+        fig.legend(handles=hs, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.0))
     return _save(fig, out_dir, "fig4_welfare"), stats
+
+
+# ------------------------------------------------------------------ sweep summary
+def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple[str, Any, Any] | None, out_dir: Path) -> tuple[list[Path], list]:
+    """Left: God − B'' Δwelfare per sweep condition (dots = worlds, ◆ mean, bar = 95% t-CI, p), grouped by factor;
+    hollow ○ = God − no God mean for reference. Right: design effect without God (e.g. board off vs on), welfare
+    per world in the no-God branch of the two settings on the same worlds, with the paired mean Δ.
+    conds: (group, label, spec); design: (label, spec_reference, spec_variant)."""
+    from swarm.viz.metrics import load_cell, paired_or_unpaired
+
+    rows = [(g, lab, cell_deltas(sp, "god", "noisefork"), cell_deltas(sp, "god", "nogod")) for g, lab, sp in conds]
+    rows = [r for r in rows if r[2]]
+    groups = list(dict.fromkeys(g for g, *_ in rows))
+    slots: list[tuple[str, Any]] = []                     # ("hdr", group) or ("row", row)
+    for g in groups:
+        slots.append(("hdr", g))
+        slots += [("row", r) for r in rows if r[0] == g]
+    H = 0.24 * len(slots) + 0.8
+    fig = plt.figure(figsize=(WIDE, H))
+    bot, top = 0.48 / H, 1 - 0.3 / H
+    ax = fig.add_axes([0.2, bot, 0.32, top - bot])
+    rng = np.random.default_rng(0)
+    stats, yt, yl = [], [], []
+    for k, (kind, v) in enumerate(slots):
+        y = len(slots) - 1 - k
+        if kind == "hdr":
+            ax.text(-0.02, y, v, transform=ax.get_yaxis_transform(), ha="right", va="center", fontsize=7.5,
+                    fontweight="bold", color=INK)
+            continue
+        _g, lab, an, ab = v
+        xs = list(an.values())
+        st = summarize(xs)
+        sb = summarize(list(ab.values()))
+        stats.append((f"{_g}: {lab}: God − B″", st))
+        ax.scatter(xs, y + rng.uniform(-0.2, 0.2, len(xs)), s=9, color=C["a"], alpha=0.5, lw=0, zorder=2)
+        ax.plot([st["tlo"], st["thi"]], [y, y], color=PRIMARY, lw=2, zorder=3, solid_capstyle="round")
+        ax.scatter([st["mean"]], [y], marker="D", s=30, color=PRIMARY, edgecolors="white", lw=0.8, zorder=4)
+        ax.scatter([sb["mean"]], [y], marker="o", s=22, facecolors="none", edgecolors=INK2, lw=1, zorder=4)
+        ax.text(1.03, y, f"{st['mean']:+.3f} [{st['tlo']:+.3f}, {st['thi']:+.3f}]  p={st['p']:.2f}  n={st['n']}"
+                .replace("-", "\u2212"), transform=ax.get_yaxis_transform(), va="center", fontsize=6.3, color=INK2)
+        yt.append(y)
+        yl.append(lab)
+    ax.axvline(0, color=INK2, lw=0.8, zorder=1)
+    ax.set_yticks(yt)
+    ax.set_yticklabels(yl, fontsize=7)
+    ax.set_ylim(-0.6, len(slots) - 0.4)
+    lim = max(0.35, max(abs(x) for r in rows for x in r[2].values()) + 0.03)
+    ax.set_xlim(-lim, lim)
+    ax.set_xlabel("Δ welfare, God − B″ (fork-matched noise)")
+    ax.grid(axis="y", visible=False)
+    ax.set_title("God's effect beyond matched noise, per condition", loc="left", x=-0.3)
+    hs = [Line2D([], [], marker="o", ls="", color=C["a"], alpha=0.6, ms=3.5, label="one world"),
+          Line2D([], [], marker="D", color=PRIMARY, ms=4.5, lw=2, label="mean, 95% t-CI"),
+          Line2D([], [], marker="o", ls="", mfc="none", mec=INK2, ms=4.5, label="God − no God mean")]
+    fig.legend(handles=hs, loc="lower left", ncol=3, frameon=False, bbox_to_anchor=(0.02, -0.01), fontsize=6.5)
+    if design:
+        dlab, sref, svar = design
+        ca = load_cell(sref, with_health=False, with_pairs=False)
+        cb = load_cell(svar, with_health=False, with_pairs=False)
+        kind, sd = paired_or_unpaired(ca, cb, "welfare", branch="nogod")
+        if sd:
+            stats.append((f"design: {dlab} (no-God welfare, {kind})", sd))
+        common = sorted(set(ca["worlds"]) & set(cb["worlds"]))
+        axd = fig.add_axes([0.87, bot + 0.08, 0.12, top - bot - 0.18])
+        for i in common:
+            a_, b_ = ca["worlds"][i]["branches"]["nogod"]["welfare"], cb["worlds"][i]["branches"]["nogod"]["welfare"]
+            axd.plot([0, 1], [a_, b_], color=INK2, lw=0.8, alpha=0.6, marker="o", ms=3)
+        ma = statistics.fmean(ca["worlds"][i]["branches"]["nogod"]["welfare"] for i in common)
+        mb = statistics.fmean(cb["worlds"][i]["branches"]["nogod"]["welfare"] for i in common)
+        axd.plot([0, 1], [ma, mb], color=C["defect"], lw=2.2, marker="D", ms=5)
+        axd.set_xticks([0, 1])
+        axd.set_xticklabels(["board on", "board off"] if "board" in dlab else ["reference", dlab], fontsize=7)
+        axd.set_xlim(-0.35, 1.35)
+        axd.tick_params(labelsize=6.5)
+        axd.grid(axis="x", visible=False)
+        axd.set_title(f"Without God: {dlab}\n(welfare per world)", loc="left", fontsize=7.2, x=-0.45)
+        txt = ((f"Δ {sd['mean']:+.3f} [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]\np={sd['p']:.2f}, "
+                f"n={sd['n']} ({kind})").replace("-", "\u2212") if sd else "fewer than 2 shared worlds")
+        axd.text(0.5, -0.32, txt,
+                 transform=axd.transAxes, ha="center", va="top", fontsize=6.5, color=INK2)
+    return _save(fig, out_dir, "fig5_sweep"), stats
 
 
 # ------------------------------------------------------------------ network pair
@@ -190,22 +285,38 @@ def fig2_network(run: Path, world: int, out_dir: Path) -> list[Path]:
     return _save(fig, out_dir, "fig2_network")
 
 
+def _cells(xs: list[str]) -> list[tuple[str, str]]:
+    return [(c.rsplit("=", 1)[0], c.rsplit("=", 1)[1]) for c in xs]
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("out_dir", type=Path)
-    ap.add_argument("--cell", action="append", required=True, help='"label=run_dir"; the first is the main cell')
-    ap.add_argument("--baseline", action="append", default=[], help='"label=branch" extra noise branch vs nogod')
+    ap.add_argument("--cell", action="append", required=True,
+                    help='"label=RUN[,NOISE_RUN[@BRANCH]][#seeds]" (fig4; the first is the main cell, fig2 world)')
+    ap.add_argument("--div-cell", action="append", default=[], help="cells for fig3 (default: --cell)")
+    ap.add_argument("--sweep", action="append", default=[], help='fig5 rows: "group|label=SPEC"')
+    ap.add_argument("--design", help='fig5 design panel: "label=REF_SPEC|VARIANT_SPEC"')
     ap.add_argument("--world", default="median", help='"median" (rule) or a game index of the main cell')
     a = ap.parse_args(argv)
-    cells = [(c.rsplit("=", 1)[0], Path(c.rsplit("=", 1)[1])) for c in a.cell]
-    base = [("B′ re-run", "noise")] + [tuple(b.rsplit("=", 1)) for b in a.baseline]
-    print(*fig3_divergence(cells, a.out_dir, base))
-    paths, stats = fig4_welfare(cells, a.out_dir, base)
+    cells = _cells(a.cell)
+    base = [("B′: re-run from r1", "noise"), ("B″: fork-matched noise (resampled at F)", "noisefork")]
+    print(*fig3_divergence(_cells(a.div_cell) or cells, a.out_dir, base))
+    paths, stats = fig4_welfare(cells, a.out_dir, [("B′ re-run", "noise"), ("B″ matched", "noisefork")])
     print(*paths)
+    if a.sweep:
+        conds = [(c.split("|", 1)[0], c.split("|", 1)[1].rsplit("=", 1)[0], c.rsplit("=", 1)[1]) for c in a.sweep]
+        design = None
+        if a.design:
+            dl, ds = a.design.split("=", 1)
+            design = (dl, *ds.split("|", 1))
+        p5, s5 = fig5_sweep(conds, design, a.out_dir)
+        print(*p5)
+        stats += s5
     for lab, s in stats:
         print(f"  {lab.replace(chr(10), ' ')}: {s['mean']:+.3f} t95 [{s['tlo']:+.3f}, {s['thi']:+.3f}] "
               f"boot [{s['lo']:+.3f}, {s['hi']:+.3f}] p={s['p']:.3f} n={s['n']}")
-    main_run = cells[0][1]
+    main_run = parse_spec(cells[0][1]).run
     if a.world == "median":
         w, why = median_world({i: abs(d) for i, d in cell_deltas(main_run).items()})
         print(f"  fig2 world: g{w:02d} ({why})")
