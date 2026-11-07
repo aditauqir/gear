@@ -63,7 +63,8 @@ def timeline_png(g: GameTrace, title: str | None = None) -> bytes:
         if not p["ok"]:
             continue
         col = C["fraud"] if p["power"] == "message_fraud" else C["cot"]
-        ax.axvspan(p["round"] - 0.5, p["round"] + 0.5, color=col, alpha=0.13, lw=0, zorder=0)
+        ax.axvspan(p["round"] - 0.5, p["round"] + 0.5, facecolor=col, alpha=0.13, lw=0, zorder=0,
+                   hatch=None if p["power"] == "message_fraud" else "//", edgecolor=col)
         if p["target"] in row:
             ax.scatter([p["round"]], [row[p["target"]]], s=260, facecolors="none", edgecolors=col,
                        linewidths=2, zorder=4)
@@ -95,7 +96,7 @@ def timeline_png(g: GameTrace, title: str | None = None) -> bytes:
                Line2D([], [], marker="X", ls="", color=C["defect"], label="defect (filled = correct)"),
                Line2D([], [], marker="*", ls="", color=C["win"], ms=10, label="win"),
                Patch(color=C["fraud"], alpha=0.35, label="God: message fraud"),
-               Patch(color=C["cot"], alpha=0.35, label="God: scratchpad overwrite")]
+               Patch(facecolor=C["cot"], alpha=0.35, hatch="//", edgecolor=C["cot"], label="God: scratchpad overwrite")]
     ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=8)
     return fig_to_png(fig)
 
@@ -151,7 +152,7 @@ def network_png(g: GameTrace, title: str | None = None, seed: int = 0) -> bytes:
         god_edges[p["power"]][("GOD", p["target"])] += 1
     G.add_node("GOD")
     draw(god_edges["message_fraud"], C["fraud"], style="dashed", base=1.8, alpha=0.95)
-    draw(god_edges["cot_control"], C["cot"], style="dashed", base=1.8, alpha=0.95)
+    draw(god_edges["cot_control"], C["cot"], style="dotted", base=1.8, alpha=0.95)
     won = {e.data.agent for e in g.of_type("win")}  # type: ignore[union-attr]
     burned = {e.data.target for e in g.of_type("burn") if e.data.correct}  # type: ignore[union-attr]
     colors = [C["win"] if a in won else C["defect"] if a in burned else C["a"] for a in agents]
@@ -173,7 +174,7 @@ def network_png(g: GameTrace, title: str | None = None, seed: int = 0) -> bytes:
                Line2D([], [], color=C["defect"], label="defects"),
                Line2D([], [], color=C["board"], label="board posts"),
                Line2D([], [], color=C["fraud"], ls="--", label="God: forged DM"),
-               Line2D([], [], color=C["cot"], ls="--", label="God: memory overwrite"),
+               Line2D([], [], color=C["cot"], ls=":", label="God: memory overwrite"),
                Line2D([], [], marker="o", ls="", color=C["a"], label="active"),
                Line2D([], [], marker="o", ls="", color=C["win"], label="won"),
                Line2D([], [], marker="o", ls="", color=C["defect"], label="had a need burned")]

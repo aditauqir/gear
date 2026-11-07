@@ -20,12 +20,17 @@ C = {
     "give": "#1baf7a",      # aqua
     "defect": "#e34948",    # red
     "win": "#eda100",       # yellow
-    "fraud": "#6250d6",     # violet: God message fraud
-    "cot": "#eb6834",       # orange: God scratchpad/CoT overwrite
+    # God (any power): magenta; the two powers are told apart by line style / hatch, never by hue alone.
+    # Palette (blue, aqua, red, yellow, magenta) checked with the dataviz validator: all-pairs CVD dE >= 6.1
+    # (legal with the secondary encodings used here: dashed God marks, dotted defects, labels).
+    "god": "#e87ba4",
+    "god_ink": "#c4386f",   # darker magenta for text/badges on the light surface (>= 4.5:1)
+    "fraud": "#e87ba4",
+    "cot": "#e87ba4",
     "a": "#2a78d6",         # blue: branch A (God)
     "b": "#52514e",         # ink2: control B
     "noise": "#b9b8b2",
-    "board": "#12a5b8",     # teal: public board posts
+    "board": "#9a9993",     # gray: public board posts (the BOARD node is labelled)
 }
 
 plt.rcParams.update({
