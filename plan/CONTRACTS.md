@@ -3,6 +3,20 @@
 Python `/home/iraj/miniconda3/envs/swarm/bin/python` with `PYTHONNOUSERSITE=1`. Run `make test` and `make lint`. The models are pydantic v2, with `extra="forbid"` everywhere.
 **Do not edit** `swarm/{schema,config,rng,memory}.py`, `swarm/llm/{base,secrets}.py`, `swarm/context/base.py`, `swarm/prompts/__init__.py` or `configs/base.yaml`. Ask the team lead for changes. The docstrings in those files are the long form of this sheet.
 
+## 0. Code guidelines (the lead's; strong defaults, not dogma)
+1. **Pure core, thin shell.**
+   - These are pure where practical: rules, observe/view_log, context build, metrics and scoring. State goes in and a result comes out. No I/O, no globals, and randomness only from an `rng` that is passed in.
+   - Side effects (LLM calls, files, logging, clocks) belong in the runner, the llm clients and the runlog writers.
+   - **Allowed impurity:** `rules.apply` and `MemoryStore` mutate the `GameState` they are given and return event bodies. This is for speed; the engine deep-copies at round boundaries. Be pragmatic: a little impurity is fine where purity would add complexity.
+2. **LLM-legible code.**
+   - Small modules and short functions.
+   - Explicit types.
+   - Descriptive names.
+   - **A docstring on every module and on every public function and class.** Say what it does and why.
+   - No metaprogramming. A registry is a plain dict.
+   - Each module's top docstring states its role, its inputs and outputs, and which modules it may import.
+3. **Unit tests for every pure function.** They must be fast and deterministic, with no GPU and no network. Use FakeLLM and the fixtures.
+
 ## 1. Truth vs agent-visible (`swarm/schema.py`)
 - **Truth side** (engine and analysis only):
   - State: `GameState`, `AgentState`. These are **mutable**: rules mutate them in place, and the engine deep-copies at round boundaries only.
