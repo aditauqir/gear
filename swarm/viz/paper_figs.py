@@ -27,6 +27,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
@@ -355,57 +356,66 @@ BOARD_METRICS = [("welfare", "welfare (mean score)", "{:.2f}"), ("win_rate", "wi
                  ("defects_correct", "correct defects / agent", "{:.2f}")]
 
 
+BOARD_SHORT = {"welfare": "welfare", "win_rate": "win rate", "gives": "keys given", "dms": "DMs",
+               "defects_wrong": "wrong defects", "defects_correct": "correct defects"}
+
+
 def fig6_board_mechanism(ref_runs: str, var_runs: str, out_dir: Path, orig: frozenset[int] | None = None,
-                         labels: tuple[str, str] = ("board on", "board off")) -> tuple[list[Path], list]:
-    """No-God games on identical worlds with and without the public board: one small multiple per metric with
-    per-world paired lines (filled = original worlds, hollow = extension), condition means with Student-t 95%
-    CIs, and the paired Δ (off − on) with its t95 and exact sign-flip p."""
+                         labels: tuple[str, str] = ("on", "off"), width: float = 4.0) -> tuple[list[Path], list]:
+    """No-God games on identical worlds with the public board on and off, laid out for a narrow figure (default 4 in
+    printed width, 2 columns x 3 rows, axis text >= 9 pt, annotations >= 8 pt): per metric, per-world paired lines
+    (filled = original worlds, hollow = extension), condition means with Student-t 95% CIs, and the paired
+    Δ (off − on) with its t95 and exact sign-flip p. Counts are per agent."""
     from swarm.analysis.grid_stats import t_ci
     from swarm.viz.metrics import design_effect
 
-    fig, axes = plt.subplots(2, 3, figsize=(WIDE, 4.1))
+    fig, axes = plt.subplots(3, 2, figsize=(width, width * 1.5))
     stats = []
-    for ax, (m, title, fmt) in zip(axes.flat, BOARD_METRICS, strict=True):
+    for ax, (m, _title, fmt) in zip(axes.flat, BOARD_METRICS, strict=True):
+        means: list[str] = []
         de = design_effect(ref_runs, var_runs, m)
         pairs, sd = de["pairs"], de["stats"]
-        stats.append((f"board mechanism: {m} ({labels[1]} − {labels[0]}, paired)", sd))
+        stats.append((f"board mechanism: {m} (board {labels[1]} − board {labels[0]}, paired)", sd))
         for i, (a_, b_) in pairs.items():
             first = orig is None or i in orig
-            ax.plot([0, 1], [a_, b_], color=INK2, lw=0.7, alpha=0.45 if first else 0.3, zorder=1)
-            ax.scatter([0, 1], [a_, b_], s=11, zorder=2, color=INK2 if first else "none", edgecolors=INK2, lw=0.7)
+            ax.plot([0, 1], [a_, b_], color=INK2, lw=0.6, alpha=0.4 if first else 0.28, zorder=1)
+            ax.scatter([0, 1], [a_, b_], s=8, zorder=2, color=INK2 if first else "none", edgecolors=INK2, lw=0.6)
         for x, k in ((0, 0), (1, 1)):
             vals = [v[k] for v in pairs.values()]
             mu = statistics.fmean(vals)
             lo, hi = t_ci(vals)
-            ax.plot([x + (0.13 if x else -0.13)] * 2, [lo, hi], color=C["a"] if x == 0 else C["defect"], lw=2.2,
-                    solid_capstyle="round", zorder=3)
-            ax.scatter([x + (0.13 if x else -0.13)], [mu], marker="D", s=30, zorder=4,
-                       color=C["a"] if x == 0 else C["defect"], edgecolors="white", lw=0.7)
-            ax.text(x + (0.2 if x else -0.2), mu, fmt.format(mu), ha="left" if x else "right", va="center",
-                    fontsize=6.5, color=INK)
+            xm = x + (0.16 if x else -0.16)
+            col = C["a"] if x == 0 else C["defect"]
+            ax.plot([xm] * 2, [lo, hi], color=col, lw=2.4, solid_capstyle="round", zorder=3)
+            ax.scatter([xm], [mu], marker="D", s=34, zorder=4, color=col, edgecolors="white", lw=0.7)
+            means.append(fmt.format(mu))
         ax.set_xticks([0, 1])
-        ax.set_xticklabels(list(labels), fontsize=7)
-        ax.set_xlim(-0.55, 1.55)
-        ax.tick_params(labelsize=6.5)
+        ax.set_xticklabels(list(labels), fontsize=9)
+        ax.set_xlim(-0.45, 1.45)
+        ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(3))
+        if m == "win_rate":
+            ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0, decimals=0))
+        ax.tick_params(labelsize=8.5, length=2)
         ax.grid(axis="x", visible=False)
-        ax.set_title(title, loc="left", fontsize=8, pad=12)
+        ax.set_title(BOARD_SHORT[m], loc="left", fontsize=9.5, pad=30)
         if sd:
-            pt = "p<0.001" if sd["p"] < 0.001 else f"p={sd['p']:.3f}"
+            pt = "p<0.001" if sd["p"] < 0.001 else f"p={sd['p']:.2f}"
             if m == "win_rate":           # percentage points
-                dtxt = f"Δ {100 * sd['mean']:+.1f} pp  [{100 * sd['tlo']:+.1f}, {100 * sd['thi']:+.1f}]  {pt}"
+                dtxt = f"Δ {100 * sd['mean']:+.0f} pp [{100 * sd['tlo']:+.0f}, {100 * sd['thi']:+.0f}], {pt}"
             else:
-                dtxt = f"Δ {sd['mean']:+.3f}  [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]  {pt}"
-            ax.text(0.0, 1.01, dtxt.replace("-", "\u2212"),
-                    transform=ax.transAxes, ha="left", va="bottom", fontsize=6.3, color=INK2)
+                d = 2 if abs(sd["mean"]) < 10 else 1
+                dtxt = f"Δ {sd['mean']:+.{d}f} [{sd['tlo']:+.{d}f}, {sd['thi']:+.{d}f}], {pt}"
+            ax.text(0.0, 1.02, f"mean {means[0]} \u2192 {means[1]}\n" + dtxt.replace("-", "\u2212"),
+                    transform=ax.transAxes, ha="left", va="bottom", fontsize=8, color=INK2, linespacing=1.2)
     n = len(design_effect(ref_runs, var_runs, "welfare")["pairs"])
-    hs = [Line2D([], [], color=INK2, marker="o", ms=3.5, lw=0.7, label="one world (paired)" + (
-              f": ● first {len(orig)}, ○ extension" if orig else "")),
-          Line2D([], [], color=C["a"], marker="D", ms=4.5, lw=2, label=f"{labels[0]}: mean, 95% t-CI"),
-          Line2D([], [], color=C["defect"], marker="D", ms=4.5, lw=2, label=f"{labels[1]}: mean, 95% t-CI")]
-    fig.legend(handles=hs, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.03), fontsize=6.8)
-    fig.suptitle(f"Without God: {labels[0]} vs {labels[1]} on the same {n} worlds (Δ = off − on, paired; "
-                 "sign-flip p)", x=0.01, ha="left", fontsize=8.5, y=1.0)
-    fig.tight_layout(rect=(0, 0.04, 1, 0.97), h_pad=1.6, w_pad=1.2)
+    hs = [Line2D([], [], color=INK2, marker="o", ms=3, lw=0.6, label="one world" + (
+              f" (● first {len(orig)}, ○ extension)" if orig else "")),
+          Line2D([], [], color=C["a"], marker="D", ms=4.5, lw=2.2, label="mean, 95% t-CI (on)"),
+          Line2D([], [], color=C["defect"], marker="D", ms=4.5, lw=2.2, label="mean, 95% t-CI (off)")]
+    fig.legend(handles=hs, loc="lower center", ncol=1, frameon=False, bbox_to_anchor=(0.5, -0.005), fontsize=8)
+    fig.suptitle(f"Board on vs off, no God, {n} paired worlds\n(counts are per agent)",
+                 x=0.02, ha="left", fontsize=9, y=0.995)
+    fig.tight_layout(rect=(0, 0.085, 1, 0.965), h_pad=1.0, w_pad=1.6)
     return _save(fig, out_dir, "paperfig5_board_mechanism"), stats
 
 
