@@ -4,7 +4,9 @@ Purpose: exercise runner -> runlog -> analysis -> viz end to end before (or with
 engine, and give tests a synthetic run with God interventions and a paired fork.
 
 It emits schema-valid events (game_start, turn, action_result, message, key_transfer, burn,
-memory_write, god_power, memory_overwrite, win, round_end, game_end) and snapshots. Behaviour:
+memory_write, god_power, memory_overwrite, win, round_end, game_end) and snapshots. Agent actions
+are resolved by game.rules.apply (the real rules); only the agents' policy and God's selectors are
+synth-specific. Behaviour:
 each agent's choices are seeded by a hash of what it perceives (holdings, inbox, own notes), so a
 God intervention perturbs the victim, and the perturbation spreads to whoever interacts with it:
 a genuine (toy) ripple. A and B are byte-identical in agent actions before the first intervention.
@@ -29,7 +31,6 @@ from swarm.schema import (
     AgentMessageView,
     AgentOutcome,
     AgentState,
-    BurnData,
     CotControl,
     DefectAction,
     EventBody,
@@ -39,7 +40,6 @@ from swarm.schema import (
     GiveKey,
     GodPowerData,
     KeyCopy,
-    KeyTransferData,
     KeyView,
     MemoryEntry,
     MemoryOverwriteData,
@@ -233,40 +233,18 @@ class SynthGame:
             self.emit("resolve", a, WinData(agent=a, score=_score(ag, cfg.game.needs_per_agent)), ti)
 
     def apply(self, a: str, act: object, ti: int) -> None:
+        """Resolve one action with THE game rules (game.rules.apply; CODE_REVIEW R7), so synth runs
+        obey exactly the real engine's give / defect / message semantics and event payloads."""
+        from swarm.game import rules
+
         st = self.state
-        ag = st.agents[a]
-        ok, reason = True, None
-        if isinstance(act, SendMessage):
-            self._add_msg(a, a, act.to, act.text, ti)
-        elif isinstance(act, GiveKey):
-            copy = next((k for k in ag.keys if k.info_id == act.info_id), None)
-            if copy is None:
-                ok, reason = False, "no_such_key"
-            else:
-                ag.keys.remove(copy)
-                st.agents[act.to].keys.append(copy)
-                self.gives[a] += 1
-                self.emit("resolve", a, KeyTransferData(copy_id=copy.copy_id, info_id=copy.info_id, from_agent=a,
-                                                        to_agent=act.to, cause="give"), ti)
-        elif isinstance(act, DefectAction):
-            tgt = st.agents[act.target]
-            correct = act.info_id in tgt.needs and act.info_id not in tgt.burned and tgt.won_round is None
-            lost = None
-            if correct:
-                tgt.burned.append(act.info_id)
-                ag.keys.append(KeyCopy(copy_id=f"m{act.info_id}_{ti}", info_id=act.info_id,
-                                       key=1000 + act.info_id, origin="defect_mint"))
-            else:
-                live = [x for x in ag.needs if x not in ag.lost and x not in ag.burned]
-                if live:
-                    lost = live[-1]
-                    ag.lost.append(lost)
-            self.emit("resolve", a, BurnData(actor=a, target=act.target, info_id=act.info_id, correct=correct,
-                                             penalty="none" if correct else "lose_need", lost_info_id=lost,
-                                             gain="mint" if correct else "none"), ti)
-            ok = correct
-            reason = None if correct else "wrong_defect"
-        self.emit("resolve", a, ActionResultData(agent=a, action=act, ok=ok, reason=reason), ti)  # type: ignore[arg-type]
+        st.turn_index = ti
+        _, evs = rules.apply(st, a, act, self.cfg.game)  # type: ignore[arg-type]
+        for body in evs:
+            self.sink.emit(body)
+        first = evs[0].data if evs else None
+        if isinstance(act, GiveKey) and isinstance(first, ActionResultData) and first.ok:
+            self.gives[a] += 1
 
     # ------------------------------------------------------------ loop
     async def run(self) -> Outcome:
