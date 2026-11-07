@@ -34,6 +34,9 @@ first post_board of a turn is applied; every other action of that turn (before o
 and noop excepted) fails with reason "board_post_uses_whole_turn" without using a slot, and the agent
 gets one "system" notice (next observation) saying so.
 send_message still costs one slot. Same in both turn modes (it is decided per agent turn in _resolve).
+game.board.post_skip_rounds = k > 0: an agent whose post_board succeeds in round r is skipped in
+rounds r+1..r+k (delayed_until_round), with a skip notice and a resume notice (both shown at its
+next observation, i.e. when it resumes).
 End of round: round_end event + deep-copied snapshot. The game ends at max_rounds, when every agent
 is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded").
 Imports: config, memory, rng, schema, context.base/tokens, llm.base (BudgetExceeded only), game.*.
@@ -326,6 +329,7 @@ class GameEngine:
         used, grep_left = 0, grep
         post_at = self._whole_turn_post(out.actions)
         blocked: list[Action] = []
+        posted = False
         for i, act in enumerate(out.actions):
             if isinstance(act, GrepLog):                # free: no action slot
                 results.append(self._grep_result(agent, act, grep_left))
@@ -338,10 +342,13 @@ class GameEngine:
             res = self._apply_one(agent, act, used)
             results.append(res)
             used += 1
+            posted = posted or (res[0] and isinstance(act, PostBoard))
             if not res[0] and self.g.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction)):
                 self.emit([rules._notice(st, agent, "system", _conflict_text(act, res[1]))])
         if blocked:
             self.emit([rules._notice(st, agent, "system", _whole_turn_text(blocked))])
+        if posted and self.g.board.post_skip_rounds > 0:
+            self._skip_after_post(agent)
         if self.cfg.reasoning.cot_mode != "none" and out.cot:
             _, ev = self.memory.write(st, agent, "cot", st.round, out.cot)
             self.emit([ev])
@@ -358,6 +365,23 @@ class GameEngine:
             n_hits=len(grep.hits) if grep is not None else None),
             actor=agent, phase="resolve", turn=self.state.turn_index)])
         return ok, None if ok else "grep_unavailable"
+
+    def _skip_after_post(self, agent: AgentId) -> None:
+        """game.board.post_skip_rounds = k: no turns in rounds r+1..r+k (via delayed_until_round, as
+        the wrong-defect delay). Two notices: the skip (now) and the resume (first slot of r+k+1);
+        the agent reads both at its next observation, which is the resume."""
+        st, k = self.state, self.g.board.post_skip_rounds
+        s = st.agents[agent]
+        last = st.round + k
+        s.delayed_until_round = max(s.delayed_until_round, last)
+        resume = turn_index(last + 1, 0, len(st.agents))
+        self.emit([
+            rules._notice(st, agent, "system",
+                          f"You posted on the public board in round {st.round}, so you skip your turns "
+                          f"in rounds {st.round + 1} to {last}. You can still receive keys and messages."),
+            rules._notice(st, agent, "system",
+                          f"Your {k} skipped turns (for your board post in round {st.round}) are over. "
+                          "You can act again.", deliver_from_turn=resume)])
 
     def _whole_turn_post(self, actions: Sequence[Action]) -> int | None:
         """Under game.board.post_costs_turn: index of the turn's first post_board, which takes the

@@ -63,9 +63,13 @@ class BoardCfg(Cfg):
         post_board of a turn is applied and every other (non-grep) action of that turn fails with
         reason "board_post_uses_whole_turn" (the agent also gets a system notice). DMs cost one slot.
     anonymous: agents see board posts without the author (board view, view_log, grep_log and so
-        the context built from them). God, events and analysis still see the true author."""
+        the context built from them). God, events and analysis still see the true author.
+    post_skip_rounds: k > 0 = an agent whose post_board succeeds in round r takes no turns in rounds
+        r+1..r+k (AgentState.delayed_until_round, the wrong-defect delay mechanism; it still receives
+        keys and messages). 0 = off."""
     post_costs_turn: bool = False
     anonymous: bool = False
+    post_skip_rounds: int = Field(0, ge=0)
 
 
 class GameCfg(Cfg):
@@ -313,6 +317,8 @@ class RunConfig(Cfg):
         d = self.model_dump(mode="json", exclude={"sweep"})
         if self.game.board == BoardCfg():
             d["game"].pop("board")
+        elif self.game.board.post_skip_rounds == 0:             # added later; same rule
+            d["game"]["board"].pop("post_skip_rounds")
         return sha256_hex(canonical_json(d))
 
     def model_for(self, role: str) -> tuple[str, str]:

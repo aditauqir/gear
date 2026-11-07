@@ -200,3 +200,66 @@ def test_anonymous_author_never_reaches_llm_prompts(mode):
     assert seen > 0
     sys_text = client.requests[0].messages[0].content
     assert "anonymous" in sys_text and COST_RULE not in sys_text
+
+
+# ------------------------------------------------------------------ post_skip_rounds
+SKIP_RULE = "Posting to the public board costs you your next 3 turns."
+
+
+def _turn_rounds(eng, agent):
+    return [e.round for e in eng.sink.events if e.type == "turn" and e.actor == agent]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_post_skip_rounds_skips_k_rounds_then_resumes(mode):
+    cfg = run_cfg(game={"turn_mode": mode, "max_rounds": 6, "board": {"post_skip_rounds": 3}})
+    dec = Scripted({(1, "ann"): [PostBoard(text="hello"), SendMessage(to="bob", text="dm")],
+                    (2, "bob"): [GiveKey(to="ann", info_id=3), SendMessage(to="ann", text="for you")]})
+    _, eng = play_game(cfg, fresh_game(FOUR), dec)
+    assert _results(eng, 1, "ann") == [("ann", "post_board", True, None),
+                                       ("ann", "send_message", True, None)]   # the post itself is normal
+    assert _turn_rounds(eng, "ann") == [1, 5, 6]
+    assert _turn_rounds(eng, "bob") == [1, 2, 3, 4, 5, 6]
+    assert 3 in {k.info_id for k in eng.state.agents["ann"].keys}            # received while skipped
+    resumed = [o for o in _Seen(dec, "ann").obs if o.round == 5][0]
+    assert [m.text for m in resumed.inbox] == ["for you"]
+    texts = [n.text for n in resumed.notices]
+    assert any("skip your turns in rounds 2 to 4" in t for t in texts)
+    assert any("are over" in t for t in texts)
+    assert any("gave you a key" in t for t in texts)
+    later = [n.text for o in _Seen(dec, "ann").obs if o.round == 6 for n in o.notices]
+    assert not any("skip" in t for t in later)                               # each shown once
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_post_skip_needs_a_successful_post_and_dm_does_not_skip(mode):
+    cfg = run_cfg(game={"turn_mode": mode, "max_rounds": 3,
+                        "board": {"post_skip_rounds": 2, "post_costs_turn": True}})
+    dec = Scripted({(1, "ann"): [SendMessage(to="bob", text="dm"), SendMessage(to="cat", text="dm")],
+                    (1, "bob"): [PostBoard(text="p"), GiveKey(to="ann", info_id=3)]})
+    _, eng = play_game(cfg, fresh_game(FOUR), dec)
+    assert _turn_rounds(eng, "ann") == [1, 2, 3]
+    assert _turn_rounds(eng, "bob") == [1]
+    assert _results(eng, 1, "bob") == [("bob", "post_board", True, None),
+                                       ("bob", "give_key", False, WHOLE)]
+
+
+def test_post_skip_combines_with_anonymous_and_prompt_rules():
+    cfg = run_cfg(game={"max_rounds": 2, "board": {"post_skip_rounds": 3, "anonymous": True}})
+    dec = Scripted({(1, "ann"): [PostBoard(text="anon post")]})
+    _, eng = play_game(cfg, fresh_game(FOUR), dec)
+    assert [(m.sender, m.text) for m in _Seen(dec, "bob").board] == [(ANON_SENDER, "anon post")]
+    assert _turn_rounds(eng, "ann") == [1]
+    text = load_prompt_set("agent/v1").render("system.j2", **system_context(cfg))
+    assert SKIP_RULE in text and "anonymous" in text and COST_RULE not in text
+    off = load_prompt_set("agent/v1").render("system.j2", **system_context(run_cfg()))
+    assert "costs you your next" not in off
+
+
+def test_post_skip_hash_unchanged_at_default():
+    base = RunConfig.model_validate({"game": {"board": {"post_costs_turn": True}}})
+    d = base.model_dump(mode="json", exclude={"sweep"})
+    d["game"]["board"].pop("post_skip_rounds")
+    assert base.config_hash() == sha256_hex(canonical_json(d))
+    on = RunConfig.model_validate({"game": {"board": {"post_skip_rounds": 3}}})
+    assert on.config_hash() != RunConfig().config_hash()

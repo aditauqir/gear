@@ -42,6 +42,7 @@ game:
   board:
     post_costs_turn: false
     anonymous: false
+    post_skip_rounds: 0
 reasoning:
   cot_mode: explicit
   cot_replay_window: 0

@@ -77,7 +77,8 @@ def system_context(cfg: RunConfig) -> dict[str, Any]:
     return {
         "game": {"n_agents": g.n_agents, "max_rounds": g.max_rounds, "actions_per_turn": g.actions_per_turn,
                  "grep_enabled": g.view_log.grep_enabled, "max_message_chars": g.max_message_chars,
-                 "board_costs_turn": g.board.post_costs_turn, "board_anonymous": g.board.anonymous},
+                 "board_costs_turn": g.board.post_costs_turn, "board_anonymous": g.board.anonymous,
+                 "board_skip_rounds": g.board.post_skip_rounds},
         "cot_mode": cfg.reasoning.cot_mode,
         "scratchpad": cfg.reasoning.scratchpad.enabled,
     }
