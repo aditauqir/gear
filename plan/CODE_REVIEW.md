@@ -195,3 +195,21 @@ All results below come from the run logs. The checks cover every run in the fina
 All of these equal SWEEP_RESULTS.md.
 
 **Leak oracle.** It scanned 28,959 sweep agent requests (= agent calls in all 147 done games) with 0 hits.
+
+# Board follow-ups (700d23a, 1e2adf3): validity check
+
+- **Invariant checker:** 0 violations on `c16_sweep_board_off` (16 noGod games) and on `sweep_board_delay2` (6 worlds of god, nogod and noisefork). Both board knobs are exercised:
+  - board off: no board message exists, and no post_board was even attempted (the board is not offered in the prompt);
+  - delay 2: 48-68 posts per game, all with delay-adjusted visibility.
+- **End reasons and health:** all 34 games are done (max_rounds or all_done). There is no budget_exceeded and no error, and none is unhealthy.
+- **Same worlds:** for all 16 c16 worlds the starting keys, needs and names equal G1's noGod games of the same index, with the same world_seed. The game_ids differ, as expected, because the game config differs, so the agent seeds are not common random numbers. Worlds 0-5 are byte-identical to the original `sweep_board_off` controls (cache replay).
+- **Recomputed:**
+  - board off − G1 noGod welfare: −0.173, t95 [−0.257, −0.089], p=0.0003, n=16;
+  - DMs per agent: 25.5 vs 14.0 (1.82×);
+  - gives per agent: 4.94 vs 6.71 (−26%);
+  - wrong defects per agent: +0.631 (3.0×);
+  - win rate: 83.1% → 52.5%;
+  - delayed board God − B″: +0.122, t95 [−0.024, +0.268], sign-flip p=0.031.
+
+  All match `plan/figs/board_*_effect.txt` and SWEEP_RESULTS.
+- **Caveat on the delayed board:** with n=6, the smallest possible sign-flip p is 2/64 = 0.031, which is what "all 6 worlds > 0" gives. The t95 includes 0, and the test is uncorrected among about 10. Report it as suggestive, not significant.
