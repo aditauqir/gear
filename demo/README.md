@@ -116,30 +116,34 @@ $PY -m swarm.viz.paper_figs plan/figs --cell "G1 sim K=2=runs/grid_oss_sim_k2" \
   --cell "G3 sim K=6=runs/grid_oss_sim_k6" --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2"   # [--baseline "B″=noise2"]
 ```
 
-The paper figures in `plan/figs/` are vector PDFs plus 200-dpi PNGs, 7.0 in wide. They are numbered
-as in `paper/draft.md` §5, and every plotted number is in `plan/figs/NUMBERS.txt`. The numbers match
+The paper figures in `plan/figs/` are vector PDFs plus 200-dpi PNGs, 7.0 in wide. They are named
+after the paper's figure numbers (`paperfigN_*`, see `paper/outline.md`), and every plotted number is in `plan/figs/NUMBERS.txt`. The numbers match
 `plan/GRID_RESULTS.md` and `plan/SWEEP_RESULTS.md`.
 
-- `fig2_network`: the median-|Δwelfare| world of G1 (rule-picked: g02) at God's first move and at round 20.
-- `fig3_divergence`: share of agents acting differently from no-God, aligned on the fork round F.
+- `paperfig1_schematic` (paper Fig 1): the game, God's two powers, and the paired fork (shared prefix, then
+  God, no God and B″ at F; B′ for G1).
+- `paperfig2_network` (paper Fig 2): the median-|Δwelfare| world of G1 (rule-picked: g02) at God's first move and at round 20.
+- `paperfig3_divergence` (paper Fig 3): share of agents acting differently from no-God, aligned on the fork round F.
   - Panels: God at r3 (G1), r8, r14, and board off.
   - Each panel shows God against the fork-matched noise B″, and B′ for G1.
-- `fig4_welfare`:
+- `paperfig4a_grid_effects` (paper Fig 4a):
   - Left: H1 on G1, with A − B, B′ − B, B″ − B, and the primary A − B″.
   - Right: G3, G2, and the paired H3 and H2.
   - Every interval is a Student-t 95% CI with a sign-flip p.
-- `fig5_sweep`: God − B″ per sweep condition.
+- `paperfig4b_sweep_effects` (paper Fig 4b): God − B″ per sweep condition.
   - Conditions: start r1, r3, r8, r14; K = 1, 2, 4; board off.
   - A Board group adds a row for a board delayed by 2 rounds.
   - A small panel shows the design effect of turning the board off without God:
     −0.173 [−0.257, −0.089], p < 0.001, n = 16 paired worlds. The original 6 worlds are filled and
     the 10 extension worlds hollow.
-- `fig6_board_mechanism` (the paper outline's "board mechanism" figure): without God, board on (G1)
+- `paperfig5_board_mechanism` (paper Fig 5): without God, board on (G1)
   against board off on the same 16 worlds.
   - Small multiples: welfare, win rate, keys given, DMs, wrong defects and correct defects (per agent).
   - Each panel shows paired per-world lines, the mean of each condition with its 95% t-CI, and the
     Δ with its sign-flip p.
   - The numbers match `plan/figs/board_effect.txt`.
+- `paperfig6_timeline` (optional paper Fig 6): the per-agent timeline of the God branch of the same rule-picked
+  world as Fig 2 (g02), with God bands and victim rings.
 
 Rebuild the paper figures:
 

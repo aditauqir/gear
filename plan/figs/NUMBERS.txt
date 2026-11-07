@@ -1,3 +1,5 @@
+# numbers drawn in plan/figs/paperfig*.{pdf,png} (python -m swarm.viz.paper_figs; command in demo/README.md)
+# paperfig4a = H1/H1'/H2/H3 rows; paperfig4b = 'God's first round/budget/Board' rows + design; paperfig5 = 'board mechanism' rows
   A − B (God − no God): +0.013 t95 [-0.048, +0.073] boot [-0.042, +0.065] p=0.7215 n=16
   B′ re-run − B: +0.046 t95 [-0.055, +0.146] boot [-0.044, +0.137] p=0.3777 n=16
   B″ matched − B: +0.054 t95 [-0.050, +0.158] boot [-0.013, +0.146] p=0.3438 n=8
@@ -22,4 +24,4 @@
   board mechanism: dms (board off − board on, paired): +11.456 t95 [+9.317, +13.595] boot [+9.575, +13.400] p=0.0000 n=16
   board mechanism: defects_wrong (board off − board on, paired): +0.631 t95 [+0.426, +0.837] boot [+0.456, +0.819] p=0.0001 n=16
   board mechanism: defects_correct (board off − board on, paired): -0.025 t95 [-0.155, +0.105] boot [-0.137, +0.094] p=0.7705 n=16
-  fig2 world: g02 (|Δwelfare| 0.067, median 0.067, n=16)
+  fig2/fig6 world: g02 (|Δwelfare| 0.067, median 0.067, n=16)
