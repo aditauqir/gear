@@ -39,7 +39,10 @@ REPO = Path(__file__).resolve().parent.parent
 CONF_DIR = REPO / "configs" / "sweep"
 KEY_FILE = Path("/home/iraj/projects/swarm_data?/.planAdemoenv")
 PY = [sys.executable]
-LEDGER_STOP = 7.80
+LEDGER_STOP = 7.80                 # hard: the ledger must never reach this
+# Sweep-total guard: the ledger was $5.0575 when the main grid ended (before any sweep spend), and the
+# whole sweep may spend $2.30, so new drivers stop at 5.0575 + 2.30 (other agents' spend counts too).
+SWEEP_LEDGER_STOP = 7.35
 
 FRAUD = {"power": "message_fraud", "after_turns": 0,
          "args": {"sender": "recent_partner", "receiver": "closest_to_winning"}}
@@ -359,7 +362,7 @@ def _board_checks(name: str, cfg: Any, ev: list[dict], i: int) -> list[str]:
 def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only: list[str] | None,
            conc: int, price: float, dry_run: bool) -> int:
     write_configs(names)
-    cells, total = [], 0.0
+    cells, caps, total = [], [], 0.0
     for name in names:
         c = CONDS[name]
         s = seeds or c.seeds
@@ -370,16 +373,19 @@ def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only:
         ctl = int("nogod" in branches and not c.god_only)
         opts = [f"n={c.n}", f"g={49 * c.n}", "pcap=16500", f"rounds={c.rounds}", f"seeds={s}",
                 f"shared={c.fork_round - 1}", f"paid={paid}", f"ctl={ctl}"]
-        cells.append(f"sweep/{name}:{c.cap:.2f}:{len(branches)}:{','.join(opts)}")
-        print(f"{name:13s} seeds {s} projected ${pr['total']:.3f} (cap ${c.cap:.2f}) calls ~{pr['calls']:.0f}")
-    print(f"total projected ${total:.3f}; caps ${sum(CONDS[n].cap for n in names):.2f}")
+        cap = c.cap if not only else round(1.25 * pr["total"] + 0.005, 2)
+        caps.append(cap)
+        cells.append(f"sweep/{name}:{cap:.2f}:{len(branches)}:{','.join(opts)}")
+        print(f"{name:13s} seeds {s} projected ${pr['total']:.3f} (cap ${cap:.2f}) calls ~{pr['calls']:.0f}")
+    print(f"total projected ${total:.3f}; hard caps ${sum(caps):.2f}")
     sets = [f"llm.openrouter.max_concurrency={conc}"]
     if seeds:
         sets.append(f"run.n_games={seeds}")
     if only:
         sets += [f"runner.fork.only_branches={json.dumps(only)}", "runner.report=false"]
     cmd = PY + [str(REPO / "infra" / "grid_driver.py"), "--seeds", str(seeds or 8), "--rounds", "20",
-                "--ledger-stop", str(LEDGER_STOP), "--log", "runs/sweep_driver.log", "--run-prefix", run_prefix]
+                "--ledger-stop", str(min(LEDGER_STOP, SWEEP_LEDGER_STOP)), "--log", "runs/sweep_driver.log", "--run-prefix", run_prefix,
+                "--cap-override"]
     for cell in cells:
         cmd += ["--cell", cell]
     for s_ in sets:

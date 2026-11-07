@@ -293,6 +293,8 @@ def main() -> int:
     ap.add_argument("--set", dest="sets", action="append", default=[], help="override passed to every cell")
     ap.add_argument("--run-prefix", default="", help="run id prefix (dry runs)")
     ap.add_argument("--attach", action="store_true", help="watch running cells instead of launching")
+    ap.add_argument("--cap-override", action="store_true",
+                    help="pass llm.budget_usd=<the cell spec's cap> to each cell (per-cell hard caps)")
     ap.add_argument("--log", type=Path, default=None, help="log file (default runs/grid_driver.log)")
     args = ap.parse_args()
     global LOG
@@ -317,7 +319,7 @@ def main() -> int:
             log(f"NOT starting {name}: {r}")
             return 3
         cmd = [sys.executable, "-m", "swarm.run", "--config", f"configs/{name}.yaml", "--run-id", cell.name,
-               *args.sets]
+               *args.sets, *([f"llm.budget_usd={cell.cap}"] if args.cap_override else [])]
         out = open(RUNS / f"{cell.name}.log", "a")
         cell.t0 = time.time()
         proc = subprocess.Popen(cmd, cwd=REPO, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
