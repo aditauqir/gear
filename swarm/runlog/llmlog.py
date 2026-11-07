@@ -9,15 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from swarm.rng import canonical_json, sha256_hex
+from swarm.llm.cache import cache_key  # the one cache-key recipe (re-exported for old importers)
 from swarm.schema import ChatRequest, ChatResponse, LLMCall
 
+__all__ = ["LoggingClient", "OnCall", "cache_key"]
+
 OnCall = Callable[[LLMCall], None]
-
-
-def cache_key(backend: str, model: str, req: ChatRequest) -> str:
-    """Same recipe as the doc (§5): model, backend and the full sampling dict (incl. messages, seed)."""
-    return sha256_hex(canonical_json({"backend": backend, "model": model, **req.sampling()}))
 
 
 class LoggingClient:

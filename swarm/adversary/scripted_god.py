@@ -47,7 +47,9 @@ class _SafeMap(dict[str, Any]):
 
 
 # ------------------------------------------------------------------ selectors (pure)
-def open_needs(state: GameState, agent: AgentId) -> list[int]:
+def missing_needs(state: GameState, agent: AgentId) -> list[int]:
+    """Open needs the agent does not hold a key for yet. (Not rules.open_needs, which keeps held
+    needs; this was also called open_needs here, which hid the difference.)"""
     a = state.agents[agent]
     held = {k.info_id for k in a.keys}
     return [n for n in a.needs if n not in a.burned and n not in a.lost and n not in held]
@@ -80,7 +82,7 @@ def recent_partner(state: GameState, victim: AgentId, view: GodView | None = Non
             return rec.target
         if rec.target == victim and rec.actor not in (victim, "GOD"):
             return rec.actor
-    for need in open_needs(state, victim):
+    for need in missing_needs(state, victim):
         for other in sorted(state.agents):
             if other != victim and any(k.info_id == need for k in state.agents[other].keys):
                 return other
@@ -133,7 +135,7 @@ class ScriptedGod:
                              salt=(*salt, "receiver"))
             sender = _pick(state, args.get("sender"), "recent_partner", seed=self.seed,
                            salt=(*salt, "sender"), exclude={receiver}, victim=receiver, view=view)
-            needs = open_needs(state, receiver)
+            needs = missing_needs(state, receiver)
             fields.update(sender=sender, receiver=receiver, agent=receiver, suspect=sender,
                           need=needs[0] if needs else "")
             text = str(args.get("text", FRAUD_TEXT)).format_map(_SafeMap(fields))
@@ -143,7 +145,7 @@ class ScriptedGod:
             r = args.get("round", "prev")
             rnd = state.round if r == "current" else max(1, state.round - 1) if r == "prev" else int(r)
             suspect = recent_partner(state, agent, view)
-            needs = open_needs(state, agent)
+            needs = missing_needs(state, agent)
             fields.update(agent=agent, receiver=agent, sender=suspect, suspect=suspect,
                           need=needs[0] if needs else "")
             text = str(args.get("text", COT_TEXT)).format_map(_SafeMap(fields))

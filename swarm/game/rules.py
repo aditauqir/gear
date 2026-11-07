@@ -114,9 +114,10 @@ def deliver_message(state: GameState, *, channel: str, sender_shown: AgentId, te
                     receiver: AgentId | None = None, true_sender: str | None = None,
                     forged: bool = False, intervention_id: str | None = None,
                     phase: Phase = "resolve") -> tuple[Message, Events]:
-    """The ONE way a DM/board post enters the game, for agents AND God's message fraud.
-    Real and forged messages get the same msg_id scheme and stamp (state.round, state.turn_index),
-    and the same ActionRecord (actor = SHOWN sender), so nothing agent-visible differs."""
+    """The way an AGENT's DM/board post enters the game (also usable for forged messages).
+    NOTE: adversary.powers.apply_message_fraud builds its Message itself with the same msg_id scheme
+    and stamp (state.round, state.turn_index) but appends NO ActionRecord. That is invisible to
+    agents (view_log renders messages from state.messages) but state.history differs for forgeries."""
     msg = Message(msg_id=make_msg_id(state.game_id, len(state.messages)), round=state.round,
                   turn_index=state.turn_index, channel=channel, sender_shown=sender_shown,
                   true_sender=true_sender or sender_shown, receiver=receiver, text=text,
