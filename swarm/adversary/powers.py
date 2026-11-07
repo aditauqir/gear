@@ -8,7 +8,8 @@ EventBodies to emit. Those events carry the ground truth:
   - `memory_overwrite` (old_text = the original, new_text, intervention_id) for CoT control,
   - `god_power` (the action incl. its target, cost, budget_left, ok/reason) for both.
 A failed power (disabled, bad target, a cot_control mode other than the configured one, over
-budget, ...) spends nothing, creates no intervention id,
+budget, a fraud naming an agent that has left the game under game.winner_policy=sit_out
+(`winners_leave=True`: "sender_left" / "receiver_left"), ...) spends nothing, creates no intervention id,
 and emits one `god_power` event with ok=False.
 
 Indistinguishability (REVIEW_v2 leak 1): a forged DM is built exactly the way a real DM sent in the
@@ -83,11 +84,14 @@ def _new_intervention(state: GameState, cost: int) -> str:
 
 # ------------------------------------------------------------------ Message Fraud
 def apply_message_fraud(state: GameState, action: MessageFraud, cfg: GodCfg, *,
-                        max_message_chars: int = 500) -> PowerResult:
+                        max_message_chars: int = 500, winners_leave: bool = False) -> PowerResult:
     """Deliver a DM to `action.receiver` that appears to come from `action.sender`.
 
     Pass `max_message_chars = cfg.game.max_message_chars` so the forged text is truncated exactly
-    like a real DM (otherwise its length could give it away)."""
+    like a real DM (otherwise its length could give it away). Pass `winners_leave =
+    (cfg.game.winner_policy == "sit_out")`: then a sender or receiver that has won has left the game,
+    and the fraud fails ("sender_left" / "receiver_left", nothing spent): a DM from an agent everyone
+    was told has left would be impossible, and a departed receiver never reads it."""
     pcfg = cfg.powers.message_fraud
     if not pcfg.enabled:
         return _fail(state, action, "message_fraud", "power_disabled")
@@ -97,6 +101,10 @@ def apply_message_fraud(state: GameState, action: MessageFraud, cfg: GodCfg, *,
         return _fail(state, action, "message_fraud", "unknown_sender")
     if action.sender == action.receiver:
         return _fail(state, action, "message_fraud", "self_message")
+    if winners_leave and state.agents[action.sender].won_round is not None:
+        return _fail(state, action, "message_fraud", "sender_left")
+    if winners_leave and state.agents[action.receiver].won_round is not None:
+        return _fail(state, action, "message_fraud", "receiver_left")
     if not action.text.strip():
         return _fail(state, action, "message_fraud", "empty_text")
     if state.god_budget_left < pcfg.cost:
@@ -151,9 +159,10 @@ def apply_cot_control(state: GameState, action: CotControl, cfg: GodCfg, memory:
 
 # ------------------------------------------------------------------ dispatch
 def apply_power(state: GameState, action: GodAction, cfg: GodCfg, memory: MemoryStore, *,
-                max_message_chars: int = 500) -> PowerResult:
+                max_message_chars: int = 500, winners_leave: bool = False) -> PowerResult:
     if isinstance(action, MessageFraud):
-        return apply_message_fraud(state, action, cfg, max_message_chars=max_message_chars)
+        return apply_message_fraud(state, action, cfg, max_message_chars=max_message_chars,
+                                   winners_leave=winners_leave)
     if isinstance(action, CotControl):
         return apply_cot_control(state, action, cfg, memory)
     raise TypeError(f"not a God power: {action.kind}")

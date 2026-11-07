@@ -145,7 +145,7 @@ class GameChecker(PromptChecks):
             elif typ == "message":
                 m = d["message"]
                 msgs.append(m)
-                if not m.get("forged") and (m["sender_shown"] in self.left or m.get("receiver") in self.left):
+                if m["sender_shown"] in self.left or m.get("receiver") in self.left:   # forged ones too
                     self.bad("left", f"r{r} message {m['msg_id']} {m['sender_shown']}->{m.get('receiver')} "
                                      "involves an agent that left")
                 if m["channel"] == "board" and not getattr(self.g.board, "enabled", True):

@@ -187,7 +187,8 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
     god = make_god(cfg.god, seed=spec.world_seed, client=clients.get("god"))
     # GodRunner owns the stamp convention (decide at slot S, deliver stamped S - 1); the engine calls
     # runner.init_game in start(). (_SlotGod + make_god_hook did the same and stay importable.)
-    runner = (GodRunner(god, cfg.god, memory, max_message_chars=cfg.game.max_message_chars)
+    runner = (GodRunner(god, cfg.god, memory, max_message_chars=cfg.game.max_message_chars,
+                        winners_leave=cfg.game.winner_policy == "sit_out")
               if god is not None else None)
     # The engine is the one ledger builder (R5); on_snapshot writes the round-0 snapshot
     # (engine.start) and every end-of-round deep copy.

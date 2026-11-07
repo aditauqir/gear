@@ -1,6 +1,7 @@
 """God interface and the per-game runner (WP4).
 
-    runner = GodRunner(god, cfg.god, memory, max_message_chars=cfg.game.max_message_chars)
+    runner = GodRunner(god, cfg.god, memory, max_message_chars=cfg.game.max_message_chars,
+                       winners_leave=cfg.game.winner_policy == "sit_out")
     runner.init_game(state)                      # once, after generate_world (sets the budget)
     ... before each agent slot (sequential) or at round start (simultaneous):
     if runner.should_wake(state):
@@ -57,9 +58,11 @@ class WakeResult:
 class GodRunner:
     """Owns budget refresh, the tool ceiling and power application for one game."""
 
-    def __init__(self, god: God, cfg: GodCfg, memory: MemoryStore, *, max_message_chars: int = 500) -> None:
+    def __init__(self, god: God, cfg: GodCfg, memory: MemoryStore, *, max_message_chars: int = 500,
+                 winners_leave: bool = False) -> None:
         self.god, self.cfg, self.memory = god, cfg, memory
         self.max_message_chars = max_message_chars
+        self.winners_leave = winners_leave      # game.winner_policy == "sit_out": no fraud via departed agents
         self._budget_round: int | None = None
 
     def init_game(self, state: GameState) -> None:
@@ -89,7 +92,8 @@ class GodRunner:
             for a in actions:
                 if not is_power(a):
                     continue
-                res = apply_power(state, a, self.cfg, self.memory, max_message_chars=self.max_message_chars)
+                res = apply_power(state, a, self.cfg, self.memory, max_message_chars=self.max_message_chars,
+                                  winners_leave=self.winners_leave)
                 out.results.append(res)
                 out.events.extend(res.events)
             out.ceiling_hit = view.exhausted
