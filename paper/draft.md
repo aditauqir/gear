@@ -3,12 +3,13 @@
 *[AUTHORS AND AFFILIATIONS: Lance, Noor, Stefany, Iraj; affiliations to fill]*
 
 > Drafting rules for this file:
-> - `[RESULT: ...]` marks a number that must come from a grid run (`runs/grid_oss_*`) via
->   `swarm.analysis.grid_stats` / `call_metrics`.
+> - Every grid number is taken from `plan/GRID_RESULTS.md` (commit fdcb58f, produced by
+>   `swarm/analysis/grid_results.py` and `swarm.analysis.invariants`). Section refs "GR §n" point there.
+> - `[RESULT: ...]` marks a number still pending (the follow-up B″ sweep).
 > - `[FIG n]` refers to `paper/outline.md`.
 > - `[CHECK: ...]` marks a fact to confirm before submission.
 > - Planning values (caps, projections, the planning SD) come from `plan/GRID_PLAN.md` and are labelled as planned.
-> - No other numbers about outcomes appear in this file.
+> - No other outcome numbers appear in this file.
 
 ## Abstract (draft, 150-250 words; finalize after results)
 
@@ -17,16 +18,17 @@ memory could affect many agents. We present *Keys & God*, a text-only economy in
 agents trade rivalrous keys to satisfy private needs, can sabotage one another, and are watched by a
 budgeted adversary ("God") that they are never told about. God can forge a direct message from a
 trading partner (*message fraud*) or overwrite one round of an agent's private notes (*CoT control*).
-We measure God's effect with paired forks. Each world is played with and without God from identical
-seeds, through a deduplicating response cache, so the branches are identical until God acts. God-free
-noise branches, resampled from the same fork point, calibrate what any perturbation does. On 16 shared
-worlds of 10 gpt-oss-120b agents over 20 rounds, a two-intervention God changes mean welfare by
-[RESULT: G1 Δwelfare, t-based 95% CI, sign-flip p], which is indistinguishable from zero at this
-sample size. Tripling the budget [RESULT: H3] and switching to sequential turns [RESULT: H2] give no
-detectable change either. Action-level divergence is not informative here: a God-free resample
-diverges from its twin in almost every agent within [RESULT: rounds] rounds. The swarm is chaotic, so a
-"ripple" curve without a fork-matched noise baseline would wrongly credit God with spread. We release
-the environment, an event-replay invariant checker, a prompt leak oracle, configurations and logs.
+We measure God's effect with paired forks: each world is played with and without God from identical
+seeds, through a deduplicating response cache, so the branches are identical until God acts. On 16
+shared worlds of 10 gpt-oss-120b agents over 20 rounds, a two-intervention God changed mean welfare
+by +0.013 (t-based 95% CI −0.048 to +0.073, sign-flip p = 0.72). That is less than an independent
+God-free replica differed (+0.046). Tripling the budget and switching to sequential turns gave no
+detectable change either, and welfare effects above about 0.09 are unlikely. Behaviour, by contrast,
+is chaotic. After God's first act, 89% of agents' per-round actions differ between the paired
+branches, close to the 97% seen for the God-free replica. A divergence ("ripple") curve read without
+a noise baseline would therefore credit God with spreading through the whole swarm. The grid cost
+$1.99. We release the environment, an event-replay invariant checker (0 violations), a prompt leak
+oracle, configurations and logs.
 
 *(Recount after filling; must be 150-250 words.)*
 
@@ -36,25 +38,25 @@ the environment, an event-replay invariant checker, a prompt leak oracle, config
 
 Language-model agents increasingly negotiate with each other, pass work along pipelines, and share memory stores and message buses. The security question is then not only whether one model can be jailbroken, but what happens to the *rest* of the system when one message or memory entry is corrupted. Hammond et al. [1] list network effects and multi-agent security as multi-agent risk factors, and injected content is known to spread between agents [8, 9, 10]. These studies mostly measure *infection* of a malicious instruction in a cooperative pipeline.
 
-We study a different and, we argue, more realistic failure: **strategic ripple in a mixed-motive economy**. Here the adversary does not install a self-replicating instruction. It plants one plausible lie, and the swarm's own incentives carry the consequences forward. A forged "send me your key first" message can make an agent give away a key. The impersonated partner receives an unexpected gift, the victim's later offers change, and others see the changed actions in the public log. Whether such a perturbation dies out or compounds is a question about the swarm, and a hard one to measure: stochastic agents diverge even without an adversary, so a naive with/without comparison confounds the intervention with sampling variance.
+We study a different and, we argue, more realistic failure: **strategic ripple in a mixed-motive economy**. The adversary plants one plausible lie, and the swarm's own incentives carry it forward. A forged "send me your key first" message can make an agent give away a key. The impersonated partner receives an unexpected gift, the victim's later offers change, and others see the changed actions in the public log. Whether such a perturbation dies out or compounds is a question about the swarm, and a hard one to measure: stochastic agents diverge even without an adversary, so a naive with/without comparison confounds the intervention with sampling variance.
 
 We contribute:
 
-1. **An environment, *Keys & God*** (Section 3). LLM agents hold rivalrous keys, need keys they do not hold, and can message, post publicly, give keys, search the action log, and *defect*: burn another agent's need at a risk to themselves. A budgeted adversary, God, observes everything. It can forge a direct message (DM) from a real partner (*message fraud*: an attacker on the channel) or overwrite one round of an agent's private notes (*CoT control*: an attacker with memory write access). Agents are never told God exists, and a leak oracle checks every prompt for ground-truth labels.
-2. **A paired-fork measurement design** (Section 3.4). Each world is played in a God branch and a no-God branch. The two branches share sampling seeds and use a response cache that deduplicates identical requests, so they are identical by construction until God first acts. God-free noise branches with fresh seeds, including ones forked at the same round as God, measure what an arbitrary perturbation does. God's effect then becomes a per-world paired difference, tested with t-based CIs and a sign-flip permutation test against a stated minimum detectable effect, and read against a noise baseline.
-3. **A pre-registered grid** on 16 shared worlds with 10 gpt-oss-120b agents (Section 4), testing the God effect (H1), dose (H3) and turn mode (H2). Health checks and abort rules were fixed before launch, and an independent event-replay checker validates every game.
+1. **An environment, *Keys & God*** (Section 3), where LLM agents trade rivalrous keys and can *defect* (burn another's need at a risk to themselves). An unseen, budgeted God can forge a direct message (DM) from a real partner (*message fraud*) or overwrite one round of an agent's notes (*CoT control*).
+2. **A paired-fork measurement design** (Section 3.4). God and no-God branches of each world share seeds and a deduplicating response cache, so they are identical until God acts. God-free noise branches calibrate what an arbitrary perturbation does, and God's effect is a per-world paired difference with t-based CIs, permutation tests and a stated MDE.
+3. **A pre-registered grid** on 16 shared worlds with 10 gpt-oss-120b agents (Section 4), with fixed abort rules and an independent event-replay checker.
 
-We find God's welfare effect indistinguishable from zero at this n [RESULT: G1 Δwelfare, t95 CI], with no detectable dose or turn-mode effect [RESULT: H3, H2]. Yet behaviour is chaotic: any perturbation, even a God-free resample, reaches nearly every agent within a few rounds via the public log. Trajectories diverge while outcomes, at this resolution, do not. Hence our methodological point: without a fork-matched noise baseline, the divergence curve would have been read as God's ripple. Appendix A covers limitations and dual-use considerations.
+We find God's welfare effect indistinguishable from zero: +0.013 (t95 [−0.048, +0.073], p = 0.72, n = 16), smaller than the +0.046 of a God-free replica. Dose and turn mode have no detectable effect either. Yet behaviour is chaotic: after God's first act, 89% of agents' per-round actions differ between branches, against 97% for the God-free replica. Trajectories diverge while outcomes, at this resolution, do not; without a noise baseline the divergence curve would have been read as God's ripple.
 
 ## 2 Related Work
 
-**LLM agents in games and social simulations.** Generative Agents [2] gave LLM agents memory, reflection and planning in a 25-agent sandbox. Concordia [3] resolves agents' actions through a Game Master; our rules engine plays that role, with God kept separate so interventions have clean labels. Akata et al. [4] found LLMs play well in self-interested repeated games but poorly in coordination games. In GovSim's [5] common-pool dilemma the best model sustains the resource in fewer than 54% of runs. Among Us [6] studies deception that arises from agents' own objectives. Unlike these works, we add an *external*, budgeted adversary and measure its effect counterfactually.
+**LLM agents in games and social simulations.** Generative Agents [2] and Concordia [3] build LLM social simulations; Concordia's Game Master resembles our rules engine, from which God is kept separate for clean labels. Akata et al. [4] found LLMs play well in self-interested repeated games but poorly in coordination games. In GovSim's [5] common-pool dilemma the best model sustains the resource in fewer than 54% of runs. Among Us [6] studies deception that arises from agents' own objectives. Unlike these works, we add an *external*, budgeted adversary and measure its effect counterfactually.
 
 **Multi-agent risk.** Dafoe et al. [7] set out cooperative AI as an agenda. Hammond et al. [1] give three failure modes and seven risk factors, including network effects and multi-agent security. Carichon et al. [21] call for dedicated multi-agent alignment testbeds and metrics; we provide one for the spread of a localized compromise.
 
-**Spread of compromise between agents.** Greshake et al. [11] showed that indirect prompt injection blurs the line between data and instructions in LLM-integrated applications, including self-propagating "worming". Prompt Infection [8] showed LLM-to-LLM injection spreading through multi-agent systems like a virus, with LLM Tagging as a partial defence. Agent Smith [9] showed one adversarial image in one agent's memory jailbreaking up to a million simulated agents. The Multi-Agent Security Tax [10] finds that memory "vaccination" and safety instructions reduce spread from one compromised agent but weaken collaboration. AgentPoison [12] poisons an agent's long-term memory or knowledge base with triggered backdoors; our CoT control is a minimal, untriggered form of that threat model. Jones et al. [13] show that combinations of individually safe models can be misused, another reason to evaluate systems rather than single models. We differ in three ways: the injected content is an ordinary in-game lie, not a self-replicating instruction; the outcome is the welfare of a mixed-motive population, not an infection count; and the effect is estimated against a paired counterfactual and fork-matched noise.
+**Spread of compromise between agents.** Greshake et al. [11] showed that indirect prompt injection blurs the line between data and instructions in LLM-integrated applications, including self-propagating "worming". Prompt Infection [8] showed LLM-to-LLM injection spreading through multi-agent systems like a virus, with LLM Tagging as a partial defence. Agent Smith [9] showed one adversarial image in one agent's memory jailbreaking up to a million simulated agents. The Multi-Agent Security Tax [10] finds that memory "vaccination" and safety instructions reduce spread from one compromised agent but weaken collaboration. AgentPoison [12] poisons agent memory with triggered backdoors; our CoT control is a minimal, untriggered form of that threat. Jones et al. [13] show that combinations of safe models can be misused, so systems, not single models, need evaluation. We differ in three ways: the injected content is an ordinary in-game lie, not a self-replicating instruction; the outcome is the welfare of a mixed-motive population, not an infection count; and the effect is estimated against a paired counterfactual and fork-matched noise.
 
-**Oversight, collusion and failure attribution.** AI Control [14] evaluates safety protocols that must hold even when an untrusted model deliberately subverts them. Secret Collusion [15] formalizes steganographic collusion among agents and finds limited current capability. HELIOS [16] detects collusion with per-agent activation probes. MAST [17] gives a 14-mode taxonomy of multi-agent failures, and Who&When [18] frames automated failure attribution (which agent, which step). God's logged interventions and fork counterfactuals give exact labels for such attribution and monitoring work, which we leave to future work.
+**Oversight, collusion and failure attribution.** AI Control [14] evaluates safety protocols that must hold even when an untrusted model deliberately subverts them. Secret Collusion [15] formalizes steganographic collusion among agents and finds limited current capability. HELIOS [16] detects collusion with per-agent activation probes. MAST [17] gives a 14-mode taxonomy of multi-agent failures, and Who&When [18] frames automated failure attribution (which agent, which step). God's logged interventions give exact labels for such work.
 
 **Evaluation pitfalls.** LLM behaviour can be highly sensitive to meaning-preserving prompt changes [19], so game evaluations are exposed to framing effects (Appendix A). Our paired design holds the prompt fixed across branches, so framing alone cannot create a God-vs-no-God difference.
 
@@ -83,13 +85,13 @@ It may also write a free private **note** (its scratchpad), which is shown back 
 - notices;
 - its own past notes.
 
-These are rendered under a fixed token budget by a truncating context policy. Observations are built field by field from whitelisted view models. A forged DM uses the same id scheme and ordering as a real one, so nothing marks it as forged.
+History is truncated to a fixed token budget. Observations are built from whitelisted view models, and a forged DM uses the same id scheme and ordering as a real one.
 
 **Deviations from the project brief.** The brief made viewing the log and the board explicit tools and suggested at least 20 agents and more than 100 rounds. We fold the log and board into every observation and, for cost, use N=10 and 20 rounds. Three board options (posting costs the whole turn, anonymous posts, skipping k turns after a post) are implemented but are off in the grid.
 
 ### 3.2 God
 
-God observes everything through free, unlimited tools (`activity_check` over recent actions, `message_check` over DMs). It can spend a budget of K powers per game:
+God observes everything through free tools (`activity_check`, `message_check`) and spends a budget of K powers per game:
 - **Message fraud** `(sender, receiver, text)` delivers a DM to the receiver that appears to come from the sender. It models an attacker who can spoof identities on the message channel.
 - **CoT control** `(agent, round, text)` replaces the agent's stored note for that round, which the agent then sees as its own. It models an attacker with write access to agent memory. Native model reasoning is never replayed to agents, so the note is the only "chain of thought" worth editing.
 
@@ -105,15 +107,15 @@ In **simultaneous** mode all agents observe the same state, act concurrently, an
 
 ### 3.4 Paired forks and divergence metrics
 
-Every world is identified by `(run.seed, game_idx)`. The world generator depends only on these two values, so all grid cells play **the same worlds**. All sampling seeds come from a hash-based `derive_seed(run_seed, game_idx, purpose, agent, round, attempt, branch, replica)`. Ids never depend on wall-clock time or on completion order.
+A world is fixed by `(run.seed, game_idx)` alone, so all grid cells play **the same worlds**. Sampling seeds are hash-derived from (run seed, game, purpose, agent, round, attempt, branch, replica), never from wall-clock time or completion order.
 
 For each world we run:
 - **A (God):** the scripted schedule is active.
 - **B (no God):** the same world, the same branch key, and the same replica id. All sampling seeds and response-cache keys are therefore identical to A's.
 - **B′ (noise replica, cell G1 only):** God-free like B, but with a different replica id from round 1. It has fresh seeds and disjoint cache keys, so it measures whole-game sampling drift.
-- **B″ (fork-matched noise, follow-up sweep):** God-free, sharing A/B's history up to God's first round and resampled with fresh seeds from that round on. It is the matched null for divergence: what happens if *something*, not God, changes at the fork round [CHECK: implementation, run ids and cells of the sweep].
+- **B″ (fork-matched noise, follow-up sweep):** God-free, sharing A/B's history up to God's first round and resampled with fresh seeds from that round on. It is the matched null for divergence [CHECK: implementation, run ids and cells of the sweep].
 
-A and B issue byte-identical requests until God first acts, and a single-flight response cache sends each distinct request to the provider once. The branches are therefore **identical by construction** before the intervention, even if the provider ignores sampling seeds [CHECK: provider seed behaviour; we rely on the cache, not on provider determinism]. Afterwards, an agent's request differs between A and B only once something it observes has changed. Because every agent sees the previous round's public action log, this coupling lasts about one round. B′ resamples every response from round 1, while God first acts in round 3, so B′ is not aligned with the God fork; B″ is.
+A and B issue byte-identical requests until God first acts, and a single-flight response cache sends each distinct request to the provider once. The branches are therefore **identical by construction** before the intervention, even though the provider honours seeds only partly (in a direct probe, 5 of 6 fixed-seed calls returned byte-identical replies; GR §2). Afterwards an agent's request differs only once something it observes has changed; since everyone reads the public log, this coupling lasts about one round. B′ differs from round 1, while God first acts in round 3, so only B″ is aligned with the God fork.
 
 **Outcome metrics** are computed per branch from the event log: welfare, win rate, needs burned by others and needs lost to the wrong-defect penalty (both per agent), and rounds played.
 
@@ -121,7 +123,7 @@ A and B issue byte-identical requests until God first acts, and a single-flight 
 
 **Ripple metrics** compare branches action by action. An agent *diverges* in round r if its action signature differs between the two branches, or if it acted in only one of them. A coarse signature uses (action kind, counterparty, info id) and ignores message wording; a strict signature adds the text. Per round we compute the fraction of agents that diverge (`frac[r]`), the fraction that have ever diverged (`cum[r]`), and the mean absolute per-agent score gap.
 
-We also compute each agent's first divergence round and its hop distance from the victim in the control branch's interaction graph. Zero divergence before the fork (`pre_fork_frac`) checks that the pairing worked. God's *specific* ripple is the A-vs-B curve minus the B″-vs-B curve, aligned at the fork round. B′-vs-B, which starts diverging in round 1, is only a whole-game reference. If the matched null already saturates (near-total divergence within a round or two), action-level divergence cannot separate God's influence from generic chaos, and only outcome metrics remain informative.
+God's *specific* ripple is the A-vs-B curve minus the B″-vs-B curve, aligned at the fork round; B′-vs-B is only a whole-game reference. If the null saturates, action-level divergence cannot separate God from generic chaos, and only outcome metrics remain informative.
 
 ### 3.5 Agents and logging
 
@@ -135,7 +137,7 @@ Each agent turn is one LLM call returning a JSON object `{"thought", "note", "ac
 - a 14,000-token context budget;
 - price-sorted provider routing.
 
-Only the reply's content is parsed. Calls may be served by different providers [CHECK: providers and quantizations, from `llm_calls.jsonl`], a noise source shared by all branches (Appendix A).
+Only the reply's content is parsed. The serving provider is not logged. Cost per call shows that 87%, 78% and 36% of calls in G1, G2 and G3 were served at the cheapest provider's (fp4) price, and the rest at 2.5-3.3× that price by providers offering fp4, bf16 or int4 variants (GR §2; Appendix A).
 
 **Game settings (all cells; Table 1).**
 - N = 10 agents, 20 rounds; 5 keys and 3 needs per agent, 2 copies per info id.
@@ -145,85 +147,103 @@ Only the reply's content is parsed. Calls may be served by different providers [
 
 **Grid (as launched; Table 2).**
 
-| Cell | Turn mode | God schedule (K) | Branches per world | Worlds | Planned hard cap |
-|---|---|---|---|---|---|
-| G1 | simultaneous | fraud r3, CoT r5 (K=2) | A, B, B′ | 16 | $1.35 |
-| G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) | $0.55 |
-| G3 | simultaneous | fraud r3/r5/r7, CoT r4/r6/r8 (K=6) | A, B | 16 | $0.95 |
+| Cell | Turn mode | God schedule (K) | Branches per world | Worlds | Hard cap | Realized cost |
+|---|---|---|---|---|---|---|
+| G1 | simultaneous | fraud r3, CoT r5 (K=2) | A, B, B′ | 16 | $1.35 | $0.851 |
+| G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) | $0.55 | $0.343 (+$0.0075 aborted launch) |
+| G3 | simultaneous | fraud r3/r5/r7, CoT r4/r6/r8 (K=6) | A, B | 16 | $0.95 | $0.785 |
 
-God starts in round 3, so every pair shares rounds 1-2 exactly. G2 is the sequential twin of G1: only `turn_mode` differs. It plays worlds 0-7, the same worlds as G1 and G3 (run id `r2_grid_oss_seq_k2`), so the sim-vs-seq comparison (H2) has n = 8 and is markedly lower-powered than H1 (see the power table). The realized cost is [RESULT: per-cell and total cost from the OpenRouter ledger].
+Every pair shares rounds 1-2. G2 is G1's sequential twin on worlds 0-7 (run `r2_grid_oss_seq_k2`), so H2 has n = 8 and is markedly lower-powered. The grid cost $1.986 in total (GR §1). A first 10-seed G2 launch was stopped by the driver's cost projection and relaunched with 8 seeds.
 
 **Hypotheses (fixed before launch).**
 - **H1 (primary):** in G1, God changes welfare (paired d_s, n = 16).
-- **H0 / noise baseline:** the G1 B′ − B distribution (pre-registered), plus the fork-matched B″ − B from the follow-up sweep; both are reported next to every God effect.
+- **H0 / noise baseline:** G1 B′ − B (pre-registered), plus B″ − B from the follow-up sweep.
 - **H1′:** God effect in G3 (n = 16).
 - **H3 (dose):** G3 Δ − G1 Δ, paired by world.
 - **H2 (turn mode):** G2 Δ − G1 Δ, paired over the 8 shared worlds (lower-powered: n = 8).
 
-Secondary metrics: win rate, needs burned, needs lost, rounds played; victim-level outcomes are descriptive.
+**Statistics.** For each cell and metric we report the mean paired difference with a **Student-t 95% CI** and a **two-sided sign-flip permutation p-value** (exact for n ≤ 16; at n = 8 the smallest attainable p is 2/2^8 ≈ 0.008). The percentile bootstrap CI is secondary, as it is too narrow at n = 8-16. Interactions are differences of mean deltas, paired by world. Only H1 is confirmatory; the rest are exploratory and uncorrected.
 
-**Statistics.** For each cell and metric we report the mean paired difference with a **Student-t 95% CI** and a **two-sided sign-flip permutation p-value** (exact for n ≤ 16; at n = 8 the smallest attainable p is 2/2^8 ≈ 0.008). These two are primary. A 95% percentile bootstrap CI (10,000 resamples) is reported as secondary only: at n = 8-16 it is too narrow, and it can exclude zero when a single world is non-zero. Interactions (H2, H3) are differences of mean deltas, paired by world because the cells share worlds. Only H1 is confirmatory. The other tests are exploratory, with no multiplicity correction.
+**Power.** Before launch we assumed an SD of 0.19 for the paired Δwelfare, estimated from four single-seed pilots (Appendix C). The table gives the minimum detectable effect (80% power, α = 0.05, two-sided t) under that planning SD, and again under the SD observed in the grid (GR §5):
 
-**Power (planning values, not results).** The planning standard deviation of the paired Δwelfare is 0.19. It was estimated from four single-seed pilot deltas, which predate a bug fix (Appendix C), so it is a rough guide only. With it, the minimum detectable effect (80% power, α = 0.05, two-sided t-test) is:
+| Test | n | Planned MDE | Observed SD | Observed MDE |
+|---|---|---|---|---|
+| H1 (G1) | 16 | ≈ 0.14 | 0.113 | ≈ 0.085 |
+| H1′ (G3) | 16 | ≈ 0.14 | 0.189 | ≈ 0.14 |
+| H3 (dose) | 16 | ≈ 0.20 | 0.206 | ≈ 0.15 |
+| G2 | 8 | ≈ 0.22 | 0.188 | ≈ 0.22 |
+| H2 (mode) | 8 | ≈ 0.31 | 0.228 | ≈ 0.26 |
 
-| Test | n | MDE (welfare) |
-|---|---|---|
-| H1, H1′ | 16 | ≈ 0.14 (≈ 4 of 30 needs) |
-| H3 | 16 | ≈ 0.20 |
-| G2's own effect | 8 | ≈ 0.22 (our arithmetic) |
-| H2 | 8 | ≈ 0.31 (our arithmetic) |
+A null result therefore means "no large effect", not "no effect".
 
-A null result therefore means "no large effect", not "no effect". We report the MDE again using the observed SD [RESULT: observed SD of d_s in G1 and the implied MDE].
+**Health checks and exclusions (fixed before launch).** Because a provider outage can silently turn every turn into a no-op, a driver aborts a cell on LLM errors above 5% (or any HTTP 400), parse failures above 10%, truncation above 5%, or a cost projection above its cap. A branch with more than 10% errored calls, more than 30% error-caused no-ops, or a budget stop is **unhealthy**, and its world is excluded.
 
-**Health checks and exclusions (fixed before launch).** Because a provider outage can silently turn every turn into a no-op, a driver aborts a cell on LLM errors above 5% (or any HTTP 400), parse failures above 10%, truncation above 5%, or a cost projection above its cap. After the run, a branch is **unhealthy** if more than 10% of its calls errored, more than 30% of its turns were error-caused no-ops, or it hit its budget cap. Its whole world is then excluded from every paired difference. We report the excluded worlds [RESULT: excluded seeds per cell, or "none"] and the per-cell error, parse-failure and truncation rates [RESULT: Table 4]. The leak oracle runs on every prompt in every branch [RESULT: total oracle checks and hits; expected 0 hits].
+**Invariant checker.** Independently of the engine, `swarm/analysis/invariants.py` re-derives every game from its events alone and checks turn order, key conservation, burns, scores, delays, observation visibility, God's schedule and budget, prompt hygiene, and byte-identity of God and no-God branches before God's first event.
 
-**Invariant checker.** Independently of the engine, `swarm/analysis/invariants.py` re-derives every game from its event stream alone and checks turn order, key conservation, burns, scores and wins, delays, observation visibility, God's schedule and budget, prompt hygiene, and byte-identity of the God and no-God branches before God's first event (Appendix B). It is applied to every grid cell [RESULT: violations per cell; reported 0, re-verify from the checker output].
+## 5 Results
 
-## 5 Results *(structure fixed; numbers pending the full analysis)*
+All numbers in this section are from `plan/GRID_RESULTS.md` (GR).
 
-### 5.1 Validity: health, invariants, pairing
-- [RESULT: healthy worlds per cell (16/16/8?); error, parse-failure and truncation rates; leak-oracle hits; realized cost per cell and total; Table 4.]
-- [RESULT: invariant violations across all cells (reported 0).]
-- Pre-fork identity of A and B: the invariant checker's fork check and `pre_fork_frac` [RESULT: = 0 in all worlds].
+### 5.1 Validity, health and cost
+- **Calls.** G1, G2 and G3 made 9,047, 3,039 and 6,286 LLM calls.
+- **Errors and parsing.** There were 0 errors and 0 parse failures. 0.27-0.41% of turns needed a parse retry, and 0.43-0.48% of responses were truncated at the token limit (Table 4).
+- **Exclusions.** No branch was unhealthy; all 16, 8 and 16 worlds were kept, and every game completed, so the leak oracle never aborted one.
+- **Invariants.** The checker reports **0 violations** in all three cells. That includes its fork check: God and no-God branches are identical in requests and responses before God's first event. Any A − B difference therefore arises at or after the intervention.
 
-### 5.2 Outcomes: God's welfare effect is indistinguishable from zero (H1)
-- [RESULT: G1 Δwelfare, mean, t95 CI, sign-flip p, n = 16; bootstrap CI in Table 3 only.]
-- [RESULT: the same for win rate, needs burned, needs lost, rounds (Table 3).]
-- [RESULT: noise baselines on welfare: B′ − B (G1) and B″ − B (sweep), mean and t95 CI.] Is God's spread of per-world deltas wider than the noise's?
-- [RESULT: observed SD of d_s and the implied MDE.] State the bound: "effects larger than [RESULT: MDE] welfare are unlikely".
-- [RESULT: victim-level, descriptive: the targeted agent's score and win round, A vs. B, across worlds.]
-- Figure 4, left panel.
+### 5.2 Outcomes: no detectable God effect (H1, H1′)
+
+**Table 3.** Paired differences: mean, t-based 95% CI, sign-flip p. Bootstrap CIs are in GR §3-4.
+
+| Comparison | n | Welfare | Win rate | Needs lost / agent |
+|---|---|---|---|---|
+| G1 God − B (K=2, sim) | 16 | +0.013 [−0.048, +0.073], p 0.72 | −0.013 [−0.103, +0.078], p 0.88 | +0.044 [−0.018, +0.105], p 0.23 |
+| G1 B′ − B (no God, resampled) | 16 | +0.046 [−0.055, +0.146], p 0.38 | +0.019 [−0.079, +0.116], p 0.79 | +0.050 [−0.079, +0.179], p 0.48 |
+| G3 God − B (K=6, sim) | 16 | +0.004 [−0.097, +0.105], p 0.97 | −0.006 [−0.098, +0.086], p 1.00 | −0.031 [−0.144, +0.082], p 0.64 |
+| G2 God − B (K=2, seq) | 8 | +0.012 [−0.144, +0.169], p 0.89 | +0.025 [−0.107, +0.157], p 0.81 | −0.062 [−0.151, +0.026], p 0.25 |
+| H3: G3 Δ − G1 Δ | 16 | −0.008 [−0.118, +0.101], p 0.90 | +0.006 [−0.122, +0.135], p 1.00 | −0.075 [−0.216, +0.066], p 0.33 |
+| H2: G2 Δ − G1 Δ | 8 | +0.021 [−0.170, +0.212], p 0.86 | +0.038 [−0.186, +0.261], p 0.80 | −0.113 [−0.207, −0.018], p 0.062 |
+
+**Welfare.** Every welfare CI contains zero. In G1, the primary test, God moved welfare by +0.013. A God-free resample moved it by +0.046.
+
+Gives, successful defects, board posts and DMs per agent show no detectable effect either (GR §3).
+
+**Bound on the effect.** With the observed SDs, welfare effects larger than about 0.09 (K=2, simultaneous) or 0.14 (K=6) are unlikely. The sequential cell rules out only large effects.
+
+**Pairing.** Common random numbers help even though seeds are honoured only partly. The SD of God − B is 0.113, against 0.189 for B′ − B (GR §3).
+
+[RESULT: B″ − B welfare baseline from the follow-up sweep.] Figure 4.
 
 ### 5.3 Trajectories: the swarm is chaotic
-- [RESULT: `frac[r]`/`cum[r]` for B′ vs. B: near-total divergence by round [RESULT].]
-- [RESULT: A vs. B from the fork round on; B″ vs. B from the same round (sweep).]
-- Key comparison: does A-vs-B exceed B″-vs-B at any lag? [RESULT.] Mechanism: the public action log means one changed action changes everyone's next prompt, and so every sampled response.
-- [RESULT, optional: divergence by hop distance from the victim, if it is not saturated in the first post-fork round.]
-- Figure 3 (curves with both baselines). Figure 2: network stills of one world chosen by rule (the median-|Δwelfare| world), showing God and no-God trajectories that look different but end at similar welfare [RESULT: confirm for the chosen world].
+From God's first act on, the mean fraction of agents whose round actions (kind, target, info id) differ from the no-God branch is 0.893 (G1), 0.897 (G2) and 0.882 (G3). Every agent diverges at least once in every world. The God-free replica B′ diverges at 0.967 over the same rounds. B′ is not fork-matched, but God's perturbation already sits close to the level of resampling alone. Neither dose (−0.011 [−0.032, +0.009]) nor turn mode (−0.006 [−0.059, +0.048]) changes divergence. The mechanism is the public action log: one changed action changes everyone's next prompt, and so every sampled response.
 
-### 5.4 Dose and turn mode (H1′, H3, H2)
-- [RESULT: G3 Δwelfare, t95 CI, p (H1′); H3 = G3 Δ − G1 Δ, t95 CI.]
-- [RESULT: G2 Δwelfare, t95 CI, p, n = 8; H2 = G2 Δ − G1 Δ, t95 CI.] Restate that n = 8 detects only very large interactions.
-- Figure 4, right panel.
+[RESULT: fork-matched B″ vs. B divergence by lag (sweep); does A-vs-B exceed it at any lag?] Figure 3; Figure 2 shows one world [FIG 2: chosen by rule].
 
-### 5.5 Qualitative trace
-[RESULT: one rule-selected grid trace in two sentences (the forged DM, the victim's response, the partner's reaction), with run id and world index. More traces and the pilot illustrations are in Appendix C.]
+### 5.4 Dose and turn mode (H3, H2)
+- **Dose and mode.** Neither tripling the budget (H3) nor sequential turns (H2) changes God's effect (Table 3).
+- **The only nominal hit.** Across about 27 outcome tests, the one interval that excludes zero is needs lost to wrong defects in the turn-mode contrast: −0.113, t95 [−0.207, −0.018]. Its sign-flip p is 0.062 at n = 8, with no multiplicity correction, so we treat it as noise.
+- **Pilot hint.** A single-seed pilot had suggested God effects of opposite sign in the two turn modes. It did not replicate (GR §5).
 
-## 6 Discussion *(structure; finalize with numbers)*
+## 6 Discussion
 
-- **Chaotic trajectories, stable outcomes.** Every later action is extremely sensitive to any change (a resample, a lie, an overwritten note), yet round-20 welfare moves by less than we can detect [RESULT: bound]. One reading: the economy has many near-equivalent paths to the same allocation, so a lie redirects a trade rather than destroying value. [RESULT-dependent: support from the burned/lost metrics.]
-- **Why naive ripple measurement misleads.** Without a matched null, the A-vs-B curve would show God "infecting" the whole swarm within a few rounds, but the same curve arises with no intervention at all. Intervention studies on stochastic agent populations should report fork-matched null branches, outcome-level paired effects with t-based CIs and permutation tests, and the MDE.
-- **What the null does not show.** It does not show robustness to adaptive attackers, larger swarms, longer games or other models: God is a fixed-template attacker with K ≤ 6, and n = 16 bounds only large effects (Appendix A).
-- **Future work.** Next steps:
+- **Chaotic trajectories, stable outcomes.** Almost every agent's later actions change after God acts, and the same happens after a plain resample. Yet welfare at round 20 moves by less than we can detect. One reading: many near-equivalent paths lead to the same allocation, so a lie redirects a trade rather than destroying value.
+- **Why God is weak here.** K = 2 means one forged DM and one overwritten note among 10 agents over 20 rounds. The victims are the agents closest to winning, who often win anyway (GR §5). The note overwrite edits the *previous* round, which may already have been acted on.
+- **Why naive ripple measurement misleads.** Read alone, the A-vs-B curve would show God "infecting" the whole swarm within a few rounds, but a God-free resample produces the same picture. We recommend that intervention studies on stochastic agent populations report:
+  - fork-matched null branches;
+  - outcome-level paired effects with t-based CIs and permutation tests;
+  - the MDE.
+
+  Pairing on seeds is worth doing even when the provider honours them only partly (Section 5.2).
+- **What the null does not show:** robustness to adaptive attackers, larger swarms, longer games or other models.
+- **Future work.**
   - an adaptive LLM God;
-  - defences (sender authentication, memory integrity);
-  - larger N and longer games;
-  - more worlds for lower-noise estimates;
-  - monitors scored against God's labels (Track 4).
+  - defences such as sender authentication and memory integrity;
+  - larger N;
+  - more worlds;
+  - scoring monitors against God's ground-truth labels (Track 4).
 
-## 7 Conclusion *(draft)*
+## 7 Conclusion
 
-*Keys & God* is a small, reproducible economy for measuring what one forged message or one rewritten memory does to a population of LLM agents. Paired forks with shared seeds and a measured noise floor turn that question into a per-world causal contrast. On 16 worlds of 10 gpt-oss-120b agents, a scripted God's effect on welfare was indistinguishable from zero [RESULT: CI], while trajectories diverged chaotically under any perturbation, God or none. Noise-calibrated, outcome-level measurement is what separates these two facts. The environment, configurations and logs are released so that others can test stronger adversaries and defences against the same worlds.
+*Keys & God* is a small, reproducible economy for measuring what one forged message or one rewritten memory does to a population of LLM agents. On 16 worlds of 10 gpt-oss-120b agents, a scripted God's effect on welfare was +0.013 (95% CI −0.048 to +0.073), indistinguishable from zero and smaller than the difference produced by resampling alone. Trajectories, meanwhile, diverged almost completely under any perturbation, God or none. Paired forks with noise baselines and outcome-level tests are what separate these two facts. The environment, configurations and logs are released so that others can test stronger adversaries and defences on the same worlds.
 
 ---
 
@@ -263,9 +283,11 @@ Do not add numbers from their full texts without opening them.
 
 **Scale and duration.** The grid uses N = 10 agents and 20 rounds. The project brief envisioned at least 20 agents and more than 100 rounds. We cut both for API cost: prompt length, and so cost, grows with N and with the number of rounds. Ripple effects that need long chains of trades, or larger graphs with hubs, may be invisible at this scale. One single-seed pilot at N = 60 shows the environment runs at that size, but it gives no evidence about effects.
 
-**Statistical power and the null result.** With 16 worlds the design detects only large welfare effects (planning MDE ≈ 0.14; observed: [RESULT]). The turn-mode contrast (8 worlds) detects only very large interactions. A null result here bounds the effect; it does not show that the effect is zero. Percentile bootstrap CIs are too narrow at this n, so we lead with t-based CIs and permutation p-values. Four of the five tests are exploratory, with no multiplicity correction.
+**Statistical power and the null result.** With 16 worlds the design detects only welfare effects above about 0.085 (G1) or 0.14 (G3). The turn-mode contrast (8 worlds) detects only effects above about 0.26. A null result here bounds the effect; it does not show that the effect is zero. Percentile bootstrap CIs are too narrow at this n, so we lead with t-based CIs and permutation p-values. About 27 outcome tests were run with no multiplicity correction; only H1 was primary.
 
-**A monoculture of one model.** All agents are copies of one model (gpt-oss-120b, low reasoning effort) with one prompt. Their responses may be correlated in ways a mixed population's would not be, which could amplify or damp spread. Calls are routed by price through OpenRouter and may be served by different providers and quantizations. Both branches of a pair are exposed to this equally, but it adds variance and limits exact attribution to "the model".
+**A monoculture of one model.** All agents are copies of one model (gpt-oss-120b, low reasoning effort) with one prompt. Their responses may be correlated in ways a mixed population's would not be, which could amplify or damp spread. 
+
+**Provider mix and partial seeds.** Calls were routed by price through OpenRouter, and the serving provider is not logged. Cost per call shows that the cheapest provider (fp4) served 87% of G1 calls, 78% of G2 and only 36% of G3. The rest went to providers at 2.5-3.3× the price, which offer fp4, bf16 or int4 variants. Different quantizations may behave differently. Because the mix differs by cell, it is a **confound for the dose contrast (G3 vs. G1)** and, to a lesser degree, for turn mode. Within a pair, both branches draw from the same routing pool, so this adds variance rather than bias to each cell's God effect. Seeds are honoured only partly: in a direct probe, 5 of 6 fixed-seed calls returned byte-identical replies. Common random numbers therefore hold exactly only through the cache, that is, before the fork.
 
 **Non-adaptive adversary.** God is scripted. It uses fixed rounds, fixed text templates, and a simple victim heuristic (closest to winning) with the victim's most recent partner as the impersonated sender or suspect. This is a weak, low-sophistication attacker. Its effect is a lower bound on what an adaptive attacker could do, not an estimate of it. An LLM-driven God exists in the code only as a stub.
 
@@ -277,7 +299,7 @@ Do not add numbers from their full texts without opening them.
 
 **Design choices that differ from the brief.** The log and board are always shown rather than being tools. The default defect gain mints a new key, which makes defection more attractive than stealing would. Winners keep playing. Each of these is a configuration switch, and we tested only the defaults.
 
-**Engineering.** Several known low-severity issues remain open and are documented in `plan/CODE_REVIEW.md`. For example, per-turn prompt hashes are not logged in real runs, and two God-timestamp conventions differ by one round in simultaneous mode. We believe none of them affects the paired outcome metrics, but they are disclosed.
+**Engineering.** Several known low-severity issues remain open and are documented in `plan/CODE_REVIEW.md`. For example, per-turn prompt hashes are not logged in real runs, and two God-timestamp conventions differ by one round in simultaneous mode. The run manifests record dirty working trees, because other agents' files were uncommitted, but none of those edits touched configs these cells loaded (GR §1). We believe none of this affects the paired outcome metrics, but it is disclosed.
 
 ### A.2 Dual-use considerations
 
@@ -291,7 +313,7 @@ The released code ships only the scripted God and a stub for the LLM God. We ask
 
 - **No human subjects.** All "agents" are model instances in a synthetic game. Run logs contain only model-generated text about fictional keys.
 - **Deception of the agents.** The models are not told that an adversary exists. This is deception of software, not of people, and it is needed to measure undefended behaviour.
-- **Cost and resources.** All model calls went through a paid API with a hard per-run cap and a global spend ledger. The planned grid cap was $2.30 for G1 + G3 plus $0.55 for G2. Realized: [RESULT: total].
+- **Cost and resources.** All model calls went through a paid API with a hard per-run cap and a global spend ledger. Hard caps were $1.35, $0.55 and $0.95 per cell. Realized spend was $1.986 (GR §1).
 - **Credentials.** API keys were never written to configs, logs or manifests, and a test enforces this.
 - **Honest reporting.** Every number in this paper traces to a run id. Pilots run before the bug fix are used only as qualitative illustrations and are labelled as such.
 
@@ -307,4 +329,16 @@ The pilot runs (10 agents × 30 rounds in each turn mode, one 60-agent × 20-rou
 - Resolved configs for G1/G2/G3 (`runs/<cell>/config.resolved.yaml` or `configs/grid_oss_*.yaml`).
 - Agent system prompt (`swarm/prompts/templates/agent/v1/system.j2`) and output format.
 - God default texts and selectors (`swarm/adversary/scripted_god.py`).
-- Table 4: per-cell health metrics.
+- **Table 4: per-cell health** (GR §2).
+
+| | G1 | G2 | G3 |
+|---|---|---|---|
+| LLM calls (paid / cache) | 9047 (8547 / 500) | 3039 (2705 / 334) | 6286 (5782 / 504) |
+| errors / HTTP retries | 0 / 1 | 0 / 0 | 0 / 0 |
+| parse failures (turns) | 0 / 8920 | 0 / 3000 | 0 / 6200 |
+| turns with a parse retry | 37 (0.41%) | 8 (0.27%) | 25 (0.40%) |
+| finish=length (truncation) | 39 (0.43%) | 13 (0.43%) | 30 (0.48%) |
+| salvaged truncated replies | 8 | 5 | 8 |
+| unhealthy branches | 0 | 0 | 0 |
+| calls at cheapest-provider (fp4) price | 87% | 78% | 36% |
+| invariant violations | 0 | 0 | 0 |
