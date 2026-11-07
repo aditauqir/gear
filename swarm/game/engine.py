@@ -25,10 +25,10 @@ skip if the agent is delayed / a sat-out winner (the slot still counts) -> obser
 mark_observed -> act -> turn event (+ context_built) -> apply each action stamped t -> memory.write
 (cot, note) -> ledger += observation items + own-action items.
 Simultaneous: God once at s0 = turn_index(r, 0, N); every active agent observes at s0; all act
-concurrently (asyncio.gather, bounded by the LLM client's semaphore); actions resolve in
-turn-priority order (st.order: fixed or reshuffled per round), each stamped at its own slot; a
-give_key / defect that fails at resolution (e.g. the key was already taken) also sends the actor a
-"system" notice.
+concurrently (asyncio.gather, bounded by the LLM client's semaphore; if one act() raises, the
+others are cancelled); actions resolve in turn-priority order (st.order: fixed or reshuffled per
+round), each stamped at its own slot; a give_key / defect that fails at resolution (e.g. the key
+was already taken) also sends the actor a "system" notice.
 game.board.post_costs_turn (default off): a post_board uses the whole action budget of its turn. The
 first post_board of a turn is applied; every other action of that turn (before or after it; grep_log
 and noop excepted) fails with reason "board_post_uses_whole_turn" without using a slot, and the agent
@@ -117,6 +117,20 @@ async def _maybe_await(x: Any) -> Any:
     return await x if inspect.isawaitable(x) else x
 
 
+async def _gather_or_cancel(coros: Sequence[Awaitable[Any]]) -> list[Any]:
+    """asyncio.gather that CANCELS the siblings when one raises (plain gather leaves them running,
+    so after e.g. BudgetExceeded the other agents' LLM calls kept going after game_end). Tasks are
+    created in the same order as gather would, so the happy path is unchanged."""
+    tasks = [asyncio.ensure_future(c) for c in coros]
+    try:
+        return list(await asyncio.gather(*tasks))
+    except BaseException:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
 class DecideAgent:
     """Adapts a two-call DecideFn (obs, grep_result|None) to the TurnAgent protocol (tests, stubs).
     Mirrors LLMAgent: final actions = [grep_log, *follow-up actions] when a grep ran."""
@@ -192,7 +206,9 @@ class GameEngine:
         self.memory = memory or MemoryStore(cfg.reasoning)
         self.on_snapshot = on_snapshot
         self.counter = counter or make_counter(cfg.context.tokenizer)
-        self.ledgers: dict[AgentId, list[HistoryItem]] = ledgers or {a: [] for a in state.agents}
+        self.ledgers: dict[AgentId, list[HistoryItem]] = ledgers if ledgers is not None else {}
+        for a in state.agents:                     # fill a caller's dict in place (even an empty one)
+            self.ledgers.setdefault(a, [])
         self.obs_turns: dict[AgentId, list[int]] = {a: [] for a in state.agents}   # for grep_log
         self.snapshots: list[GameState] = []
         self.end_reason: str | None = None
@@ -406,6 +422,31 @@ class GameEngine:
             return first.ok, first.reason
         return True, None
 
+    async def _play_sequential(self, r: int, n: int) -> None:
+        """One agent at a time in priority order; God before EVERY slot (skipped ones too)."""
+        for p, agent in enumerate(list(self.state.order)):
+            t = turn_index(r, p, n)
+            await self._god(t)
+            if not self.active(agent):
+                continue
+            obs = self._observe(agent, t)
+            out, grep = await self._act(agent, obs)
+            self._resolve(agent, t, obs, out, grep)
+
+    async def _play_simultaneous(self, r: int, n: int) -> None:
+        """God once at s0; every active agent observes at s0 and acts concurrently; actions resolve
+        in priority order, each at its own slot."""
+        st = self.state
+        s0 = turn_index(r, 0, n)
+        await self._god(s0)
+        st.turn_index = s0
+        actors = [a for a in st.order if self.active(a)]
+        obs_by = {a: self._observe(a, s0) for a in actors}
+        outs = await _gather_or_cancel([self._act(a, obs_by[a]) for a in actors])
+        pos = {a: p for p, a in enumerate(st.order)}
+        for a, (out, grep) in zip(actors, outs, strict=True):
+            self._resolve(a, turn_index(r, pos[a], n), obs_by[a], out, grep)
+
     async def run_round(self) -> None:
         """Play the next round (state.round + 1)."""
         self.start()
@@ -414,24 +455,9 @@ class GameEngine:
         r, n = st.round, len(st.agents)
         st.order = self.order_for_round(r)
         if self.g.turn_mode == "sequential":
-            for p, agent in enumerate(list(st.order)):
-                t = turn_index(r, p, n)
-                await self._god(t)
-                if not self.active(agent):
-                    continue
-                obs = self._observe(agent, t)
-                out, grep = await self._act(agent, obs)
-                self._resolve(agent, t, obs, out, grep)
+            await self._play_sequential(r, n)
         else:
-            s0 = turn_index(r, 0, n)
-            await self._god(s0)
-            st.turn_index = s0
-            actors = [a for a in st.order if self.active(a)]
-            obs_by = {a: self._observe(a, s0) for a in actors}
-            outs = await asyncio.gather(*(self._act(a, obs_by[a]) for a in actors))
-            pos = {a: p for p, a in enumerate(st.order)}
-            for a, (out, grep) in zip(actors, outs, strict=True):
-                self._resolve(a, turn_index(r, pos[a], n), obs_by[a], out, grep)
+            await self._play_simultaneous(r, n)
         st.turn_index = turn_index(r + 1, 0, n) - 1
         sc = self.scores()
         self.emit([self._body(RoundEndData(state_hash=st.state_hash(), scores=sc,
