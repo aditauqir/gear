@@ -7,7 +7,8 @@ Scans every agent-bound prompt (ChatRequest with meta.role in {agent, summarizer
   - canaries learned from the event stream as it is emitted (time-aware, so a note that was legit
     in a prompt BEFORE it was tampered is not flagged):
       * every intervention id (god_power / message / memory_overwrite events),
-      * the replaced original text of a `replace` memory_overwrite (if >= min_canary_len chars),
+      * the replaced original text of a `replace` memory_overwrite (if >= min_canary_len chars), as
+        rendered for that round's memory entry ("(round r): <text>"),
   - extra canaries added by the caller (`add_canary`), optionally scoped to some agents and a round
     range, e.g. an unreleased defect info id for non-victims, or a God canary token (make_canary);
   - PROMPT_BANNED_WORDS (D14) in system messages (scope "system", default) or all messages ("all").
@@ -166,8 +167,11 @@ class LeakOracle:
         elif isinstance(d, MemoryOverwriteData):
             self.add_canary(Canary(d.intervention_id, "intervention_id"))
             if d.mode == "replace" and d.old_text and len(d.old_text.strip()) >= self.min_canary_len:
-                # the agent's (pre-tamper) note must never be shown again, to anyone
-                self.add_canary(Canary(d.old_text.strip(), "original_text", from_round=ev.round))
+                # The agent's pre-tamper note must never be shown again AS THAT ROUND'S ENTRY. The
+                # needle is anchored to how context.base.memory_items renders it ("... (round r): text"),
+                # so the same text in another round's note, or in a DM the agent wrote, is no hit.
+                needle = f"(round {d.round}): {d.old_text.strip()}"
+                self.add_canary(Canary(needle, "original_text", from_round=ev.round))
 
     def observe_all(self, events: Iterable[Event | EventBody]) -> None:
         for ev in events:

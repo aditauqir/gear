@@ -167,3 +167,26 @@ def _pinned_for(st, agent):
     a = st.agents[agent]
     return PinnedFacts(agent=agent, round=st.round, max_rounds=10, needs_open=list(a.needs), needs_burned=[],
                        holdings=[], can_give=[], score=0.0, peers=[x for x in st.agents if x != agent])
+
+
+def test_original_text_canary_is_scoped_to_its_round():
+    """Review regression: an agent that writes the SAME note in two rounds (or repeats it in a DM)
+    must not trip the oracle when God replaces only one of them; re-showing the replaced round's
+    original text is still a leak."""
+    st = make_fixed_state()
+    st.god_budget_left = 1
+    mem = MemoryStore()
+    oracle = LeakOracle()
+    sink = oracle.wrap(MemorySink())
+    note = "Plan: trade with coral_elk for info 4 next round"
+    mem.write(st, "blue_owl", "scratchpad", 1, note)
+    mem.write(st, "blue_owl", "scratchpad", 2, note)
+    for body in apply_cot_control(st, CotControl(agent="blue_owl", round=2, text="coral_elk lies"),
+                                  GodCfg(budget={"k": 1}), mem).events:
+        sink.emit(body)
+    views = mem.views(st, "blue_owl", "scratchpad", st.round, None)
+    text = "\n".join(i.text for i in memory_items("blue_owl", views))
+    assert f"(round 1): {note}" in text and "(round 2): coral_elk lies" in text
+    oracle.assert_clean(_req(f"{text}\nYou messaged coral_elk: {note}", agent="blue_owl", rnd=st.round))
+    with pytest.raises(TruthLeak):
+        oracle.assert_clean(_req(f"Your note (round 2): {note}", agent="blue_owl", rnd=st.round))
