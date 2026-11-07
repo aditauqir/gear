@@ -1,18 +1,25 @@
-  A − B (God − no God): +0.013 t95 [-0.048, +0.073] boot [-0.042, +0.065] p=0.721 n=16
-  B′ re-run − B: +0.046 t95 [-0.055, +0.146] boot [-0.044, +0.137] p=0.378 n=16
-  B″ matched − B: +0.054 t95 [-0.050, +0.158] boot [-0.013, +0.146] p=0.344 n=8
-  A − B″ (God − matched noise): -0.062 t95 [-0.207, +0.082] boot [-0.175, +0.046] p=0.359 n=8
-  G3 sim K=6: A − B: +0.004 t95 [-0.097, +0.105] boot [-0.090, +0.094] p=0.965 n=16
-  G2 seq K=2: A − B: +0.012 t95 [-0.144, +0.169] boot [-0.117, +0.125] p=0.891 n=8
-  G3 Δ − G1 Δ (paired): -0.008 t95 [-0.118, +0.101] boot [-0.108, +0.090] p=0.904 n=16
-  G2 Δ − G1 Δ (paired): +0.021 t95 [-0.170, +0.212] boot [-0.108, +0.179] p=0.859 n=8
-  God's first round: r1 (B′, forks r1): God − B″: +0.017 t95 [-0.147, +0.180] boot [-0.112, +0.142] p=0.859 n=8
-  God's first round: r3 (G1 worlds 0-7): God − B″: -0.062 t95 [-0.207, +0.082] boot [-0.175, +0.046] p=0.359 n=8
-  God's first round: r8: God − B″: +0.037 t95 [-0.038, +0.113] boot [-0.017, +0.096] p=0.359 n=8
-  God's first round: r14: God − B″: -0.025 t95 [-0.080, +0.030] boot [-0.071, +0.012] p=0.500 n=8
-  God's budget K: K=1: God − B″: -0.104 t95 [-0.213, +0.005] boot [-0.196, -0.029] p=0.062 n=8
-  God's budget K: K=2 (G1 worlds 0-7): God − B″: -0.062 t95 [-0.207, +0.082] boot [-0.175, +0.046] p=0.359 n=8
-  God's budget K: K=4: God − B″: -0.050 t95 [-0.178, +0.078] boot [-0.154, +0.042] p=0.453 n=8
-  Board: board off: God − B″: +0.056 t95 [-0.170, +0.281] boot [-0.083, +0.222] p=0.688 n=6
-  design: board off (no-God welfare, paired): -0.200 t95 [-0.333, -0.067] boot [-0.289, -0.111] p=0.031 n=6
+  A − B (God − no God): +0.013 t95 [-0.048, +0.073] boot [-0.042, +0.065] p=0.7215 n=16
+  B′ re-run − B: +0.046 t95 [-0.055, +0.146] boot [-0.044, +0.137] p=0.3777 n=16
+  B″ matched − B: +0.054 t95 [-0.050, +0.158] boot [-0.013, +0.146] p=0.3438 n=8
+  A − B″ (God − matched noise): -0.062 t95 [-0.207, +0.082] boot [-0.175, +0.046] p=0.3594 n=8
+  G3 sim K=6: A − B: +0.004 t95 [-0.097, +0.105] boot [-0.090, +0.094] p=0.9653 n=16
+  G2 seq K=2: A − B: +0.012 t95 [-0.144, +0.169] boot [-0.117, +0.125] p=0.8906 n=8
+  G3 Δ − G1 Δ (paired): -0.008 t95 [-0.118, +0.101] boot [-0.108, +0.090] p=0.9043 n=16
+  G2 Δ − G1 Δ (paired): +0.021 t95 [-0.170, +0.212] boot [-0.108, +0.179] p=0.8594 n=8
+  God's first round: r1 (B′, forks r1): God − B″: +0.017 t95 [-0.147, +0.180] boot [-0.112, +0.142] p=0.8594 n=8
+  God's first round: r3 (G1 worlds 0-7): God − B″: -0.062 t95 [-0.207, +0.082] boot [-0.175, +0.046] p=0.3594 n=8
+  God's first round: r8: God − B″: +0.037 t95 [-0.038, +0.113] boot [-0.017, +0.096] p=0.3594 n=8
+  God's first round: r14: God − B″: -0.025 t95 [-0.080, +0.030] boot [-0.071, +0.012] p=0.5000 n=8
+  God's budget K: K=1: God − B″: -0.104 t95 [-0.213, +0.005] boot [-0.196, -0.029] p=0.0625 n=8
+  God's budget K: K=2 (G1 worlds 0-7): God − B″: -0.062 t95 [-0.207, +0.082] boot [-0.175, +0.046] p=0.3594 n=8
+  God's budget K: K=4: God − B″: -0.050 t95 [-0.178, +0.078] boot [-0.154, +0.042] p=0.4531 n=8
+  Board: board off: God − B″: +0.056 t95 [-0.170, +0.281] boot [-0.083, +0.222] p=0.6875 n=6
+  Board: board delayed 2 rounds: God − B″: +0.122 t95 [-0.024, +0.268] boot [+0.050, +0.239] p=0.0312 n=6
+  design: board off (no-God welfare, paired): -0.173 t95 [-0.257, -0.089] boot [-0.248, -0.100] p=0.0003 n=16
+  board mechanism: welfare (board off − board on, paired): -0.173 t95 [-0.257, -0.089] boot [-0.248, -0.100] p=0.0003 n=16
+  board mechanism: win_rate (board off − board on, paired): -0.306 t95 [-0.406, -0.206] boot [-0.394, -0.219] p=0.0001 n=16
+  board mechanism: gives (board off − board on, paired): -1.769 t95 [-2.374, -1.164] boot [-2.250, -1.181] p=0.0002 n=16
+  board mechanism: dms (board off − board on, paired): +11.456 t95 [+9.317, +13.595] boot [+9.575, +13.400] p=0.0000 n=16
+  board mechanism: defects_wrong (board off − board on, paired): +0.631 t95 [+0.426, +0.837] boot [+0.456, +0.819] p=0.0001 n=16
+  board mechanism: defects_correct (board off − board on, paired): -0.025 t95 [-0.155, +0.105] boot [-0.137, +0.094] p=0.7705 n=16
   fig2 world: g02 (|Δwelfare| 0.067, median 0.067, n=16)

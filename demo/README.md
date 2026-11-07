@@ -130,8 +130,16 @@ as in `paper/draft.md` §5, and every plotted number is in `plan/figs/NUMBERS.tx
   - Every interval is a Student-t 95% CI with a sign-flip p.
 - `fig5_sweep`: God − B″ per sweep condition.
   - Conditions: start r1, r3, r8, r14; K = 1, 2, 4; board off.
-  - A small panel shows the design effect of turning the board off without God: −0.200
-    [−0.333, −0.067], p = 0.03, n = 6.
+  - A Board group adds a row for a board delayed by 2 rounds.
+  - A small panel shows the design effect of turning the board off without God:
+    −0.173 [−0.257, −0.089], p < 0.001, n = 16 paired worlds. The original 6 worlds are filled and
+    the 10 extension worlds hollow.
+- `fig6_board_mechanism` (the paper outline's "board mechanism" figure): without God, board on (G1)
+  against board off on the same 16 worlds.
+  - Small multiples: welfare, win rate, keys given, DMs, wrong defects and correct defects (per agent).
+  - Each panel shows paired per-world lines, the mean of each condition with its 95% t-CI, and the
+    Δ with its sign-flip p.
+  - The numbers match `plan/figs/board_effect.txt`.
 
 Rebuild the paper figures:
 
@@ -151,7 +159,9 @@ $PY -m swarm.viz.paper_figs plan/figs \
   --sweep "God's budget K|K=2 (G1 worlds 0-7)=runs/grid_oss_sim_k2,runs/b2_sweep_base#0-7" \
   --sweep "God's budget K|K=4=runs/r3_sweep_k4,runs/b2_sweep_base" \
   --sweep "Board|board off=runs/sweep_board_off,runs/b2_sweep_board_off" \
-  --design "board off=runs/grid_oss_sim_k2#0-5|runs/sweep_board_off"
+  --sweep "Board|board delayed 2 rounds=runs/sweep_board_delay2,runs/sweep_board_delay2" \
+  --board "runs/grid_oss_sim_k2|runs/c16_sweep_board_off|0-5" \
+  --design "board off=runs/grid_oss_sim_k2|runs/c16_sweep_board_off|0-5"
 ```
 
 ### Cell specs
@@ -184,7 +194,9 @@ $PY -m swarm.viz.dashboard plan/figs/grid_dashboard.html \
   --cell "sweep: God starts r14=runs/r3_sweep_start14,runs/r3b2_sweep_start14" \
   --cell "sweep: K=1=runs/sweep_k1,runs/b2_sweep_base" --cell "sweep: K=4=runs/r3_sweep_k4,runs/b2_sweep_base" \
   --cell "sweep: board off=runs/sweep_board_off,runs/b2_sweep_board_off" \
-  --cell "sweep: N=5=runs/r3_sweep_n5" --cell "sweep: N=20=runs/sweep_n20"
+  --cell "sweep: board delayed 2 rounds=runs/sweep_board_delay2,runs/sweep_board_delay2" \
+  --cell "sweep: N=5=runs/r3_sweep_n5" --cell "sweep: N=20=runs/sweep_n20" \
+  --design "board off=runs/grid_oss_sim_k2|runs/c16_sweep_board_off|0-5"
 ```
 
 Every number in the videos, figures and dashboard comes from one module, `swarm/viz/metrics.py`.
