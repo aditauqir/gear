@@ -37,6 +37,7 @@ Python `/home/iraj/miniconda3/envs/swarm/bin/python` with `PYTHONNOUSERSITE=1`. 
   - If that viewer was delayed or sat out, the line waits for its next observation.
   - In simultaneous mode this works out to a defect in round d showing in round d+1+delay.
 - **Victim notice**: delivered at the victim's next observation, except in `delayed` mode, where the victim also waits for release. Use `Notice.deliver_from_turn` for that case.
+- **Wrong defects (DECIDED)**: the target of a wrong defect also gets a notice (`kind="defect_attempt"`). The same `defect_visibility` rules apply as for a hit: the target sees it at once, and everyone else sees it after the delay. The actor learns the outcome from its own `action_result`.
 - **Inbox and board**: show messages delivered since the agent's previous observation. Order them by `(Message.turn_index, msg_id)`. Forged DMs are stamped with the turn index of the God wake slot and use the same `make_msg_id(game_id, index_in_messages)` scheme as real ones.
 
 ## 3. Actions and events
@@ -61,6 +62,10 @@ Python `/home/iraj/miniconda3/envs/swarm/bin/python` with `PYTHONNOUSERSITE=1`. 
 - `make_entry_id(agent, kind, round)` and `make_intervention_id(game_id, round, n)`.
 - `canonical_json` and `sha256_hex`.
 - Turn seed convention: `derive_seed(cfg.run.seed, game_idx, "turn", agent, round, attempt, branch=cfg.run.branch, replica=cfg.run.replica)`.
+- **Forks use common random numbers (DECIDED)**:
+  - Fork A (God intervention) and fork B (control) use the **same** `run.branch` as each other, and the same `run.replica`. Their sampling seeds, and so their cache keys, are identical, so any divergence is attributable to God.
+  - **Only the noise replica B′ gets a different `run.replica`** (for example `"Bprime"`). That gives it fresh samples and measures the noise floor.
+  - Keep fork identity in run and game metadata (`parent_run`, `fork_round`, and the A/B label in the manifest), not in `branch`.
 
 ## 5. Memory (`swarm/memory.py`). The only mind-control path
 `MemoryStore(cfg.reasoning)` has an explicit `state` argument on every method:
@@ -133,6 +138,5 @@ Python `/home/iraj/miniconda3/envs/swarm/bin/python` with `PYTHONNOUSERSITE=1`. 
 - Markers `gpu`, `openrouter` and `slow` are auto-skipped.
 
 ## Open questions for the lead
-1. Fork seeds. Should fork A and fork B share `run.branch`? Sharing gives common random numbers. B′ always gets a new `run.replica`.
-2. Wrong defects. When a defect misses, should the target get a notice? Right now the same visibility rule applies to everyone, and WP1 decides the notice text.
-3. Naming. `turn_mode` holds sequential/simultaneous and `turn_order` holds fixed/reshuffle, following the doc. `cot_mode` uses `explicit` instead of the doc's `field`.
+Resolved: fork seeds (common random numbers, §4) and the wrong-defect notice (§2).
+1. Naming. `turn_mode` holds sequential/simultaneous and `turn_order` holds fixed/reshuffle, following the doc. `cot_mode` uses `explicit` instead of the doc's `field`.

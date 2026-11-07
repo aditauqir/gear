@@ -4,8 +4,9 @@
 - make_id(*parts) -> 16 hex chars
 - make_msg_id / make_call_id / make_entry_id / make_intervention_id: the only id schemes.
 
-`branch` and `replica` are always folded into seeds. Fork controls: A (intervention) and B (control)
-use the SAME branch label if you want common random numbers; the noise replica B' uses a different
+`branch` and `replica` are always folded into seeds. DECIDED (lead): forks use common random numbers.
+A (intervention) and B (control) share the same branch and replica, so their seeds and cache keys are
+identical and any divergence is attributable to God. Only the noise replica B' gets a different
 `replica`, so its cache keys differ from B's (REVIEW_v2 4.5).
 """
 
