@@ -1,9 +1,16 @@
 # SWEEP_PLAN: one-factor-at-a-time sweeps around G1 (gpt-oss-120b, overnight 2026-11-07)
 
-**Status: stage 1 LAUNCHED 03:29 EST** (driver A: start round and K cells, run one after another;
-driver B: N=20, then N=5). A first driver A launch at 03:26 was stopped after 1 minute to rebalance
-caps. Its partial dir is `runs/aborted_sweep_start1_0327`, and its completed calls replay from the
-cache. Results go in `plan/SWEEP_RESULTS.md`.
+**Status: stage 1 LAUNCHED 03:30 EST** (driver A: start round and K cells, run one after another;
+driver B: N=20, then N=5).
+- **Two false starts of driver A** (03:26 and 03:28, about 1 minute each) were stopped:
+  - the first to rebalance caps;
+  - the second because the driver counted the earlier attempt's ledger spend for the same run id
+    while those calls replayed for free. That inflated the projection and would have caused a
+    false abort.
+- The driver now counts only spend since the cell's launch (`Cell.t0`).
+- The partial dirs are `runs/aborted_sweep_start1_0327` and `runs/aborted_sweep_start1_0329`.
+  Their calls (about $0.02) are in the sweep total.
+
 
 ## Base and design
 

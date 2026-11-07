@@ -132,6 +132,8 @@ class Cell:
         self.tails: dict[Path, Tail] = {}
         self.ledger = Tail(LEDGER)
         self.ledger.pos = 0                      # run ids are unique: count the cell's whole spend
+        self.t0 = 0.0                            # ...since t0 (set at launch: a relaunched run id's
+                                                 # earlier spend replays from the cache, not counted)
         self.per_game: dict[str, list[int]] = {}  # game dir -> [calls, errors, turns, noop_by_error]
         self.spent = self.w_done = 0.0
         self.calls = self.errors = self.http400 = self.paid = 0
@@ -139,7 +141,7 @@ class Cell:
 
     def update(self) -> None:
         for d in self.ledger.new():
-            if d.get("run_id") == self.name:
+            if d.get("run_id") == self.name and float(d.get("ts") or 0.0) >= self.t0:
                 self.spent += float(d.get("cost_usd") or 0.0)
         games = self.run_dir / "games"
         if not games.is_dir():
@@ -312,6 +314,7 @@ def main() -> int:
         cmd = [sys.executable, "-m", "swarm.run", "--config", f"configs/{name}.yaml", "--run-id", cell.name,
                *args.sets]
         out = open(RUNS / f"{cell.name}.log", "a")
+        cell.t0 = time.time()
         proc = subprocess.Popen(cmd, cwd=REPO, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         log(f"START {cell.name} pid/pgid {proc.pid} cap ${cell.cap:.2f} seeds {cell.seeds} rounds {cell.rounds}")
         last = 0.0
