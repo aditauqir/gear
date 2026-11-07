@@ -1,0 +1,4 @@
+research/pdfs/
+*.pdf
+*.gz
+*.safetensors

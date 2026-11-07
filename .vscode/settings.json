@@ -1,0 +1,16 @@
+{
+  "files.watcherExclude": {
+    "**/runs/**": true,
+    "**/research/pdfs/**": true,
+    "**/.git/objects/**": true
+  },
+  "search.exclude": {
+    "**/runs/**": true,
+    "**/research/pdfs/**": true
+  },
+  "files.exclude": {
+    "**/runs/**": true
+  },
+  "search.followSymlinks": false,
+  "github.copilot.chat.codesearch.enabled": false
+}

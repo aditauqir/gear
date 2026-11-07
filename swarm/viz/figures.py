@@ -115,6 +115,11 @@ def network_png(g: GameTrace, title: str | None = None, seed: int = 0) -> bytes:
             gv[(d.from_agent, d.to_agent)] += 1  # type: ignore[union-attr]
     for e in g.of_type("burn"):
         bn[(e.data.actor, e.data.target)] += 1  # type: ignore[union-attr]
+    bd = Counter()
+    for e in g.of_type("action_result"):
+        act = e.data.action  # type: ignore[union-attr]
+        if getattr(act, "kind", None) == "post_board" and e.data.ok:  # type: ignore[union-attr]
+            bd[(e.actor, "BOARD")] += 1
     powers = [p for p in god_actions(g) if p["ok"] and p["target"]]
     U = nx.Graph()
     U.add_nodes_from(agents)
@@ -122,6 +127,7 @@ def network_png(g: GameTrace, title: str | None = None, seed: int = 0) -> bytes:
         U.add_edge(a, b, weight=n)
     pos = nx.spring_layout(U, seed=seed, k=1.2 / max(1, len(agents)) ** 0.5)
     pos["GOD"] = np.array([-1.35, 1.15])
+    pos["BOARD"] = np.array([1.35, 1.15])
     G = nx.DiGraph()
     G.add_nodes_from(agents)
     fig, ax = plt.subplots(figsize=(8.5, 7))
@@ -138,6 +144,8 @@ def network_png(g: GameTrace, title: str | None = None, seed: int = 0) -> bytes:
     draw(dm, C["dm"], base=0.5, alpha=0.35)
     draw(gv, C["give"])
     draw(bn, C["defect"], alpha=0.85)
+    G.add_node("BOARD")
+    draw(bd, C["board"], alpha=0.6)
     god_edges = {"message_fraud": Counter(), "cot_control": Counter()}
     for p in powers:
         god_edges[p["power"]][("GOD", p["target"])] += 1
@@ -157,10 +165,13 @@ def network_png(g: GameTrace, title: str | None = None, seed: int = 0) -> bytes:
                                linewidths=2.2)
     nx.draw_networkx_nodes(G, pos, nodelist=["GOD"], node_color=INK2, node_shape="s", node_size=700, ax=ax)
     nx.draw_networkx_labels(G, pos, labels={"GOD": "GOD"}, font_color=SURFACE, font_size=8, ax=ax)
+    nx.draw_networkx_nodes(G, pos, nodelist=["BOARD"], node_color=C["board"], node_shape="s", node_size=900, ax=ax)
+    nx.draw_networkx_labels(G, pos, labels={"BOARD": "BOARD"}, font_color=SURFACE, font_size=7, ax=ax)
     nx.draw_networkx_labels(G, {a: pos[a] + np.array([0, -0.075]) for a in agents},
                             labels={a: a for a in agents}, font_size=6.5, font_color=INK2, ax=ax)
     handles = [Line2D([], [], color=C["dm"], label="DMs"), Line2D([], [], color=C["give"], label="gives"),
                Line2D([], [], color=C["defect"], label="defects"),
+               Line2D([], [], color=C["board"], label="board posts"),
                Line2D([], [], color=C["fraud"], ls="--", label="God: forged DM"),
                Line2D([], [], color=C["cot"], ls="--", label="God: memory overwrite"),
                Line2D([], [], marker="o", ls="", color=C["a"], label="active"),

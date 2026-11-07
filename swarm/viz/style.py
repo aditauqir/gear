@@ -25,6 +25,7 @@ C = {
     "a": "#2a78d6",         # blue: branch A (God)
     "b": "#52514e",         # ink2: control B
     "noise": "#b9b8b2",
+    "board": "#12a5b8",     # teal: public board posts
 }
 
 plt.rcParams.update({
