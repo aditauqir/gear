@@ -161,6 +161,8 @@ def apply(state: GameState, actor: AgentId, action: Action, cfg: GameCfg, *,
         if isinstance(action, SendMessage):
             return state, _send(state, actor, action, cfg)
         if isinstance(action, PostBoard):
+            if not cfg.board.enabled:
+                return state, _fail(state, actor, action, "board_disabled")
             text = action.text[: cfg.max_message_chars]
             _, evs = deliver_message(state, channel="board", sender_shown=actor, text=text)
             return state, [_ok(state, actor, action), *evs]

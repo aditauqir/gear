@@ -63,6 +63,10 @@ class RunCfg(Cfg):
     max_concurrency_games: int = Field(1, ge=1)   # >1 only with enough vLLM KV (REVIEW_v2 5.1)
     branch: str = "main"                          # fork branch label (folded into seeds)
     replica: str = "0"                            # noise replica id (folded into seeds)
+    # Fork-matched noise B'' (runner.fork.noise_fork): from this round on, agent sampling seeds use
+    # the replica tag "<replica>@r<round>" (fresh sampling stream; cache keys differ), before it they
+    # are the control's (identical prefix). None = off; left out of config_hash while None.
+    resample_from_round: int | None = Field(None, ge=1)
 
 
 # ---------------------------------------------------------------- game
@@ -94,6 +98,19 @@ class BoardCfg(Cfg):
     post_costs_turn: bool = False
     anonymous: bool = False
     post_skip_rounds: int = Field(0, ge=0)
+    # Added for the board sweep; defaults = original rules, left out of config_hash at their defaults.
+    # enabled=False: no board at all (post_board is not offered and fails "board_disabled"; no board
+    #   section or board lines in observations). visible_delay_rounds=k: others see a post (board view,
+    #   view_log, grep_log) k rounds later than they otherwise would (sim: a round-r post from round r+1+k).
+    enabled: bool = True
+    visible_delay_rounds: int = Field(0, ge=0)
+
+    @model_validator(mode="after")
+    def _check(self) -> BoardCfg:
+        if not self.enabled and (self.post_costs_turn or self.anonymous or self.post_skip_rounds
+                                 or self.visible_delay_rounds):
+            raise ValueError("game.board.enabled=false cannot be combined with other board options")
+        return self
 
 
 class GameCfg(Cfg):
@@ -198,6 +215,10 @@ class OpenRouterCfg(Cfg):
     reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None   # e.g. gpt-oss: reasoning
     #   is mandatory (enabled=false is HTTP 400); send {effort: ...} instead
     provider_sort: Literal["price", "throughput", "latency"] | None = None        # OpenRouter provider.sort
+    # Provider pin (OpenRouter provider.order / allow_fallbacks). None = default routing; left out of
+    # config_hash while None (a pin changes who serves the model, so set values are hashed).
+    provider_order: list[str] | None = None
+    allow_fallbacks: bool | None = None
 
 
 class FakeCfg(Cfg):
@@ -351,8 +372,14 @@ class RunConfig(Cfg):
         d = self.model_dump(mode="json", exclude={"sweep"})
         if self.game.board == BoardCfg():
             d["game"].pop("board")
-        elif self.game.board.post_skip_rounds == 0:             # added later; same rule
-            d["game"]["board"].pop("post_skip_rounds")
+        else:
+            b = d["game"]["board"]
+            for k, default in (("post_skip_rounds", 0), ("enabled", True),     # added later; same rule
+                               ("visible_delay_rounds", 0)):
+                if b[k] == default:
+                    b.pop(k)
+        if d["run"]["resample_from_round"] is None:                 # added later; board rule
+            d["run"].pop("resample_from_round")
         # Operational knobs are not game semantics: hash them as fixed values (HASH_OPERATIONAL), so
         # raising a cap, budget or concurrency, renaming a run or moving the cache keeps every hash,
         # game id, seed and cache key. Configs at the base defaults keep their pre-change hash
@@ -367,7 +394,7 @@ class RunConfig(Cfg):
         if not self.reasoning.salvage_truncated:                  # added later; board rule
             d["reasoning"].pop("salvage_truncated")
         orr = d["llm"]["openrouter"]
-        for k in ("reasoning_effort", "provider_sort"):           # added later; board rule
+        for k in ("reasoning_effort", "provider_sort", "provider_order", "allow_fallbacks"):  # board rule
             if orr[k] is None:
                 orr.pop(k)
         return sha256_hex(canonical_json(d))

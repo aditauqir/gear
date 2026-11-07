@@ -83,3 +83,57 @@ def test_control_god_default_unchanged() -> None:
     assert b.cfg.god.kind == "none" and b.cfg.god.schedule == cfg.god.schedule
     assert a.game_id == b.game_id == build_specs(cfg, RunnerOpts.from_dict(
         {"fork": {"enabled": True, "noise_replica": True, "control_god": None}}))[0][1].game_id
+
+
+def test_noise_fork_branch_shares_prefix_then_resamples() -> None:
+    """B'' (fork.noise_fork): same game_id/world as the pair; agent seeds equal to the control's
+    before God's first scheduled round and different from it on."""
+    from swarm.rng import derive_seed
+    from swarm.runner.spec import fork_round
+
+    over = ["run.n_games=1", "runner.fork.noise_fork=true", "runner.fork.noise_replica=false",
+            "god.start_round=8", "god.schedule=[{round: 8, power: message_fraud}, {round: 10, power: cot_control}]"]
+    cfg, opts = load_experiment(GRID_K2, over)
+    assert fork_round(cfg) == 8
+    a, b, nf = build_specs(cfg, opts)[0]
+    assert (a.branch, b.branch, nf.branch) == ("god", "nogod", "noisefork")
+    assert nf.game_id == b.game_id == a.game_id and nf.world_seed == b.world_seed
+    assert nf.cfg.god.kind == "none" and nf.cfg.run.resample_from_round == 8
+    assert nf.cfg.run.replica == b.cfg.run.replica
+    # the seed rule used by LLMAgent._request (checked on real requests in the next test)
+    def seed(c, rnd):
+        r = c.run
+        rep = r.replica if (r.resample_from_round is None or rnd < r.resample_from_round) \
+            else f"{r.replica}@r{r.resample_from_round}"
+        return derive_seed(r.seed, b.game_id, "turn", "x", rnd, 0, branch=r.branch, replica=rep)
+    assert all(seed(nf.cfg, r) == seed(b.cfg, r) for r in range(1, 8))
+    assert all(seed(nf.cfg, r) != seed(b.cfg, r) for r in range(8, 21))
+    # default: no B''; hash-neutral at None
+    cfg0, opts0 = load_experiment(GRID_K2, ["run.n_games=1"])
+    assert [s.branch for s in build_specs(cfg0, opts0)[0]] == ["god", "nogod", "noise"]
+    explicit = load_experiment(GRID_K2, ["run.n_games=1", "run.resample_from_round=null"])[0]
+    assert cfg0.config_hash() == explicit.config_hash()
+
+
+def test_noise_fork_resamples_in_real_agent_requests() -> None:
+    """LLMAgent seeds: B'' equals the control before F, differs from F on (checked on real requests)."""
+    from swarm.agents.llm_agent import LLMAgent
+    from swarm.config import RunConfig
+    from swarm.prompts import load_prompt_set
+    from swarm.schema import ChatMessage
+
+    def mk(rfr):
+        cfg = RunConfig.model_validate({"run": {"resample_from_round": rfr}})
+        ag = LLMAgent.__new__(LLMAgent)
+        ag.cfg, ag.agent_id = cfg, "ann"
+        ag.role = cfg.roles.agent
+        ag.cot_mode = cfg.reasoning.cot_mode
+        ag.prompts = load_prompt_set("agent/v1")
+        return ag
+
+    msgs = [ChatMessage(role="user", content="x")]
+    base, nf = mk(None), mk(5)
+    for rnd in range(1, 9):
+        s0 = base._request(msgs, game_id="g1", round=rnd, attempt=0, purpose="turn").seed
+        s1 = nf._request(msgs, game_id="g1", round=rnd, attempt=0, purpose="turn").seed
+        assert (s0 == s1) == (rnd < 5)

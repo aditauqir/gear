@@ -4,13 +4,14 @@ process group, and kills the group when an abort condition fires.
     OPENROUTER_API_KEY=... PYTHONNOUSERSITE=1 python infra/grid_driver.py \
         --cell grid_oss_sim_k2:1.35:3 --cell grid_oss_sim_k6:0.95:2 --seeds 16 --rounds 20
 
---cell name:cap_usd:branches_per_seed[:k=v,...] (config configs/<name>.yaml, run id <name>; cap = the
+--cell name:cap_usd:branches_per_seed[:k=v,...] (config configs/<name>.yaml, run id <name> with "/" -> "_"; cap = the
 cell's llm.budget_usd). Optional k=v (only change the projection's cost model): n=<agents> (default 10;
 calls per round, prompt growth g=<tok/round> (default 55*n) capped at pcap=<tokens> (default 14000)), rounds=<max_rounds> (default --rounds), seeds=<the
 config's run.n_games> (default --seeds), shared=<rounds
 the forks share before God's first act> (default 2), free=1 (the control branch replays from the cache
 via runner.fork.control_god and the God branch's shared prefix is cached too: only God's rounds > shared
-are paid). Abort conditions, checked every 10 s (incremental reads of the run's files):
+are paid), paid=<branches paid from round shared+1 on> with ctl=<branches paid in full> (overrides free;
+e.g. god + B'' on a cached control: paid=2,ctl=0; a game cell with B'': paid=2,ctl=1). Abort conditions, checked every 10 s (incremental reads of the run's files):
   ram        MemAvailable < 15 GB
   rg         more than 20 processes named rg
   ledger     global ledger total >= --ledger-stop (default 5.70)
@@ -125,7 +126,9 @@ class Cell:
         k = int(o.get("shared", 2))
         per_branch = sum(n * call_weight(r, n, self.g, self.pcap) for r in range(1, rounds + 1))
         shared = sum(n * call_weight(r, n, self.g, self.pcap) for r in range(1, k + 1))  # replayed by forks
-        if int(o.get("free", 0)):
+        if "paid" in o:          # paid branches from round k+1 on, plus ctl full branches
+            self.w_total = seeds * (int(o["paid"]) * (per_branch - shared) + int(o.get("ctl", 0)) * per_branch)
+        elif int(o.get("free", 0)):
             self.w_total = seeds * (per_branch - shared)                  # only God's rounds > k are paid
         else:
             self.w_total = seeds * (branches * per_branch - (branches - 1) * shared)
@@ -299,7 +302,8 @@ def main() -> int:
         cells = []
         for spec in args.cell:
             name, cap, branches, opts = parse_cell(spec)
-            cells.append(Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds, opts))
+            cells.append(Cell(args.run_prefix + name.replace("/", "_"), float(cap), int(branches), args.seeds,
+                              args.rounds, opts))
         return attach(cells, args.ledger_stop)
     fake = any(s.startswith("roles.agent.backend=fake") for s in args.sets)
     if not fake and not os.environ.get("OPENROUTER_API_KEY"):
@@ -307,7 +311,8 @@ def main() -> int:
         return 2
     for spec in args.cell:
         name, cap, branches, opts = parse_cell(spec)
-        cell = Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds, opts)
+        cell = Cell(args.run_prefix + name.replace("/", "_"), float(cap), int(branches), args.seeds,
+                    args.rounds, opts)   # name may be a subpath (configs/sweep/x.yaml -> run id sweep_x)
         if (r := cell.abort_reason(args.ledger_stop)) is not None:
             log(f"NOT starting {name}: {r}")
             return 3

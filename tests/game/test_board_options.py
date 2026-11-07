@@ -54,8 +54,9 @@ def test_defaults_off_and_hash_unchanged():
     d = cfg.model_dump(mode="json", exclude={"sweep"})
     d["game"].pop("board")
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD   # cap is hashed as legacy $2
-    for k in ("reasoning_effort", "provider_sort"):                     # later fields, off by default
+    for k in ("reasoning_effort", "provider_sort", "provider_order", "allow_fallbacks"):  # later, off
         d["llm"]["openrouter"].pop(k)
+    d["run"].pop("resample_from_round")                                 # later field, off by default
     d["reasoning"].pop("salvage_truncated")
     assert cfg.config_hash() == sha256_hex(canonical_json(d))       # pre-option hash preserved
     on = RunConfig.model_validate({"game": {"board": {"anonymous": True}}})
@@ -263,9 +264,11 @@ def test_post_skip_combines_with_anonymous_and_prompt_rules():
 def test_post_skip_hash_unchanged_at_default():
     base = RunConfig.model_validate({"game": {"board": {"post_costs_turn": True}}})
     d = base.model_dump(mode="json", exclude={"sweep"})
-    d["game"]["board"].pop("post_skip_rounds")
+    for k in ("post_skip_rounds", "enabled", "visible_delay_rounds"):    # later board fields, at defaults
+        d["game"]["board"].pop(k)
+    d["run"].pop("resample_from_round")
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD
-    for k in ("reasoning_effort", "provider_sort"):
+    for k in ("reasoning_effort", "provider_sort", "provider_order", "allow_fallbacks"):
         d["llm"]["openrouter"].pop(k)
     d["reasoning"].pop("salvage_truncated")
     assert base.config_hash() == sha256_hex(canonical_json(d))

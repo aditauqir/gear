@@ -70,7 +70,8 @@ def _build_client(cfg: RunConfig, role: str, run: RunWriter, cache: Any) -> Any:
                                 ledger=GlobalLedger(_abs(o.ledger_path), o.global_cap_usd),
                                 run_budget=RunBudget(cfg.llm.budget_usd), retry=cfg.llm.retry, cache=cache,
                                 recorder=run.log_llm_call, run_id=run.run_id,
-                                reasoning_effort=o.reasoning_effort, provider_sort=o.provider_sort)
+                                reasoning_effort=o.reasoning_effort, provider_sort=o.provider_sort,
+                                provider_order=o.provider_order, allow_fallbacks=o.allow_fallbacks)
     raise ValueError(f"unknown backend {backend!r}")
 
 

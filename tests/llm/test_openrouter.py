@@ -188,3 +188,28 @@ def test_live_openrouter_smoke(tmp_path):
     c = OpenRouterClient(enabled=True, ledger=GlobalLedger())
     r = run(c.chat(req(max_tokens=20, content="Reply with the word ok.")))
     assert r.text
+
+
+def test_provider_pin_and_provider_logged(tmp_path):
+    """provider_order/allow_fallbacks pin providers; the serving provider is kept on the response."""
+    seen = []
+
+    def h(r):
+        seen.append(json.loads(r.content))
+        out = body()
+        out["provider"] = "SomeProvider"
+        return httpx.Response(200, json=out)
+
+    c = mk(tmp_path, h, provider_sort="price", provider_order=["SomeProvider"], allow_fallbacks=False)
+    r = run(c.chat(req()))
+    assert seen[0]["provider"] == {"sort": "price", "order": ["SomeProvider"], "allow_fallbacks": False}
+    assert r.provider == "SomeProvider"
+    cfg = from_dict({"llm": {"openrouter": {"enabled": True, "provider_order": ["A", "B"],
+                                            "allow_fallbacks": False}}})
+    c2 = OpenRouterClient.from_cfg(cfg.llm.openrouter, api_key=SecretStr(KEY))
+    assert (c2.provider_order, c2.allow_fallbacks) == (["A", "B"], False)
+    assert from_dict({}).config_hash() == from_dict(
+        {"llm": {"openrouter": {"provider_order": None, "allow_fallbacks": None}}}).config_hash()
+    assert from_dict({}).config_hash() != cfg.config_hash()
+    plain = run(mk(tmp_path, lambda r: httpx.Response(200, json=body())).chat(req(seed=2)))
+    assert plain.provider is None

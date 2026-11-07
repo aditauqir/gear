@@ -78,7 +78,8 @@ def system_context(cfg: RunConfig) -> dict[str, Any]:
         "game": {"n_agents": g.n_agents, "max_rounds": g.max_rounds, "actions_per_turn": g.actions_per_turn,
                  "grep_enabled": g.view_log.grep_enabled, "max_message_chars": g.max_message_chars,
                  "board_costs_turn": g.board.post_costs_turn, "board_anonymous": g.board.anonymous,
-                 "board_skip_rounds": g.board.post_skip_rounds},
+                 "board_skip_rounds": g.board.post_skip_rounds, "board_enabled": g.board.enabled,
+                 "board_delay_rounds": g.board.visible_delay_rounds},
         "cot_mode": cfg.reasoning.cot_mode,
         "scratchpad": cfg.reasoning.scratchpad.enabled,
     }
@@ -117,8 +118,11 @@ class LLMAgent:
     def _request(self, messages: list[ChatMessage], *, game_id: str, round: int, attempt: int,
                  purpose: str) -> ChatRequest:
         r = self.cfg.run
+        replica = r.replica
+        if r.resample_from_round is not None and round >= r.resample_from_round:
+            replica = f"{r.replica}@r{r.resample_from_round}"     # fork-matched noise B'' (RunCfg)
         seed = derive_seed(r.seed, game_id, purpose, self.agent_id, round, attempt, branch=r.branch,
-                           replica=r.replica)
+                           replica=replica)
         ph = prompt_hash(messages)
         return ChatRequest(
             call_id=make_call_id(game_id, "agent", self.agent_id, round, attempt, purpose),

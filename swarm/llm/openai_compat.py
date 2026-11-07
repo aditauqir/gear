@@ -202,7 +202,8 @@ class OpenAICompatClient:
         return ChatResponse(call_id=req.call_id, text=text, reasoning=reasoning, finish_reason=finish,
                             usage=usage, cost_usd=self._cost(data, usage), latency_s=latency,
                             cache_hit=False, retries=retries, backend=self.backend,
-                            model=str(data.get("model") or self.model))
+                            model=str(data.get("model") or self.model),
+                            provider=(str(data["provider"]) if data.get("provider") else None))
 
     async def _call_with_retry(self, req: ChatRequest) -> ChatResponse:
         sem, client = self._loop_state()

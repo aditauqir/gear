@@ -68,6 +68,7 @@ class ChatResponse(Record):
     retries: int = 0
     backend: str = ""
     model: str = ""
+    provider: str | None = None        # upstream provider that served the call (OpenRouter), if reported
 
 
 class LLMCall(Record):

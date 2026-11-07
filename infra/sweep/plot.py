@@ -33,7 +33,8 @@ FACTORS = {
     "rounds": ("Rounds per game", [
         ("grid_oss_sim_k2", 20, True), ("sweep_r40", 40, False)]),
 }
-METRICS = {"welfare": "Δ welfare (God − no-God)", "final_cum": "Δ divergence: share of agents ever diverged"}
+METRICS = {"welfare": "Δ welfare (God − no-God)",
+           "post_fork_mean_frac": "divergence: share of agents acting\ndifferently per round after the fork"}
 
 
 def plot(stats: dict, factor: str, metric: str, out: Path) -> bool:

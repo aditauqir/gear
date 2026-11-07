@@ -17,6 +17,10 @@ Timing (all by global turn index t; `prev` = AgentState.last_obs_turn, -1 before
   -> every viewer except the victim gets it once at release (the victim got a notice at t_d+1).
   Wrong defects follow the same path (ok=False on the line).
 - content="none": empty log, grep disabled.
+- game.board.visible_delay_rounds = k: a board post stamped at slot s is treated as stamped at
+  s + k * n_agents (k rounds later) everywhere an agent can see it (board view, view_log window,
+  grep_log history). k = 0 is the original rule. (game.board.enabled = false: no posts exist, since
+  post_board fails "board_disabled".)
 - game.board.anonymous: board posts carry no author anywhere an agent can see them (board view
   sender = ANON_SENDER, board_post log lines with actor=None, which also covers grep_log and the
   context built from observations). Truth (Message.sender_shown / true_sender) is untouched.
@@ -56,6 +60,13 @@ ANON_SENDER = "(anonymous)"   # board-view sender under game.board.anonymous
 
 def _new_since(stamp: int, viewer_turn: int, prev: int) -> bool:
     return prev <= stamp < viewer_turn
+
+
+def _shown_stamp(m: Message, cfg: GameCfg) -> int:
+    """The slot from which agents treat message m as posted (board posts: + visible_delay_rounds)."""
+    if m.channel == "board" and cfg.board.visible_delay_rounds:
+        return m.turn_index + cfg.board.visible_delay_rounds * cfg.n_agents
+    return m.turn_index
 
 
 def _msg_view(m: Message, cfg: GameCfg) -> AgentMessageView:
@@ -130,10 +141,10 @@ def _log_lines(state: GameState, viewer: AgentId, cfg: GameCfg,
         return []
     out: list[tuple[int, int, int, LogLine]] = []
     for idx, m in enumerate(state.messages):
-        if in_window(m.turn_index):
+        if in_window(_shown_stamp(m, cfg)):
             line = _message_line(m, cfg)
             if line is not None:
-                out.append((m.turn_index, 0, idx, line))
+                out.append((_shown_stamp(m, cfg), 0, idx, line))
     mode = cfg.view_log.defect_visibility
     for idx, rec in enumerate(state.history):
         if rec.kind not in ("give", "defect"):
@@ -170,7 +181,7 @@ def observe(state: GameState, agent: AgentId, cfg: GameCfg, turn_idx: int | None
     inbox = [_msg_view(m, cfg) for m in state.messages
              if m.channel == "dm" and m.receiver == agent and _new_since(m.turn_index, t, prev)]
     board = [_msg_view(m, cfg) for m in state.messages
-             if m.channel == "board" and m.sender_shown != agent and _new_since(m.turn_index, t, prev)]
+             if m.channel == "board" and m.sender_shown != agent and _new_since(_shown_stamp(m, cfg), t, prev)]
     notices = []
     for n in state.notices:
         if n.agent != agent:
