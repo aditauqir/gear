@@ -44,17 +44,17 @@ We contribute:
 2. **A paired-fork measurement design** (Section 3.4). Each world is played in a God branch and a no-God branch. The two branches share sampling seeds and use a response cache that deduplicates identical requests, so they are identical by construction until God first acts. A third God-free replica with fresh seeds measures how far two adversary-free runs drift apart from sampling alone. The effect of God then becomes a per-world paired difference, with bootstrap confidence intervals, a sign-flip permutation test, a stated minimum detectable effect, and a per-round divergence curve set against the noise floor.
 3. **A pre-registered experiment grid** on 16 shared worlds with 10 gpt-oss-120b agents (Section 4). It tests whether a two-intervention God changes welfare (H1), whether tripling the budget increases the effect (H3), and whether simultaneous vs. sequential turns change it (H2). Health checks and abort rules were fixed before launch.
 
-We find [RESULT: one-sentence headline for H1 with CI and noise-floor comparison]. [RESULT: one sentence on H3 and H2]. [RESULT: one sentence on the ripple curve: does divergence exceed the noise floor, and for how many rounds]. Section 6 discusses what these results do and do not license. Appendix A covers limitations and dual-use considerations.
+We find [RESULT: headline for H1 with CI vs. noise floor]. [RESULT: H3, H2, and the ripple curve vs. the floor]. Appendix A covers limitations and dual-use considerations.
 
 ## 2 Related Work
 
-**LLM agents in games and social simulations.** Generative Agents [2] showed that memory, reflection and planning on top of an LLM give believable social behaviour in a 25-agent sandbox. Concordia [3] provides a library for generative agent-based models in which a Game Master entity resolves actions. Our rules engine plays the referee role, and God is kept separate from it so that interventions have clean labels. Akata et al. [4] had LLMs play finitely repeated 2×2 games and found good play in self-interested games such as the iterated Prisoner's Dilemma but poor play in coordination games. GovSim [5] places LLM agents in a common-pool resource dilemma and reports that most models fail to sustain the resource, with the best one succeeding in fewer than 54% of runs. Among Us [6] uses a social-deduction game in which deception arises from the agents' own objectives, and evaluates probes for detecting it. Like these works, we use a game as a controlled environment. Unlike them, we add an *external* adversary with a budget and measure its effect counterfactually.
+**LLM agents in games and social simulations.** Generative Agents [2] gave LLM agents memory, reflection and planning in a 25-agent sandbox. Concordia [3] resolves agents' actions through a Game Master; our rules engine plays that role, with God kept separate so interventions have clean labels. Akata et al. [4] had LLMs play finitely repeated 2×2 games and found good play in self-interested games such as the iterated Prisoner's Dilemma but poor play in coordination games. GovSim [5] places LLM agents in a common-pool resource dilemma and reports that most models fail to sustain the resource, with the best one succeeding in fewer than 54% of runs. Among Us [6] studies deception that arises from agents' own objectives. Unlike these works, we add an *external*, budgeted adversary and measure its effect counterfactually.
 
 **Multi-agent risk.** Dafoe et al. [7] set out cooperative AI as a research agenda. Hammond et al. [1] give a taxonomy of three failure modes (miscoordination, conflict, collusion) and seven risk factors, including network effects and multi-agent security. Carichon et al. [21] argue that alignment in multi-agent systems is a dynamic, social process and call for dedicated testbeds and metrics. Our environment answers that call for one risk factor: the spread of a localized compromise through an incentive-driven population.
 
 **Spread of compromise between agents.** Greshake et al. [11] showed that indirect prompt injection blurs the line between data and instructions in LLM-integrated applications, including self-propagating "worming". Prompt Infection [8] studied LLM-to-LLM injection that spreads through multi-agent systems like a virus, found high susceptibility even when agents do not share all messages, and proposed LLM Tagging as a defence that works in combination with existing safeguards. Agent Smith [9] showed that one adversarial image in the memory of one randomly chosen multimodal agent can jailbreak a simulated population of up to one million agents. The Multi-Agent Security Tax [10] compromises one agent in a collaborating team and finds that memory "vaccination" and safety instructions reduce the spread of malicious instructions but also weaken collaboration. AgentPoison [12] poisons an agent's long-term memory or knowledge base with triggered backdoors; our CoT control is a minimal, untriggered form of that threat model. Jones et al. [13] show that combinations of individually safe models can be misused, another reason to evaluate systems rather than single models. Our design differs from these in three ways. (i) The injected content is an ordinary in-game lie (a fake offer, a false suspicion), not an instruction to replicate. (ii) The outcome is the economic welfare of a mixed-motive population, not an infection count. (iii) The effect is estimated against a paired counterfactual branch of the same world and a measured noise floor.
 
-**Oversight, collusion and failure attribution.** AI Control [14] evaluates safety protocols that must hold even when an untrusted model deliberately subverts them. Secret Collusion [15] formalizes steganographic collusion among agents and finds limited current capability. HELIOS [16] detects collusion with per-agent activation probes. MAST [17] gives a 14-mode taxonomy of multi-agent system failures from more than 1,600 annotated traces. Who&When [18] frames automated failure attribution (which agent, which step) and reports low step-level accuracy for current methods. Because God's interventions are logged with exact ground truth and fork counterfactuals, our environment yields labels for this kind of attribution and monitoring work. We do not evaluate monitors here.
+**Oversight, collusion and failure attribution.** AI Control [14] evaluates safety protocols that must hold even when an untrusted model deliberately subverts them. Secret Collusion [15] formalizes steganographic collusion among agents and finds limited current capability. HELIOS [16] detects collusion with per-agent activation probes. MAST [17] gives a 14-mode taxonomy of multi-agent system failures from more than 1,600 annotated traces. Who&When [18] frames automated failure attribution (which agent, which step) and reports low step-level accuracy for current methods. God's logged interventions and fork counterfactuals give exact labels for such attribution and monitoring work, which we leave to future work.
 
 **Evaluation pitfalls.** LLM behaviour can be highly sensitive to meaning-preserving changes in prompt format [19]. Game evaluations are therefore exposed to framing effects (for example, an action called "defect"). We discuss this in Appendix A. Our paired design keeps the prompt fixed across branches, so framing shifts levels but cannot by itself create a God-vs-no-God difference.
 
@@ -143,7 +143,7 @@ Each agent turn is one LLM call returning a JSON object `{"thought", "note", "ac
 - a 14,000-token context budget under a truncating policy;
 - provider routing sorted by price, with OpenRouter's normal fallbacks.
 
-Only the reply's content is parsed. The model's separate reasoning stream is logged but never fed back. The routing means calls may be served by different providers [CHECK: which providers and quantizations served the grid, from `llm_calls.jsonl`]. We treat this as a source of noise shared by all branches (Appendix A).
+Only the reply's content is parsed; the native reasoning stream is logged but never fed back. Calls may be served by different providers [CHECK: providers and quantizations, from `llm_calls.jsonl`], a noise source shared by all branches (Appendix A).
 
 **Game settings (all cells).**
 - N = 10 agents, 20 rounds.
@@ -158,28 +158,28 @@ Only the reply's content is parsed. The model's separate reasoning stream is log
 | Cell | Turn mode | God schedule (K) | Branches per world | Worlds | Planned hard cap |
 |---|---|---|---|---|---|
 | G1 | simultaneous | fraud r3, CoT r5 (K=2) | A, B, B′ | 16 | $1.35 |
-| G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) [CHECK final n] | $0.55 |
+| G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) | $0.55 |
 | G3 | simultaneous | fraud r3/r5/r7, CoT r4/r6/r8 (K=6) | A, B | 16 | $0.95 |
 
-God starts in round 3, so every pair shares rounds 1-2 exactly. G2 is the sequential twin of G1: only `turn_mode` differs, and it plays the first 8 of the same worlds. The planned central cost projection for G1 + G3 was $1.62. It was built from a 10-round smoke test of the same configuration and a per-round prompt-growth model (`plan/GRID_PLAN.md`). The realized cost is [RESULT: per-cell and total cost from the OpenRouter ledger].
+God starts in round 3, so every pair shares rounds 1-2 exactly. G2 is the sequential twin of G1: only `turn_mode` differs. It plays worlds 0-7, the same worlds as G1 and G3 (run id `r2_grid_oss_seq_k2`), so the sim-vs-seq comparison (H2) has n = 8 and is markedly lower-powered than H1 (see the power table). The planned central cost projection for G1 + G3 was $1.62, from a 10-round smoke test and a prompt-growth model (`plan/GRID_PLAN.md`). The realized cost is [RESULT: per-cell and total cost from the OpenRouter ledger].
 
 **Hypotheses (fixed before launch).**
 - **H1 (primary):** in G1, God changes welfare (paired d_s, n = 16).
 - **H0 / noise floor:** the G1 B′ − B distribution, reported next to every G1 effect.
 - **H1′:** God effect in G3 (n = 16).
 - **H3 (dose):** G3 Δ − G1 Δ, paired by world.
-- **H2 (turn mode):** G2 Δ − G1 Δ, paired over the 8 shared worlds.
+- **H2 (turn mode):** G2 Δ − G1 Δ, paired over the 8 shared worlds (lower-powered: n = 8).
 
-Secondary metrics are win rate, needs burned, needs lost and rounds played. Victim-level outcomes (the targeted agent's final score and win round, A vs. B) are reported descriptively.
+Secondary metrics: win rate, needs burned, needs lost, rounds played; victim-level outcomes are descriptive.
 
 **Statistics.** For each cell and metric we report:
 - the mean paired difference;
 - a 95% percentile bootstrap CI over worlds (10,000 resamples);
 - a two-sided sign-flip permutation p-value (exact for n ≤ 16).
 
-At n = 16 the smallest attainable p is 2/2^16. At n = 8 it is 2/2^8 ≈ 0.008. Interactions (H2, H3) are differences of mean deltas, bootstrapped by resampling world indices jointly, because the cells share worlds. Only H1 is confirmatory. The other four tests are exploratory, and we apply no multiplicity correction.
+At n = 8 the smallest attainable p is 2/2^8 ≈ 0.008. Interactions (H2, H3) are differences of mean deltas, bootstrapped by resampling world indices jointly, because the cells share worlds. Only H1 is confirmatory. The other four tests are exploratory, and we apply no multiplicity correction.
 
-**Power (planning values, not results).** The planning standard deviation of the paired Δwelfare is 0.19. It was estimated from four single-seed pilot deltas, which predate a bug fix (Section 5.5), so it is a rough guide only. With it, the minimum detectable effect (80% power, α = 0.05, two-sided t-test) is:
+**Power (planning values, not results).** The planning standard deviation of the paired Δwelfare is 0.19. It was estimated from four single-seed pilot deltas, which predate a bug fix (Appendix C), so it is a rough guide only. With it, the minimum detectable effect (80% power, α = 0.05, two-sided t-test) is:
 
 | Test | n | MDE (welfare) |
 |---|---|---|
@@ -220,29 +220,14 @@ A null result therefore means "no large effect", not "no effect". We will replac
 - Figure 4, right panel.
 
 ### 5.5 Qualitative traces
-The pilot runs (10 agents × 30 rounds in each turn mode, one 60-agent × 20-round run, and a 10-round smoke test) predate a ledger bug fix (commit 8ebbee7). Before the fix, an agent's own two-action turns were misrendered in its history: one action was shown twice and the other was lost. Each pilot was also a single seed with no noise replica, so we use them only to illustrate mechanics, never as evidence:
-- In the 60-agent pilot, the victim of a forged "send me a key first" message did send a key to the impersonated partner and then asked for the promised key, which never came.
-- In the same pilot, the CoT overwrite came after the victim had already burned the suspect, so it had no visible effect.
-- In the post-fix 10-round smoke test with gpt-oss-120b, the forged DM was taken up but not obeyed blindly: the victim replied with a trade offer rather than handing over a key first.
-
-[RESULT: 2-3 hand-picked but rule-selected grid traces, quoting the forged DM, the victim's next note/thought and actions, and the impersonated partner's reaction, each with its run id and world index.]
+[RESULT: one rule-selected grid trace in two sentences, with run id and world index; more traces and the pilot illustrations are in Appendix C.]
 
 ## 6 Discussion *(structure only)*
 
-- **What the main result means.** [RESULT-dependent: if H1 holds, the size relative to the MDE and the noise floor; if null, "gpt-oss-120b swarms at N=10 are robust to K=2 low-sophistication interventions within 20 rounds", with the MDE as the bound.] A null result should not be read as general robustness: the attacks are fixed templates, chosen by a heuristic, and not adapted to the victim.
-- **Why fraud and CoT control may differ.** Fraud creates a new commitment opportunity (a fake offer). CoT control rewrites a belief that the agent may already have acted on (Section 5.5 pilot). Timing relative to the victim's plan probably matters more than budget. [RESULT: is there evidence for this in the per-intervention compliance traces?]
-- **Ripple vs. noise.** [RESULT-dependent.] The cache-coupled A/B design makes early divergence attributable to God. The public action log is the channel that spreads divergence to all agents within about one round, so the curve measures *behavioural* spread, not belief contagion.
-- **Turn mode.** [RESULT-dependent; n = 8 limits H2 to large effects.]
-- **Implications for multi-agent deployments.** [Draft after results. Candidates:]
-  - Sender authentication removes message fraud by construction; memory integrity does not get that for free.
-  - Paired-fork evaluation is cheap enough (planning cost ~$0.04 per God/no-God pair at N=10 × 20 rounds) to become a standard way to report the effect of an intervention in agent swarms.
-- **Future work.**
-  - an adaptive LLM God (implemented as a stub only);
-  - signed-message and memory-integrity defences;
-  - the board-cost options;
-  - larger N and longer games;
-  - mixed-model populations;
-  - scoring the existing rule-based monitors against God's ground-truth labels (Track 4).
+- **Main result.** [RESULT-dependent: effect size relative to the MDE and the noise floor. If null: "no large effect of K=2 low-sophistication interventions at N=10 within 20 rounds", bounded by the MDE.] The attacks are fixed templates chosen by a heuristic, so a null result is not general robustness.
+- **Fraud vs. CoT control.** Fraud offers a new (fake) commitment, while CoT control rewrites a belief the agent may already have acted on (Appendix C), so timing may matter more than budget. [RESULT: evidence from the compliance traces.]
+- **Ripple vs. noise; turn mode.** [RESULT-dependent.] The public action log spreads divergence to all agents within about one round, so the curve measures *behavioural* spread, not belief contagion. H2 has n = 8 and can detect only large interactions.
+- **Implications and future work.** Sender authentication removes fraud by construction, but memory integrity does not come for free. Next steps: an adaptive LLM God, defences, the board-cost options, larger N, mixed-model populations, and scoring the existing monitors against God's labels (Track 4).
 
 ## 7 Conclusion *(draft)*
 
@@ -317,6 +302,14 @@ The released code ships only the scripted God and a stub for the LLM God. We ask
 - **Cost and resources.** All model calls went through a paid API with a hard per-run cap and a global spend ledger. The planned grid cap was $2.30 for G1 + G3 plus $0.55 for G2. Realized: [RESULT: total].
 - **Credentials.** API keys were never written to configs, logs or manifests, and a test enforces this.
 - **Honest reporting.** Every number in this paper traces to a run id. Pilots run before the bug fix are used only as qualitative illustrations and are labelled as such.
+
+## Appendix C: Qualitative traces (pilots and grid)
+The pilot runs (10 agents × 30 rounds in each turn mode, one 60-agent × 20-round run, and a 10-round smoke test) predate a ledger bug fix (commit 8ebbee7). Before the fix, an agent's own two-action turns were misrendered in its history: one action was shown twice and the other was lost. Each pilot was also a single seed with no noise replica, so we use them only to illustrate mechanics, never as evidence:
+- In the 60-agent pilot, the victim of a forged "send me a key first" message did send a key to the impersonated partner and then asked for the promised key, which never came.
+- In the same pilot, the CoT overwrite came after the victim had already burned the suspect, so it had no visible effect.
+- In the post-fix 10-round smoke test with gpt-oss-120b, the forged DM was taken up but not obeyed blindly: the victim replied with a trade offer rather than handing over a key first.
+
+[RESULT: 2-3 rule-selected grid traces, quoting the forged DM, the victim's next note/thought and actions, and the impersonated partner's reaction, each with its run id and world index.]
 
 ## Appendix B (to assemble)
 - Resolved configs for G1/G2/G3 (`runs/<cell>/config.resolved.yaml` or `configs/grid_oss_*.yaml`).
