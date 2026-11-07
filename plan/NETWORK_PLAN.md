@@ -1,17 +1,59 @@
-# NETWORK_PLAN: first real runs with the social network (N=20, 40 rounds, gpt-oss-120b)
+# NETWORK_PLAN: first real runs with the social network (N=40, 30 rounds, gpt-oss-120b)
 
-**Status (2026-11-07 12:20 EST): LAUNCHED** (two `infra/grid_driver.py` watchdogs, ≤ 8 in flight).
-Results go to `plan/NETWORK_RESULTS.md`.
+**Status (2026-11-07 12:45 EST): LAUNCHED at N=40 × 30 rounds × 6 worlds, conditions A, B and C.**
+
+Two `infra/grid_driver.py` watchdogs run at 6 in flight each (12 total), with hard caps:
+- **driver A:** `net40_complete_sim`.
+- **driver BC:** `net40_er3_contacts_sim`, then `net40_er3_known_sim`.
+
+The logs are `runs/network40_driver_{A,BC}.log`. Results go to `plan/NETWORK_RESULTS.md`.
+
+History. A first launch at N=20 × 40 rounds × 8 worlds (A, B, C, D; §7) started at 12:14. The
+operator stopped it at 12:38 when the lead relayed Iraj's "maybe try 40 agents" and asked for
+6 in flight per driver.
+- **Spend at the stop:** B $0.095 and C $0.087, all spent before round 10, so the games are unusable.
+- **The partial runs:** kept as `runs/partial_net20_*_1238`.
 
 Iraj's questions: with more agents and rounds, do we ever get **gossip**, and is **winning possible**
 when agents can only communicate along graph edges? Mechanics: CONTRACTS §9d.
 
+## 0. Why N=40 × 30 rounds and not 40 rounds, and why D was dropped
+
+The lead's rule: prefer N=40 if ≥ 6 worlds × 40 rounds of B, C and A fit in $7. If not, use N=40
+with 30 rounds. If that does not fit either, fall back to N=20.
+
+Measured at N=40 (§3):
+- In A (complete graph), the prompt grows by about **+1,900 tokens per round**. It reaches the context
+  plateau (about 16.5k gpt-oss tokens) by round 9, so almost every A call is a full-context call.
+- In B (contacts), it grows by only about **+215-265 per round**, because agents see only their
+  neighbours.
+
+Projected cost at today's price:
+
+| design | A | B | C | total |
+|---|---|---|---|---|
+| N=40 × 40 rounds × 6 worlds | $3.24 | $1.48 | $1.81 | **$6.53** |
+| N=40 × 30 rounds × 6 worlds | $2.34 | $0.91 | $1.09 | **$4.34** (caps $5.79) |
+
+- **40 rounds does not fit.** $6.53 central is over the $6.78 that was left once margins are added.
+- **30 rounds fits with caps.** $5.79 of caps + $0.22 already spent = **$6.01 ≤ $7**.
+- **D (BA hubs) is dropped.** It would cost about $1.2 more.
+
+**One line for Iraj:** we went to N=40 at 30 rounds, not 40. At N=40 the complete-graph baseline
+fills the whole context window from round 9, so each of its calls costs about 2× an N=20 call. 40
+rounds would have cost $6.5 against the $7 cap.
+
+Context settings are identical across A, B and C: the base `context.budget_tokens` of 14000
+(Qwen-tokenizer count, about 16.5k gpt-oss tokens), the same as every earlier grid and sweep run.
+It was not tightened, because N=40 fits without that.
+
 ## 1. Design
 
-All four conditions share these settings:
-- **Game:** N=20 agents, 40 rounds, simultaneous turns (reshuffled), `winner_policy: continue`.
-- **Worlds:** `run.seed 1` × game_idx 0-7. The deal, the needs and the agent names are identical
-  across conditions; this was checked on the dry runs.
+All three conditions share these settings:
+- **Game:** N=40 agents, 30 rounds, simultaneous turns (reshuffled), `winner_policy: continue`.
+  There are 5 keys and 3 needs per agent, and 2 copies of each of the 100 infos.
+- **Worlds:** `run.seed 1` × game_idx 0-5. The deal, the needs and the names are identical across
+  conditions (checked on the dry runs).
 - **Graph:** it has its own seeded stream, so B and C play the **same ER graph** per world.
 - **Branch:** one no-God branch per world (`runner.fork.only_branches: [nogod]`). The questions are
   about gossip and solvability, not about God.
@@ -20,97 +62,129 @@ All four conditions share these settings:
 
 | cond | config | graph | mode | board | priority |
 |---|---|---|---|---|---|
-| A | `configs/net20_complete_sim.yaml` | complete | – | global | 3 (baseline) |
-| B | `configs/net20_er3_contacts_sim.yaml` | Erdős–Rényi, mean degree 3 (realized 2.5-3.7, max 5-7), connected | contacts | neighbours | 1 |
-| C | `configs/net20_er3_known_sim.yaml` | same ER graph as B | known_ids | neighbours | 2 |
-| D | `configs/net20_ba_known_sim.yaml` | Barabási–Albert m=2 (hubs: mean degree 3.6, max 8-13) | known_ids | neighbours | 4 |
+| A | `configs/net40_complete_sim.yaml` | complete | – | global | 3 (baseline) |
+| B | `configs/net40_er3_contacts_sim.yaml` | Erdős–Rényi, mean degree 3 (connected). Realized: mean degree 2.9-3.65, max degree 7-9, average path 2.9-3.4, diameter 6-8, clustering 0.03-0.16 | contacts | neighbours | 1 |
+| C | `configs/net40_er3_known_sim.yaml` | same ER graph as B | known_ids | neighbours | 2 |
 
-**Why `board.scope: neighbors` in B, C and D.**
-- **B:** a global board lets any agent broadcast to all 20 players and read everyone's posts. Only
+**Why `board.scope: neighbors` in B and C.**
+- **B:** a global board lets any agent broadcast to all 40 players and read everyone's posts. Only
   the trades would then be local. "Communicate only along edges" requires that the board be local too.
-- **C and D:** a global board reveals every poster's name to everyone on the first round, so names
-  would not need to diffuse at all and the diffusion question would be void.
+- **C:** a global board reveals every poster's name to everyone on the first round, so the names
+  would not need to diffuse at all.
 - **Cost:** with a neighbour-scoped board, the only way to reach a non-neighbour in B is a relay
-  through intermediaries, and in C or D it is learning the name first. That is exactly what we
-  want to measure.
+  through intermediaries, and in C it is learning the name first.
 
 ## 2. Checks before launch ($0)
 
-- **FakeLLM dry runs** (`runs/fake_net20_*`): all four configs, 8 worlds × 40 rounds. Every run
-  exited 0, all games ended `done` at 40 rounds, and `swarm.analysis.invariants` reported
-  **0 violations** on all four (network check included).
-- **Prompt:** the rendered prompt shows the known_ids RULES line, the "board is local" line and
-  "Players you know: …".
-- **Global ledger cap:** raised from $8 to **$20** (`swarm/config.py`, `configs/base.yaml`,
-  `configs/grid_oss120b_base.yaml`). It is hash-neutral, because the cap is hashed as the fixed
-  $2. `tests/test_config.py` and `tests/game/test_board_options.py` pass, and so does the full
-  suite (minus `tests/viz`).
+**FakeLLM dry runs** (`runs/fake_net40_*`): 6 worlds × 30 rounds × 40 agents per config. Every run
+exited 0, all games ended `done`, and `swarm.analysis.invariants` reports **0 violations**.
 
-## 3. Smoke (paid): 1 world, 5 rounds, A and B (`runs/smoke_net20_*`)
+**Invariant checker fix** (`swarm/analysis/invariants/prompts.py`):
+- **The false positive:** at N=40 there are 100 infos with 4-digit key values, so values repeat
+  across infos. For example, in world 0 the value 4608 is the key of both info 54 and info 68. The
+  "system line shows a key it never held" check matched on the value alone, so it fired 204 false
+  positives.
+- **The fix:** a value the agent itself held under another info no longer counts as a leak. The
+  game is unaffected, because keys are (info, key) pairs. The invariant tests pass, and the N=20
+  runs still show 0 violations.
 
-| | A complete | B ER3 contacts |
-|---|---|---|
-| calls / cost | 104 / $0.0075 | 102 / $0.0045 |
-| prompt tokens mean r1 → r5 | 733 → 4609 (≈ +970/round) | 739 → 1790 (≈ +265/round) |
-| completion mean | 239-525 | 223-404 |
-| errors / parse failures / finish=length | 0 / 1 / 4 | 0 / 0 / 0 |
-| provider | PrimeIntellect 104 | PrimeIntellect 101, Near AI 1 |
+**Global ledger cap:** raised from $8 to $20 (`swarm/config.py`, `configs/base.yaml`,
+`configs/grid_oss120b_base.yaml`). The change is hash-neutral, because the cap is hashed as the fixed $2. The hash
+tests pass, and so does the full suite (minus `tests/viz`).
 
-A local view (contacts, local board and local action log) makes prompts grow about **3.7× more
-slowly**.
+## 3. Smokes (paid)
 
-For later rounds, `sweep_n20` (N=20 complete, 20 rounds) supplies the data:
-- prompts plateau at about **16-17k gpt-oss tokens** around r16. The 14,000 context budget is
-  counted with the Qwen tokenizer, which explains the gap.
-- cost per call there is **$0.00027**.
-- Fitted cost model: cost/call ≈ prompt × $0.0155/M + $0.000018. It is ×1.2 low at small prompts,
-  so the projection below applies ×1.2 to B, C and D.
+- **N=20:** 1 world, 5 rounds (`runs/smoke_net20_*`).
+- **N=40:** 1 world, 4 rounds (`runs/smoke_net40_*`; 12 in flight during this smoke).
 
-## 4. Projection and caps
-
-| cond | assumed prompt growth | central per branch | central (8 worlds) | hard cap (`llm.budget_usd`) |
+| | N=20 A | N=20 B | N=40 A | N=40 B |
 |---|---|---|---|---|
-| B | +265 tok/round (smoke) | $0.105 | $0.84 | $1.21 |
-| C | +350 (guess: DMs from learned names) | $0.130 | $1.04 | $1.47 |
-| A | +1000, plateau 16.5k at r17 (smoke + sweep_n20) | $0.196 | $1.57 | $2.16 |
-| D | +400 (guess: hubs see more posts) | $0.144 | $1.15 | $1.62 |
-| **total** | | | **$4.60** | **$6.46** |
+| calls / cost | 104 / $0.0075 | 102 / $0.0045 | 176 / $0.0192 | 164 / $0.0077 |
+| prompt mean r1 → last | 733 → 4609 | 739 → 1790 | 822 → 6431 | 738 → 1377 |
+| growth per round | ≈ +970 | ≈ +265 | ≈ +1,870 | ≈ +215 |
+| cost per call, last round | $0.000112 | $0.000056 | $0.000168 | $0.000059 |
+| errors / parse failures / length | 0 / 1 / 4 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
+| provider (fallback) | PI 104 | PI 101, Near AI 1 | PI 168, Near AI 8 (4.5%) | PI 152, Near AI 12 (7.3%) |
 
-- **Caps:** each cap is 1.3 × the central projection + $0.12. The $0.12 is RunBudget's pre-call
-  reservation: 160 pending calls × about $0.00066 at the 0.03/0.15 $/M estimates (SWEEP_PLAN
-  incident 1).
-- **This task's spend:** at most $0.012 (smoke) + $6.46 (caps) = **$6.47 ≤ $7.00**.
-- **Ledger:** it was $7.692 before this task. Worst case it reaches **$14.17**, below the $14.80
-  limit. The drivers stop at **$14.69** ($7.692 + $7.00), and that count includes other agents' spend.
-- **If money runs short:** cut D first, then A (the sweep_n20 complete-graph worlds give a partial
-  baseline), then C. B is never cut.
+PI = PrimeIntellect.
 
-## 5. Launch
+**Cost model:** cost per call ≈ prompt × $0.021/M + completion × $0.077/M. Those are
+PrimeIntellect's current list prices, and the model matches the smoke within 5%.
 
-There are two drivers, each with OpenRouter `max_concurrency` 4, so at most 8 calls are in flight.
-- **Driver 1:** B, then A.
-- **Driver 2:** C, then D.
+**Plateau:** prompts flatten at about 16.2k (mean) to 17.4k (max) gpt-oss tokens, from
+`sweep_n20` r16-20.
 
-So the priority cells B and C finish first.
+## 4. Provider prompt caching (Iraj's "can we not do more compaction?")
 
-Wall-time estimate:
-- about 6,400 calls per cell, at about 4 / 7 s per driver.
-- B and C: ≈ 2-2.5 h. A and D: ≈ 3 h more.
-- **ETA ≈ 18:00-18:30 EST.**
+**OpenRouter pricing** (`/api/v1/models/openai/gpt-oss-120b/endpoints`, 12:30 EST):
+- PrimeIntellect (fp4) supports implicit caching: prompt $0.021/M, **cache read $0.019/M (−10%)**,
+  completion $0.077/M.
+- Near AI caches at $0.015/M, half its $0.03/M prompt price, but its completions cost $0.15/M.
+- Caching does not lower the cost on any provider below PrimeIntellect's.
+
+**Probe** (`probe_cache_net20`, $0.0002): the same late-round B prompt (2,822 tokens) was sent
+3× to PrimeIntellect only.
+- **Cache hit:** `prompt_tokens_details.cached_tokens` = 2,816 on all three calls. The first call
+  hit too, because the game had just sent that exact prompt.
+- **Billed:** prompt cost $5.363e-5 = 2,816 × $0.019/M + 6 × $0.021/M.
+- **So caching already applies.**
+
+**Cost with and without caching:**
+- Today our layout keeps only the system prompt (≈ 650 tokens) as a stable prefix. The user
+  message opens with "You are X. Round r of R.", which breaks the prefix every round.
+- A template that moved the volatile header last could cache most of the growing history. At
+  PrimeIntellect's −10% cache price, that saves at most **≈ 7% per call** (input is about 75% of
+  the cost). At the plateau that means about $0.00038 → about $0.00035 per call, and about $0.3
+  on this whole experiment.
+- History truncation at the context cap also moves the prefix on every round at the plateau, so
+  the realistic saving is smaller still.
+
+**Decision: no template change.** It would change the rendered prompts for an at most 7% saving,
+and the per-call logs do not record `cached_tokens`. The measured per-round cost, with
+caching as it already happens, is in §3. The "without caching" price is at most 10% higher on the
+input part.
+
+## 5. Projection and caps (N=40, 30 rounds, 6 worlds)
+
+| cond | assumed prompt growth | central per branch | central (6 worlds) | hard cap (`llm.budget_usd`) |
+|---|---|---|---|---|
+| A | +1,900 tok/round, plateau 16.2k from r9 | $0.39 | $2.34 | $2.97 |
+| B | +265 (smoke: +215) | $0.151 | $0.91 | $1.30 |
+| C | +350 (guess: DMs from learned names) | $0.18 | $1.09 | $1.52 |
+| **total** | | | **$4.34** | **$5.79** |
+
+- **Caps:** 1.2-1.25 × the central projection + $0.16. The $0.16 covers RunBudget's pre-call
+  reservation: 240 pending calls × about $0.00066 (SWEEP_PLAN incident 1).
+- **Already spent by this task:** $0.221. That is the smokes ($0.039), the probe, and the stopped
+  N=20 B and C ($0.182).
+- **Task worst case:** $0.22 + $5.79 = **$6.01 ≤ $7.00**.
+- **Ledger:** $7.913 at launch, so its worst case is **$13.70**, below $14.80. The drivers stop at
+  **$14.69** ($7.692 + $7.00).
+
+## 6. Launch (as run, 12:45:17 EST)
+
+Two drivers run at `max_concurrency` 6 each, 12 in flight in total, the same setting for every
+condition. Earlier tonight, 12 in flight sent about 4% of calls to the fallback provider.
+- **Driver A:** `net40_complete_sim`, the slowest cell (full-context prompts).
+- **Driver BC:** B, then C.
+
+Wall-time estimate: 7,200 calls per cell. A takes about 3.5 h; B and C take about 2 h each.
+**ETA ≈ 16:45-17:15 EST.** If the fallback share goes above 15%, or the projection jumps, the
+drivers drop back to 4 in flight (a restart that replays from the cache).
 
 ```bash
 cd ~/projects/swarm_hackathon
-# driver 1 (B then A); driver 2 is the same with C (g=350, cap 1.47) then D (g=400, cap 1.62), log _2
 OPENROUTER_API_KEY="$(cat "/home/iraj/projects/swarm_data?/.planAdemoenv")" PYTHONNOUSERSITE=1 \
   setsid nohup conda run -n swarm --no-capture-output python infra/grid_driver.py \
-  --cell net20_er3_contacts_sim:1.21:1:n=20,g=265,pcap=16500 \
-  --cell net20_complete_sim:2.16:1:n=20,g=1000,pcap=16500 \
-  --seeds 8 --rounds 40 --set llm.openrouter.max_concurrency=4 --cap-override \
-  --ledger-stop 14.69 --log runs/network_driver_1.log > runs/network_driver_1.out 2>&1 < /dev/null &
+  --cell net40_complete_sim:2.97:1:n=40,g=1900,pcap=16500 --seeds 6 --rounds 30 \
+  --set llm.openrouter.max_concurrency=6 --cap-override --ledger-stop 14.69 \
+  --log runs/network40_driver_A.log > runs/network40_driver_A.out 2>&1 < /dev/null &
+# driver BC: --cell net40_er3_contacts_sim:1.30:1:n=40,g=265,pcap=16500 \
+#            --cell net40_er3_known_sim:1.52:1:n=40,g=350,pcap=16500   (same flags, log _BC)
 ```
 
-**Abort conditions** (grid rules; checked every 10 s by each driver; on abort the cell's process
-group is killed and no further cell starts):
+**Abort conditions** (grid rules; checked every 10 s; on abort the cell's process group is
+killed and no further cell starts):
 - MemAvailable < 15 GB;
 - more than 20 rg processes;
 - ledger ≥ $14.69;
@@ -120,20 +194,42 @@ group is killed and no further cell starts):
 - finish=length > 5%;
 - per branch: > 10% of calls errored or > 30% of turns noop because of errors.
 
-`llm.budget_usd` (the hard cap) also ends games `budget_exceeded`.
+`llm.budget_usd` also ends games `budget_exceeded`.
 
-## 6. Analysis
+## 7. First design (N=20 × 40 rounds × 8 worlds; stopped at 12:38, kept for reference)
+
+The configs are `configs/net20_{complete,er3_contacts,er3_known,ba_known}_sim.yaml`. Each driver
+ran at 4 in flight: driver 1 ran B then A, driver 2 ran C then D.
+
+| cond | projection (8 worlds) | cap |
+|---|---|---|
+| B | $0.84 | $1.21 |
+| C | $1.04 | $1.47 |
+| A | $1.57 | $2.16 |
+| D | $1.15 | $1.62 |
+
+The total was $4.60, with caps of $6.46. The projection used sweep_n20's realized price, which was
+about 25% below today's.
+
+**At the stop:**
+- B: 1,513 calls, live projection $0.95.
+- C: 1,448 calls, projection $1.04.
+- Errors: 0. Parse failures: 0.
+
+## 8. Analysis
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n swarm python -m swarm.analysis.invariants runs/net20_<cond>
-PYTHONNOUSERSITE=1 conda run -n swarm python -m swarm.analysis.network runs/net20_* --json plan/figs/network_n20.json
-PYTHONNOUSERSITE=1 conda run -n swarm python -m swarm.analysis.network_n20 runs/net20_*   # relays, gossip, plots
+PYTHONNOUSERSITE=1 conda run -n swarm python -m swarm.analysis.invariants runs/net40_<cond>
+PYTHONNOUSERSITE=1 conda run -n swarm python -m swarm.analysis.network_compare runs/net40_complete_sim \
+    runs/net40_er3_contacts_sim runs/net40_er3_known_sim --ref-graph runs/net40_er3_contacts_sim \
+    --json plan/figs/network_n40.json --figs plan/figs
 ```
 
 What each question looks at:
-- **Solvability:** win rate, welfare and needs filled per condition.
-- **Key relays:** keys that pass through an agent that does not need them (hops ≥ 2).
-- **Win rate by graph distance** to the holders of the needed keys.
-- **Gossip:** third-party claims, introductions, accusations and rumour chains (social.py rules).
-- **Name diffusion:** S-curves in C and D, who introduces whom, and brokers (betweenness against
-  relayed messages).
+- **Solvability:** win rate, welfare and needs filled (paired by world, t95 CI, sign test).
+- **Key relays:** an agent receives a key it does not need and passes on the same copy. Relay
+  chains are deliveries with ≥ 2 hops.
+- **Fill rate by graph distance** to the nearest holder. For A this is a placebo computed on the
+  same ER graph.
+- **Gossip:** social.py claims, introductions, forwarding requests and rumour chains.
+- **Name diffusion in C:** the S-curve, channels, who introduces whom, and introducer betweenness.

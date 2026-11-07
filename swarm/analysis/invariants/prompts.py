@@ -42,7 +42,11 @@ class PromptChecks:
                             self.bad("prompts", f"{cid} r{r} {a} notice shows key {y} of info {x} it never held")
             # other agents' key values may reach a prompt only through what agents themselves wrote
             # (messages, board posts, own notes); every system-rendered line must show held keys only
-            never = {k: i for i, k in self.key_of.items() if not any(i == hi for hi, _ in self.held_ever[a])}
+            # (key values are 4-digit and may repeat across infos at large N, e.g. N=40 has 100 infos:
+            # a value the agent itself held under another info is not a leak)
+            held_vals = {k for _, k in self.held_ever[a]}
+            never = {k: i for i, k in self.key_of.items()
+                     if not any(i == hi for hi, _ in self.held_ever[a]) and k not in held_vals}
             for ln in user.splitlines():
                 if any(tag in ln for tag in AGENT_TEXT_TAGS):
                     continue
