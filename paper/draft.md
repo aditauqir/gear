@@ -111,7 +111,7 @@ In **simultaneous** mode all agents observe the same state, act concurrently, an
 
 A world is fixed by `(run.seed, game_idx)` alone, so all grid cells play **the same worlds**. Sampling seeds are hash-derived from (run seed, game, purpose, agent, round, attempt, branch, replica), never from wall-clock time or completion order.
 
-For each world we run:
+For each world we run (Figure 1):
 - **A (God):** the scripted schedule is active.
 - **B (no God):** the same world, the same branch key, and the same replica id. All sampling seeds and response-cache keys are therefore identical to A's.
 - **B′ (noise replica, cell G1 only):** God-free like B, but with a different replica id from round 1. It has fresh seeds and disjoint cache keys, so it measures whole-game sampling drift.
@@ -145,7 +145,7 @@ Each agent turn is one LLM call returning JSON `{"thought", "note", "actions"}`.
 | G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) | $0.55 | $0.343 (+$0.0075 aborted launch) |
 | G3 | simultaneous | fraud r3/r5/r7, CoT r4/r6/r8 (K=6) | A, B | 16 | $0.95 | $0.785 |
 
-Pairs share rounds 1-2. G2 is G1's sequential twin on worlds 0-7 (`r2_grid_oss_seq_k2`), so H2 is lower-powered. The grid cost $1.986 (GR §1).
+G2 is G1's sequential twin on worlds 0-7 (`r2_grid_oss_seq_k2`), so H2 is lower-powered. The grid cost $1.986 (GR §1).
 
 **Follow-ups (SR).** A one-factor sweep on worlds 0-7 with fork-matched B″ cost $2.142. Two board follow-ups cost $0.492:
 - board-off, no God, on worlds 0-15 (6-15 new);
@@ -209,10 +209,10 @@ Numbers are from `plan/GRID_RESULTS.md` (GR), `plan/SWEEP_RESULTS.md` (SR) and, 
 - A late God (round 14) is tightly null (−0.025 [−0.080, +0.030]).
 - K=6, N=5 and N=20 (n = 4) have God − B only, and all are null.
 
-At n = 8 only large effects are excluded (MDE ≈ 0.15-0.25). The fork-matched baseline is tighter than the whole-game one: B″ − B is +0.054 [−0.050, +0.158], against −0.000 [−0.199, +0.199] for B′. Figure 4.
+At n = 8 only large effects are excluded (MDE ≈ 0.15-0.25). The fork-matched baseline is tighter than the whole-game one: B″ − B is +0.054 [−0.050, +0.158], against −0.000 [−0.199, +0.199] for B′. Figure 4a-b.
 
 ### 5.3 The public board is load-bearing
-Disabling the board, with no God, against G1's no-God branch on the same 16 worlds. All 34 games are healthy, with 0 invariant violations, no board-off post attempts, and delayed posts visible only after the delay (CR).
+Disabling the board, with no God, against G1's no-God branch on the same 16 worlds (Figure 5). All 34 games are healthy, with 0 invariant violations, no board-off post attempts, and delayed posts visible only after the delay (CR).
 
 | Per agent | Board on | Board off | Difference, t95, p |
 |---|---|---|---|
@@ -223,7 +223,7 @@ Disabling the board, with no God, against G1's no-God branch on the same 16 worl
 | Wrong defects | 0.31 | 0.94 | +0.63 [+0.43, +0.84], p 0.0001 |
 | Correct defects | 0.47 | 0.44 | −0.03 [−0.16, +0.11], p 0.77 |
 
-**Replication.** The original 6 worlds give −0.200 (p = 0.031, all 6 lower), and the 10 new worlds give −0.157 [−0.283, −0.030] (p = 0.016). By our arithmetic, p = 0.0003 survives Bonferroni over the ~36 grid and sweep tests.
+**Replication.** The original 6 worlds give −0.200 (p = 0.031, all 6 lower), and the 10 new worlds give −0.157 [−0.283, −0.030] (p = 0.016). By our arithmetic, p = 0.0003 survives Bonferroni over ~36 grid and sweep tests.
 
 **Mechanism.** Without the board, agents send 1.82× the DMs but give 26% fewer keys, and *wrong* defections triple (+0.63 per agent) while correct ones are unchanged. Without the board's who-holds-what information, agents guess, and wrong guesses cost them their own needs.
 
@@ -236,7 +236,7 @@ Disabling the board, with no God, against G1's no-God branch on the same 16 worl
 - **Fork-matched noise.** Against B″, God's divergence is *lower*: 0.90 vs. 0.95 on G1's worlds 0-7. The gap is negative in every sweep cell (−0.02 to −0.15), and its t95 excludes zero in five (p ≤ 0.016).
 - **Mechanism.** One changed action in the public log changes every prompt.
 
-Figure 3. Figure 2 shows g02, G1's median-|Δwelfare| world; Appendix C traces two code-selected worlds.
+Figure 3. Figure 2 shows g02, G1's median-|Δwelfare| world; Appendix C traces two code-picked worlds.
 
 ## 6 Discussion
 
