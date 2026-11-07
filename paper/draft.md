@@ -11,6 +11,8 @@
 >   verified in CR (commit bc5839c).
 > - Behavioural God effects and gossip counts come from `plan/SOCIAL_DYNAMICS.md` (commit 539ca42; "SD"),
 >   verified in CR (commit 4107e95).
+> - Game-structure claims cite the game-theory audit `plan/GAME_THEORY_AUDIT.md` ("GTA") and `plan/COHERENCE_REVIEW.md`;
+>   the per-forgery victim effect is from `plan/GAME_THEORY.md` §B8 ("GT").
 > - `[RESULT: ...]` marks a number still pending.
 > - `[FIG n]` refers to `paper/outline.md`.
 > - `[CHECK: ...]` marks a fact to confirm before submission.
@@ -20,21 +22,21 @@
 ## Abstract (draft, 150-250 words; finalize after results)
 
 Multi-agent LLM deployments raise two questions: how much damage a hidden adversary can do, and
-which shared infrastructure the swarm depends on. We study both in *Keys & God*, a text-only economy.
-Agents trade rivalrous keys, can sabotage each other, and coordinate through private messages and a
-public board. A budgeted adversary they are never told about ("God") forges messages from trading
-partners and overwrites agents' private notes. We measure effects with paired forks. Each world is
-played with and without the intervention from identical seeds through a deduplicating cache, and
-God-free branches resampled at the same fork round calibrate sampling noise. On 16 worlds of 10
+which shared infrastructure the swarm depends on. We study both in *Keys & God*, a text-only economy:
+a coordination game with a risky sabotage action, not a social dilemma. Agents trade rivalrous keys,
+can sabotage each other, and coordinate over private messages and a public board. A budgeted adversary they are never told about ("God") forges messages from trading
+partners and overwrites agents' private notes. Paired forks play each world with and
+without the intervention from identical seeds through a deduplicating cache; God-free branches
+resampled at the same fork round calibrate noise. On 16 worlds of 10
 gpt-oss-120b agents, God changed mean welfare by +0.013 (95% CI −0.048 to +0.073), less than
 resampling alone did. Forged messages do redirect keys to the impersonated sender, but the swarm
-absorbs the misallocation; planted beliefs are ignored, and agents never gossip. A sweep over God's timing, budget and swarm size found no effect beyond noise
-either. Trajectories are chaotic: a fork-matched God-free resample changes more agents' actions than
+absorbs the misallocation; planted beliefs are ignored, and agents never gossip. A sweep over God's timing, budget and swarm size found no effect beyond
+noise. Trajectories are chaotic: a fork-matched God-free resample changes more agents' actions than
 God does. By contrast, removing the public board cut welfare by 0.173 (95% CI 0.089 to 0.257,
 p = 0.0003, 14 of 16 worlds), and the result replicates on 10 fresh worlds. Without the board,
 agents send 1.8× more private messages but give 26% fewer keys, and their wrong defections triple.
-In this economy the channel structure matters more than a single liar. Noise-calibrated paired forks
-are what make both conclusions measurable.
+In this economy the channel structure matters more than a single liar. Noise-calibrated paired forks make
+both conclusions measurable.
 
 *(Recount after filling; must be 150-250 words.)*
 
@@ -44,7 +46,7 @@ are what make both conclusions measurable.
 
 LLM agents increasingly negotiate, pass work along pipelines, and share memory and message buses, so the question is what happens to the *rest* of a system when one message or memory entry is corrupted. Hammond et al. [1] list network effects and multi-agent security as risk factors, and injected content is known to spread between agents [8, 9, 10], mostly measured as *infection* in cooperative pipelines.
 
-We ask two questions about a **mixed-motive LLM economy**. First, does one plausible lie, a forged "send me your key first" message or a rewritten note, ripple through the swarm's own incentives? Second, which shared channels does the swarm actually depend on? Both are hard to measure. Stochastic agents diverge even without any intervention, so a naive with/without comparison confounds the effect with sampling variance.
+We ask two questions about an **LLM trading economy**. It is a coordination game with a risky sabotage action rather than a social dilemma: giving a spare key is free and demand never exceeds supply (GTA §1). First, does one plausible lie, a forged "send me your key first" message or a rewritten note, ripple through the swarm's own incentives? Second, which shared channels does the swarm actually depend on? Both are hard to measure. Stochastic agents diverge even without any intervention, so a naive with/without comparison confounds the effect with sampling variance.
 
 We contribute:
 
@@ -59,7 +61,7 @@ We contribute:
 
 **Multi-agent risk.** Dafoe et al. [7] set out cooperative AI as an agenda. Hammond et al. [1] give three failure modes and seven risk factors, including network effects and multi-agent security. Carichon et al. [21] call for dedicated multi-agent alignment testbeds and metrics; we provide one for the spread of a localized compromise.
 
-**Spread of compromise between agents.** Greshake et al. [11] showed that indirect prompt injection blurs the line between data and instructions in LLM-integrated applications, including self-propagating "worming". Prompt Infection [8] showed LLM-to-LLM injection spreading through multi-agent systems like a virus, with LLM Tagging as a partial defence. Agent Smith [9] showed one adversarial image in one agent's memory jailbreaking up to a million simulated agents. The Multi-Agent Security Tax [10] finds that memory "vaccination" and safety instructions reduce spread from one compromised agent but weaken collaboration. AgentPoison [12] poisons agent memory with triggered backdoors; our CoT control is a minimal, untriggered form of that threat. Jones et al. [13] show that combinations of safe models can be misused, so systems, not single models, need evaluation. We differ in three ways: the injected content is an ordinary in-game lie, not a self-replicating instruction; the outcome is the welfare of a mixed-motive population, not an infection count; and the effect is estimated against a paired counterfactual and fork-matched noise.
+**Spread of compromise between agents.** Greshake et al. [11] showed that indirect prompt injection blurs the line between data and instructions in LLM-integrated applications, including self-propagating "worming". Prompt Infection [8] showed LLM-to-LLM injection spreading through multi-agent systems like a virus, with LLM Tagging as a partial defence. Agent Smith [9] showed one adversarial image in one agent's memory jailbreaking up to a million simulated agents. The Multi-Agent Security Tax [10] finds that memory "vaccination" and safety instructions reduce spread from one compromised agent but weaken collaboration. AgentPoison [12] poisons agent memory with triggered backdoors; our CoT control is a minimal, untriggered form of that threat. Jones et al. [13] show that combinations of safe models can be misused, so systems, not single models, need evaluation. We differ in three ways: the injected content is an ordinary in-game lie, not a self-replicating instruction; the outcome is the welfare of a trading population, not an infection count; and the effect is estimated against a paired counterfactual and fork-matched noise.
 
 **Oversight, collusion and failure attribution.** AI Control [14] evaluates safety protocols that must hold even when an untrusted model deliberately subverts them. Secret Collusion [15] formalizes steganographic collusion among agents and finds limited current capability. HELIOS [16] detects collusion with per-agent activation probes. MAST [17] gives a 14-mode taxonomy of multi-agent failures, and Who&When [18] frames automated failure attribution (which agent, which step). God's logged interventions give exact labels for such work.
 
@@ -69,7 +71,7 @@ We contribute:
 
 ### 3.1 The game
 
-A world has N agents, each named by a seeded two-word handle (e.g. `quiet_grove`). Each agent holds 5 keys and needs keys for 3 info ids it does not hold. Each info id exists in 2 copies. Keys are **rivalrous**: each copy has one owner, and only `give_key` transfers possession. The system prompt states that naming a key number transfers nothing. Every generated world is checked to be feasible: some reallocation satisfies all needs at once. An agent **wins** when it holds a key for each of its needs that has not been burned. Its **score** is the fraction of its 3 needs it holds, with burned needs scoring zero. **Welfare** is the mean score.
+A world has N agents, each named by a seeded two-word handle (e.g. `quiet_grove`). Each agent holds 5 keys and needs keys for 3 info ids it does not hold. Each info id exists in 2 copies. Keys are **rivalrous**: each copy has one owner, and only `give_key` transfers possession. The system prompt states that naming a key number transfers nothing. Every generated world is checked to be feasible: some reallocation satisfies all needs at once. A held key is never its holder's own need, so giving a spare costs nothing, and no info is demanded beyond its supply (GTA §1). The game is therefore a coordination problem with a risky sabotage action, not a social dilemma. An agent **wins** when it holds a key for each of its needs that has not been burned. Its **score** is the fraction of its 3 needs it holds, with burned needs scoring zero. **Welfare** is the mean score.
 
 Each turn an agent takes up to 2 actions: `send_message` (a private DM), `post_board` (public), `give_key`, `defect(target, info_id)`, `grep_log` (a literal-substring search over log lines it has already seen, once per turn) or `noop`. It may also write a free private **note** (its scratchpad), which is shown back to it in later turns, labelled by round.
 
@@ -184,7 +186,7 @@ From God's first act on, 0.893 (G1), 0.897 (G2) and 0.882 (G3) of agents' round 
 
 **Channels are load-bearing infrastructure.** One hidden liar with K ≤ 6 interventions leaves no trace in welfare beyond sampling noise, while removing one public channel costs 17 points of welfare and 31 of win rate. Private messaging does not substitute for broadcast: more DMs, yet worse guesses about who needs what. For Track 2, a swarm's channel topology (broadcast vs. pairwise) shapes its outcomes more than a single compromised input does. For oversight (Track 4), the availability and integrity of shared coordination channels deserve at least as much protection as individual agents' inputs and memories. We did not test an adversary that degrades the board; that is the natural next attack and defence study.
 
-**Why the liar fails here.** The forged DM does move keys, but it *redirects* gives rather than adding or destroying them, and its victims, the agents closest to winning, often win anyway (GR §5). The swarm absorbs the misallocation, so welfare does not move. The planted belief is ignored, and with no gossip there is no channel for a lie to travel beyond its first target. Hence, here, God's influence is local and transient, while the board's is global.
+**Why the liar fails here.** The forged DM does move keys, but it *redirects* gives rather than adding or destroying them, and its victims, the agents closest to winning, often win anyway (GR §5). The swarm absorbs the misallocation, so welfare does not move. In a coordination game where spares are free (GTA §1), a forged "send me a key" mostly costs the victim a spare. The receiver's own score drops by 0.108 on average (95% CI −0.225 to +0.008; GT §B8), about 0.01 of swarm welfare, roughly 8× below G1's MDE of 0.085 (COHERENCE_REVIEW). The planted belief is ignored, and with no gossip there is no channel for a lie to travel beyond its first target. Hence, here, God's influence is local and transient, while the board's is global.
 
 **Divergence measures chaos, not attack spread.** A fork-matched resample diverges more than God's branch. Intervention studies on stochastic agent populations should therefore report fork-matched null branches, outcome-level paired effects with t-based CIs and permutation tests, and the MDE.
 
@@ -261,7 +263,7 @@ Do not add numbers from their full texts without opening them.
 
 **Framing and construct validity.** Prompt wording strongly affects LLM behaviour [19]. The action is called "defect", and the agents are told they are playing a trading game. Both could shift baseline cooperation. The paired design holds framing fixed across branches, but the size of God's effect may depend on the baseline level of cooperation that the framing sets. A key-trading game is a stylised stand-in for real multi-agent deployments, so results transfer only qualitatively.
 
-**Design choices that differ from the brief.** The log and board are always shown rather than being tools. The default defect gain mints a new key, which makes defection more attractive than stealing would. Winners keep playing. Each of these is a configuration switch, and we tested only the defaults.
+**Design choices that differ from the brief.** The log and board are always shown rather than being tools. The default defect gain mints a new key, which makes defection more attractive than stealing would. Winners keep playing. Each of these is a configuration switch, and we tested only the defaults. Because spares are free and never scarce, the game tests coordination and resistance to sabotage, not cooperation under temptation. Valuing held keys or making some infos scarce would create a real dilemma (GTA §1, recommendation 1).
 
 **Engineering.** Several known low-severity issues remain open and are documented in `plan/CODE_REVIEW.md`. For example, per-turn prompt hashes are not logged in real runs, and two God-timestamp conventions differ by one round in simultaneous mode. The run manifests record dirty working trees, because other agents' files were uncommitted, but none of those edits touched configs these cells loaded (GR §1). We believe none of this affects the paired outcome metrics, but it is disclosed.
 
