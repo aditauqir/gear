@@ -153,7 +153,7 @@ Mutation tests are in `tests/analysis/test_invariants.py`: each tampered copy of
 | Run | Violations |
 |---|---|
 | grid_oss_sim_k2 (48 games) | **0** |
-| grid_oss_sim_k6 (partial, while running) | **0** |
+| grid_oss_sim_k6 (finished, 32 games) | **0** |
 | r2_grid_oss_seq_k2 (16 games) | **0** |
 | or_oss_10x10_sim, or_concurrent_fork, smoke_sweep_*, fake_sweep_* | 0 |
 | or_10x30_sim, or_10x30_seq, or_60x20_sim | 102 each, all `prompts`: an own action shown twice. This is the known pre-8ebbee7 ledger bug (#1); the checker would have caught it |
@@ -169,6 +169,6 @@ Mutation tests are in `tests/analysis/test_invariants.py`: each tampered copy of
 | 25 | bug-low (latent) | infra/grid_driver.py `attach` | `killpg(getpgid(pid))` without checking that the cell leads its own group. If a cell were started from a shell or wrapper without setsid, the abort would kill the whole group: possibly another cell or the watchdog itself. Today every cell is a group leader (`start_new_session`), confirmed with `ps`, so nothing is wrong now | open. Fix: if `pgid != pid`, `os.kill(pid)` only. Also `kill_group` should `proc.wait()` after SIGKILL |
 | 26 | info | config_hash (98cb469) | `run.name` and `n_games` are no longer hashed. Two cells with the same game semantics now share game ids, seeds and cache keys: r2_grid_oss_seq_k2 shares all game ids with the aborted grid_oss_seq_k2. That is intended for resume and control reuse, but a "replicate" must change `run.seed` or `run.replica`; renaming the run does not make it independent | documented |
 | 27 | ok | board options | post_costs_turn, anonymous and post_skip_rounds are correct in both turn modes. Skip and wrong-defect delay share `delayed_until_round` via `max`; the resume notice is delivered once. The invariant checker covers skips (delays) and anonymous rendering (obs) | no action |
-| 28 | ok | salvage_truncated | Salvage runs only when no complete JSON object decodes. It keeps only complete action objects after `"actions"` (string-aware), and a cut-off last action is dropped. In grid_oss_sim_k2 it fired 8 times in 3,200 turns | no action |
-| 29 | ok | grid_stats deltas / health | Δ = god − nogod per seed. The exact sign-flip p includes the identity. Seeds pair across cells by world (`world_seed` depends only on run.seed and game_idx). The unhealthy drop is per seed across all branches. Caveat: health is a post-treatment variable, so report the dropped seeds per branch (k2 and r2 seq: none dropped) | no action |
+| 28 | ok | salvage_truncated | Salvage runs only when no complete JSON object decodes. It keeps only complete action objects after `"actions"` (string-aware), and a cut-off last action is dropped. In grid_oss_sim_k2 it fired 8 times in 8,920 turns | no action |
+| 29 | ok | grid_stats deltas / health | Δ = god − nogod per seed. The exact sign-flip p includes the identity. Seeds pair across cells by world (`world_seed` depends only on run.seed and game_idx). The unhealthy drop is per seed across all branches. Caveat: health is a post-treatment variable, so report the dropped seeds per branch (k2, k6 and r2 seq: none dropped) | no action |
 | 30 | ok | reasoning_effort / provider_sort | They are hashed only when set, which re-keys gpt-oss cells as intended. The cache key itself does not include them; it is safe because they enter game_id via config_hash | no action |
