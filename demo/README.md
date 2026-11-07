@@ -25,9 +25,15 @@ Both branches use the same seeds, and rounds 1–2 are identical (cached replies
   - Magenta ring = God's target. The dashed ring marks the agent whose name the forged DM used.
   - Blue halo = an agent whose actions now differ from the no-God branch. A pulsing ring marks an
     agent the ripple reached this round.
+- **Live metric tiles** (under each panel, updated every round from `swarm.viz.metrics.round_series`):
+  - Both sides: welfare, winners, keys given, defects, board posts and DMs, cumulative so far.
+  - Left only: God moves used (of K) and agents diverged.
+  - Right only: Δ welfare and Δ winners (God − no God).
+- **Final scoreboard** (end card): every metric side by side with its Δ, the final score of each agent
+  (God's target marked), and a note that a God-free re-run also diverges.
 - **Strips:**
   - Left: welfare for both branches.
-  - Right: number of agents diverged so far.
+  - Right: number of agents diverged so far, with the note that a God-free re-run diverges too.
   - Dashed "G" lines mark God's moves.
 - **Pacing:** 1 s per round, plus 2.5 s on rounds with a God move and 1.5 s on rounds where the
   effect shows.
@@ -48,6 +54,10 @@ branches. Message wording is ignored.
 | 46–60 s | **World g12**, rounds 1–8 (behaviour diverging) |
 | 60–69 s | Grid result: divergence over rounds, and Δ welfare per world for every cell |
 | 69–77 s | Takeaways: "Trajectories diverge; outcomes don't" |
+
+On the grid card, divergence is plotted against **rounds since each branch forked**: God's branch forks at
+its first move (r3), the God-free re-run at r1. Aligned this way, the re-run diverges at least as fast as
+God's branch.
 
 ### How the worlds were picked
 
@@ -111,8 +121,20 @@ as in `paper/draft.md` §5, and every plotted number is in `plan/figs/NUMBERS.tx
 
 - `fig2_network`: the median-|Δwelfare| world of G1 (rule-picked: g02) at God's first move and at
   round 20. Panel A is with God, panel B without.
-- `fig3_divergence`: share of agents diverged by round, per cell, with the B′ baseline. A fork-matched
-  B″ is added with `--baseline` once the sweep produces it.
+- `fig3_divergence`: share of agents diverged against rounds since each branch forked, per cell, with
+  the B′ baseline. A fork-matched B″ is added with `--baseline` once the sweep produces it.
 - `fig4_welfare`: per-world Δ with the mean and Student-t 95% CI.
   - Left: H1 against B′.
   - Right: G3, G2, and the paired interactions H3 and H2.
+
+The results dashboard is `plan/figs/grid_dashboard.html`: one self-contained page with every metric,
+the noise baseline, divergence, and LLM health and cost. It shows each sweep cell once that cell has at
+least one finished world:
+
+```bash
+$PY -m swarm.viz.dashboard plan/figs/grid_dashboard.html --cell "G1 sim K=2=runs/grid_oss_sim_k2" \
+  --cell "G3 sim K=6=runs/grid_oss_sim_k6" --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2" --sweeps "runs/sweep_*"
+```
+
+Every number in the videos, figures and dashboard comes from one module, `swarm/viz/metrics.py`.
+Its outcome definitions match `swarm.analysis.grid_results`.
