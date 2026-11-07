@@ -397,9 +397,10 @@ def run_config(run_dir: str | Path) -> dict[str, Any]:
     c = yaml.safe_load(p.read_text()) or {}
     g, r = c.get("game") or {}, c.get("runner") or {}
     fork = r.get("fork") or {}
-    god = fork.get("control_god") or c.get("god") or {}
+    god = c.get("god") or {}          # the God branch's God (fork.control_god only shapes the control's ids)
     sched = god.get("schedule") or []
     return {"n_agents": g.get("n_agents"), "max_rounds": g.get("max_rounds"), "turn_mode": g.get("turn_mode"),
+            "keys_per_agent": g.get("keys_per_agent"),
             "noise_replica": fork.get("noise_replica"), "god_k": (god.get("budget") or {}).get("k"),
             "god_start": god.get("start_round"),
             "schedule": [f"{s.get('power')}@r{s.get('round')}" for s in sched if isinstance(s, dict)]}

@@ -425,7 +425,8 @@ def build(cells_in: list[tuple[str, Path]], out: Path) -> dict[str, Any]:
         cf = c["config"]
         parts.append(f"<h2 id=c{k}>{html.escape(lab)} <span class=dim style='font-weight:400;font-size:13px'>"
                      f"{html.escape(c['path'])}</span></h2>")
-        parts.append(f"<p class=sub>{cf.get('n_agents')} agents · {cf.get('max_rounds')} rounds · "
+        parts.append(f"<p class=sub>{cf.get('n_agents')} agents · {cf.get('keys_per_agent') or 5} keys each · "
+                     f"{cf.get('max_rounds')} rounds · "
                      f"{cf.get('turn_mode')} turns · God K={cf.get('god_k')} "
                      f"({html.escape(', '.join(cf.get('schedule') or []))}) · {len(c['worlds'])} of "
                      f"{c['n_worlds_total']} worlds finished and healthy"
@@ -469,7 +470,7 @@ def discover(patterns: list[str]) -> list[tuple[str, Path]]:
         for p in sorted(glob.glob(pat)):
             q = Path(p)
             if q.is_dir() and (q / "games").is_dir():
-                out.append((q.name, q))
+                out.append((q.name.replace("sweep_", "sweep: ", 1), q))
     return out
 
 
