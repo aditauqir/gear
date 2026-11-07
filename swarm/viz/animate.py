@@ -19,6 +19,7 @@ from matplotlib.lines import Line2D
 from swarm.viz.style import C, INK, INK2, SURFACE
 
 W, H, DPI = 1280, 720, 100
+BIG_N = 20      # above this many agents: scaled-down nodes, wider layout, labels only on God targets
 
 
 def load(path):
@@ -88,7 +89,9 @@ def draw_panel(ax, title, agents, R, g, scores, pos, r):
     burned = {t for rr in range(r + 1) for _, t, ok in g[rr]["defect"] if ok}
     sc = scores.get(r) or scores[max(k for k in scores if k <= r)]
     colors = [C["win"] if a in won else C["defect"] if a in burned else C["a"] for a in agents]
-    sizes = [160 + 520 * sc.get(a, 0.0) for a in agents]
+    big = len(agents) > BIG_N                     # large swarms: smaller nodes, labels only where God acts
+    shrink = (BIG_N / len(agents)) ** 0.5 if big else 1.0
+    sizes = [(160 + 520 * sc.get(a, 0.0)) * shrink for a in agents]
     nx.draw_networkx_nodes(G, pos, nodelist=agents, node_color=colors, node_size=sizes, ax=ax,
                            edgecolors=SURFACE, linewidths=1.5)
     for kind, col in (("fraud", C["fraud"]), ("cot", C["cot"])):
@@ -102,8 +105,10 @@ def draw_panel(ax, title, agents, R, g, scores, pos, r):
     if anyg:
         nx.draw_networkx_nodes(G, pos, nodelist=["GOD"], node_color=INK2, node_shape="s", node_size=700, ax=ax)
         nx.draw_networkx_labels(G, pos, labels={"GOD": "GOD"}, font_color=SURFACE, font_size=8, ax=ax)
-    nx.draw_networkx_labels(G, {a: pos[a] + np.array([0, -0.11]) for a in agents},
-                            labels={a: a for a in agents}, font_size=6.5, font_color=INK2, ax=ax)
+    shown = agents if not big else sorted({t for rr in range(r + 1) for k in ("fraud", "cot") for t in g[rr][k]})
+    nx.draw_networkx_labels(G, {a: pos[a] + np.array([0, -0.11 if not big else -0.14]) for a in shown},
+                            labels={a: a for a in shown}, font_size=6.5 if not big else 8, font_color=INK2, ax=ax,
+                            bbox=None if not big else dict(fc=SURFACE, ec="none", alpha=0.85, pad=0.6))
     flags = []
     if g[r]["fraud"]:
         flags.append(("God: forged DM", C["fraud"]))
@@ -144,7 +149,7 @@ def main():
             for k in ("dm", "give"):
                 for x, y in g[rr][k]:
                     w = U.get_edge_data(x, y, {"weight": 0})["weight"]; U.add_edge(x, y, weight=w + 1)
-    pos = nx.spring_layout(U, seed=0, k=1.2 / len(agents) ** 0.5)
+    pos = nx.spring_layout(U, seed=0, k=(1.2 if len(agents) <= BIG_N else 3.0) / len(agents) ** 0.5)
     p = np.array(list(pos.values())); p = (p - p.mean(0)) / np.abs(p - p.mean(0)).max() * 1.05
     pos = dict(zip(pos, p)); pos["GOD"] = np.array([-1.5, 1.2]); pos["BOARD"] = np.array([1.5, 1.2])
     labels = ["With God", "No God"]

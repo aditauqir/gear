@@ -5,7 +5,7 @@
   is registered with secrets.redact() and is never printed, logged, cached or recorded.
 - `req.thinking` maps to `reasoning: {enabled: bool}`; usage/cost via `usage: {include: true}`.
 - Spend caps, both checked BEFORE each call against a worst-case estimate:
-    global  `GlobalLedger` over runs/openrouter_ledger.jsonl (append-only, fcntl.flock), default $2
+    global  `GlobalLedger` over runs/openrouter_ledger.jsonl (append-only, fcntl.flock), default $6
     run     `RunBudget` (llm.budget_usd), shared by every client of one run
   Exceeding either raises BudgetExceeded. Actual cost (provider-reported, else the price table)
   is appended to the ledger after the call.
@@ -33,7 +33,7 @@ from swarm.llm.secrets import DEFAULT_OPENROUTER_KEY_FILE, OPENROUTER_ENV, load_
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_LEDGER = REPO_ROOT / "runs" / "openrouter_ledger.jsonl"
-GLOBAL_CAP_USD = 2.0
+GLOBAL_CAP_USD = 6.0
 
 
 def load_key(key_file: str | Path | None = DEFAULT_OPENROUTER_KEY_FILE, *,
