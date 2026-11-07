@@ -20,6 +20,10 @@ engine or observe) and asserts, per game:
              messages stamped prev <= s < t (board posts at s + visible_delay_rounds * N; none at all
              when game.board.enabled=false); view_log lines are exactly the gives/board posts of the
              window and the defects released in (prev, t] (victim excluded under victim_then_delayed)
+  left       (game.winner_policy=sit_out) a winner leaves when it wins: no later turn (simultaneous:
+             none after its win round), no later successful action, no key transfer to/from it, no
+             real DM to/from it; its score stays at its value when it won; every other agent gets
+             exactly one "left" notice for it; pinned peers never list a departed agent
   god        God events only in the god branch; ok powers == scheduled entries, <= K, budget_left
              bookkeeping; forged messages == ok frauds; memory_overwrites == ok cot_controls
   prompts    (llm_calls) no truth field / intervention id / banned word in the system prompt;

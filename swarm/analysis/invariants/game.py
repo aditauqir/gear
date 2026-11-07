@@ -36,6 +36,10 @@ class GameChecker(PromptChecks):
         self.overwrites: list[dict[str, Any]] = []
         self.key_of: dict[int, int] = {}
         self.own_lines: dict[tuple[str, int], collections.Counter[str]] = collections.defaultdict(collections.Counter)
+        # winner_policy=sit_out: agent -> (win round, locked score) once it has won and left
+        self.sit_out = self.g.winner_policy == "sit_out"
+        self.left: dict[str, tuple[int, float]] = {}
+        self.left_notices: collections.Counter[tuple[str, str]] = collections.Counter()   # (receiver, text)
 
     # ------------------------------------------------------------------ helpers
     def bad(self, check: str, detail: str) -> None:
@@ -114,12 +118,15 @@ class GameChecker(PromptChecks):
                 self.bad("god", f"God event {typ} in a no-God branch (r{r})")
 
             if typ == "turn":
+                self._left_turn(d["agent"], r)
                 self._turn(ev, rp, round_start, prev_obs, msgs, gives, burns, mem, n)
                 turns_in_round[r].append(d["agent"])
                 prev_obs[d["agent"]] = d["obs"]["turn_index"]
             elif typ == "action_result":
                 a, act = d["agent"], d["action"]
                 self._own_line(a, r, d)
+                if a in self.left and d["ok"] and act["kind"] != "grep_log":
+                    self.bad("left", f"r{r} {a} left in r{self.left[a][0]} but its {act['kind']} succeeded")
                 if act["kind"] == "give_key":
                     has = act["info_id"] in rp.held(a)
                     if d["ok"] and not has:
@@ -127,6 +134,10 @@ class GameChecker(PromptChecks):
                     if not d["ok"] and d.get("reason") == "no_such_key" and has:
                         self.bad("keys", f"r{r} {a} give_key info {act['info_id']} failed no_such_key but it held one")
             elif typ == "key_transfer":
+                for side in (d["from_agent"], d["to_agent"]):
+                    if side in self.left:
+                        self.bad("left", f"r{r} key_transfer {d['cause']} of info {d['info_id']} touches "
+                                         f"{side}, who left in r{self.left[side][0]}")
                 self._transfer(ev, rp, all_copies, pending_mint, gives)
             elif typ == "burn":
                 self._burn(ev, rp, pending_mint, n)
@@ -134,6 +145,9 @@ class GameChecker(PromptChecks):
             elif typ == "message":
                 m = d["message"]
                 msgs.append(m)
+                if not m.get("forged") and (m["sender_shown"] in self.left or m.get("receiver") in self.left):
+                    self.bad("left", f"r{r} message {m['msg_id']} {m['sender_shown']}->{m.get('receiver')} "
+                                     "involves an agent that left")
                 if m["channel"] == "board" and not getattr(self.g.board, "enabled", True):
                     self.bad("obs", f"board post {m['msg_id']} although game.board.enabled=false")
                 if m.get("forged"):
@@ -161,12 +175,43 @@ class GameChecker(PromptChecks):
                 if rp.won.get(a) is not None:
                     self.bad("scores", f"r{r} second win event for {a}")
                 rp.won[a] = r
+                if self.sit_out:
+                    self.left[a] = (r, rp.score(a))
+            elif typ == "notice":
+                nt = d["notice"]
+                if nt["kind"] == "left":
+                    self.left_notices[(nt["agent"], nt["text"])] += 1
             elif typ == "round_end":
                 self._round_end(ev, rp, agents, turns_in_round, n)
             elif typ == "game_end":
                 self._game_end(d["outcome"], rp)
         self._god_checks(god_powers, forged, overwrites_n)
+        self._left_checks(agents)
         return self.out
+
+    # ------------------------------------------------------------------ winners leave (sit_out)
+    def _left_turn(self, a: str, r: int) -> None:
+        """sit_out: a departed winner plays no turn; only in simultaneous mode may a turn chosen at the
+        round's start by an agent that won during this round's resolution still be logged (its
+        actions then fail actor_left, checked on action_result)."""
+        if a not in self.left:
+            return
+        won_r = self.left[a][0]
+        if self.g.turn_mode == "sequential" or r > won_r:
+            self.bad("left", f"r{r} {a} played a turn after winning and leaving in r{won_r}")
+
+    def _left_locked(self, where: str, a: str, score: float) -> None:
+        if a in self.left and abs(score - self.left[a][1]) > 1e-9:
+            self.bad("left", f"{where} {a} score {score} != its locked score {self.left[a][1]} at leaving")
+
+    def _left_checks(self, agents: list[str]) -> None:
+        """Every other agent was told about each departure exactly once."""
+        from swarm.game.rules import left_text
+
+        for a in self.left:
+            for o in agents:
+                if o != a and self.left_notices[(o, left_text(a))] != 1:
+                    self.bad("left", f"{o} got {self.left_notices[(o, left_text(a))]} 'left' notices for {a}")
 
     # ------------------------------------------------------------------ pieces
     def _own_line(self, a: str, r: int, d: dict[str, Any]) -> None:
@@ -270,6 +315,10 @@ class GameChecker(PromptChecks):
             self.bad("obs", f"r{r} {a} needs_burned {p['needs_burned']} != replay {st.burned[a]}")
         if abs(p["score"] - st.score(a)) > 1e-9:
             self.bad("obs", f"r{r} {a} pinned score {p['score']} != replay {st.score(a)}")
+        gone = {x for x, w in st.won.items() if w is not None} if self.sit_out else set()
+        want_peers = sorted(x for x in rp.keys if x != a and x not in gone)
+        if sorted(p["peers"]) != want_peers:
+            self.bad("obs", f"r{r} {a} pinned peers {p['peers']} != players still in the game {want_peers}")
         # inbox / board: exactly the messages stamped prev <= s < t
         prev = prev_obs[a]
         anon = self.g.board.anonymous
@@ -341,6 +390,7 @@ class GameChecker(PromptChecks):
                 self.bad("scores", f"r{r} round_end score {a}={d['scores'][a]} != replay {rp.score(a)}")
             if rp.winning(a) and rp.won.get(a) is None:
                 self.bad("scores", f"r{r} {a} holds all open needs but has no win event")
+            self._left_locked(f"r{r} round_end", a, d["scores"][a])
         played = turns_in_round.get(r, [])
         dup = [a for a, c in collections.Counter(played).items() if c > 1]
         if dup:
@@ -379,6 +429,7 @@ class GameChecker(PromptChecks):
         for a, o in out["per_agent"].items():
             if abs(o["score"] - rp.score(a)) > 1e-9:
                 self.bad("scores", f"outcome score {a}={o['score']} != replay {rp.score(a)}")
+            self._left_locked("outcome", a, o["score"])
             if sorted(o["burned"]) != sorted(rp.burned[a]) or sorted(o["lost"]) != sorted(rp.lost[a]):
                 self.bad("scores", f"outcome burned/lost of {a} != replay")
             if o["won_round"] != rp.won.get(a):

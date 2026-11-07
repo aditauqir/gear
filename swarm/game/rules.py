@@ -22,6 +22,14 @@ Rules (ARCHITECTURE_v2 §1, D1-D4, D12, D13):
   won cannot be defected against (ok=False, no penalty).
 - Win (D3): holds a key for every open need and has at least one open need. won_round is sticky.
   Score = held open needs / len(needs) (burned and lost needs count 0).
+- game.winner_policy = "sit_out" (winners leave the game): a winner DEPARTS at the moment it wins
+  (`departed`). It takes no further action (any later action of its own fails "actor_left", e.g. the
+  rest of a turn, or a simultaneous-mode turn chosen before it won), and nobody can reach it:
+  send_message / give_key to it fail "recipient_left", defect on it fails "target_left", each with a
+  "left" notice to the actor; defect_gain="steal" never takes from it. Its keys leave with it: they
+  stay recorded on its AgentState (copy conservation) but are out of play, so its score is LOCKED at
+  the value it had when it won. Every other agent gets a "left" notice. "continue" (the default) is
+  unchanged: winners keep acting and only defect-on-a-winner is refused.
 """
 
 from __future__ import annotations
@@ -87,6 +95,20 @@ def is_winning(state: GameState, agent: AgentId) -> bool:
     return bool(on) and set(on) <= held_infos(state, agent)
 
 
+def departed(state: GameState, agent: AgentId, cfg: GameCfg) -> bool:
+    """Has `agent` left the game? (winner_policy = "sit_out" and it has won; always False otherwise)."""
+    return cfg.winner_policy == "sit_out" and state.agents[agent].won_round is not None
+
+
+LEFT_RULE = ("When you hold keys for all your needs, you win immediately and leave the game: "
+             "you take no more turns and your keys leave with you.")
+
+
+def left_text(agent: AgentId) -> str:
+    """The notice every other agent gets when `agent` wins and leaves (winner_policy = "sit_out")."""
+    return f"{agent} has won and left the game; it can no longer trade."
+
+
 def is_done(state: GameState, agent: AgentId) -> bool:
     """Done = has won, or has no open need left (nothing more to gain)."""
     return state.agents[agent].won_round is not None or not open_needs(state, agent)
@@ -108,15 +130,24 @@ def notice(state: GameState, agent: AgentId, kind, text: str, *, ref: str | None
 _notice = notice   # the original private name (rules-internal callers)
 
 
-def update_win(state: GameState, agent: AgentId) -> Events:
-    """Set won_round (sticky) if the agent now satisfies D3; returns win + notice events."""
+def update_win(state: GameState, agent: AgentId, cfg: GameCfg | None = None) -> Events:
+    """Set won_round (sticky) if the agent now satisfies D3; returns win + notice events. Under
+    winner_policy = "sit_out" the winner also leaves: its notice says so and every other agent gets a
+    "left" notice (cfg None = the original "continue" behaviour)."""
     s = state.agents[agent]
     if s.won_round is not None or not is_winning(state, agent):
         return []
     s.won_round = state.round
-    return [_ev(state, "SYSTEM", WinData(agent=agent, score=score(state, agent))),
-            _notice(state, agent, "won", "You now hold a key for every one of your remaining needs. "
-                                         "You have won.")]
+    won = "You now hold a key for every one of your remaining needs. You have won."
+    leaves = cfg is not None and departed(state, agent, cfg)
+    if leaves:
+        won += " You have left the game: you take no more turns and your keys leave with you."
+    evs = [_ev(state, "SYSTEM", WinData(agent=agent, score=score(state, agent))),
+           _notice(state, agent, "won", won)]
+    if leaves:
+        evs += [_notice(state, other, "left", left_text(agent))
+                for other in sorted(state.agents) if other != agent]
+    return evs
 
 
 # ------------------------------------------------------------------ messages (shared with God)
@@ -163,6 +194,8 @@ def apply(state: GameState, actor: AgentId, action: Action, cfg: GameCfg, *,
         state = state.model_copy(deep=True)
     if actor not in state.agents:
         return state, _fail(state, actor, action, "unknown_actor")
+    if departed(state, actor, cfg):              # sit_out: a winner takes no further action
+        return state, _fail(state, actor, action, "actor_left")
     try:
         if isinstance(action, SendMessage):
             return state, _send(state, actor, action, cfg)
@@ -198,10 +231,25 @@ def _peer_error(state: GameState, actor: AgentId, other: AgentId) -> str | None:
     return None
 
 
+LEFT_REASONS = ("recipient_left", "target_left")
+
+
+def _left_fail(state: GameState, actor: AgentId, action: Action, other: AgentId, reason: str) -> Events:
+    """Failed action aimed at a departed winner: action_result + a "left" notice to the actor."""
+    what = {"send_message": "Your message was not delivered.",
+            "give_key": f"Your give_key of info #{getattr(action, 'info_id', '?')} did not happen "
+                        "(you keep the key).",
+            "defect": "Your defect had no effect (no penalty)."}.get(action.kind, "")
+    return [*_fail(state, actor, action, reason),
+            _notice(state, actor, "left", f"{left_text(other)} {what}".rstrip())]
+
+
 def _send(state: GameState, actor: AgentId, a: SendMessage, cfg: GameCfg) -> Events:
     err = _peer_error(state, actor, a.to)
     if err:
         return _fail(state, actor, a, err)
+    if departed(state, a.to, cfg):
+        return _left_fail(state, actor, a, a.to, "recipient_left")
     _, evs = deliver_message(state, channel="dm", sender_shown=actor, receiver=a.to,
                              text=a.text[: cfg.max_message_chars])
     return [_ok(state, actor, a), *evs]
@@ -211,6 +259,8 @@ def _give(state: GameState, actor: AgentId, a: GiveKey, cfg: GameCfg) -> Events:
     err = _peer_error(state, actor, a.to)
     if err:
         return _fail(state, actor, a, err)
+    if departed(state, a.to, cfg):
+        return _left_fail(state, actor, a, a.to, "recipient_left")
     src = state.agents[actor]
     idx = next((j for j, kc in enumerate(src.keys) if kc.info_id == a.info_id), None)
     if idx is None:
@@ -224,7 +274,7 @@ def _give(state: GameState, actor: AgentId, a: GiveKey, cfg: GameCfg) -> Events:
                                              to_agent=a.to, cause="give")),
            _notice(state, a.to, "gift_received",
                    f"{_name(actor, cfg)} gave you a key for info #{kc.info_id} (key {kc.key}).")]
-    return evs + update_win(state, a.to)
+    return evs + update_win(state, a.to, cfg)
 
 
 def _defect(state: GameState, actor: AgentId, a: DefectAction, cfg: GameCfg) -> Events:
@@ -232,6 +282,8 @@ def _defect(state: GameState, actor: AgentId, a: DefectAction, cfg: GameCfg) -> 
     if err:
         return _fail(state, actor, a, err)
     tgt = state.agents[a.target]
+    if departed(state, a.target, cfg):
+        return _left_fail(state, actor, a, a.target, "target_left")
     if tgt.won_round is not None:
         return _fail(state, actor, a, "target_won")
     vl = cfg.view_log
@@ -265,6 +317,7 @@ def _defect(state: GameState, actor: AgentId, a: DefectAction, cfg: GameCfg) -> 
             gain_text = f" You gained a key for info #{a.info_id} (key {kc.key})."
         elif cfg.defect_gain == "steal":
             holder = next((h for h in sorted(state.agents) if h != actor
+                           and not departed(state, h, cfg)       # its keys left the game with it
                            and any(k.info_id == a.info_id for k in state.agents[h].keys)), None)
             if holder is not None:
                 hk = state.agents[holder].keys
@@ -303,7 +356,7 @@ def _defect(state: GameState, actor: AgentId, a: DefectAction, cfg: GameCfg) -> 
         penalty="none" if correct else cfg.wrong_defect_penalty, lost_info_id=lost,
         delayed_until_round=delayed_until, gain=cfg.defect_gain, release_turn=release)))
     for ag in (actor, a.target):
-        evs += update_win(state, ag)
+        evs += update_win(state, ag, cfg)
     return evs
 
 

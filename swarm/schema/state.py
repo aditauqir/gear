@@ -90,7 +90,7 @@ class Notice(Record):
     round: int
     turn_index: int
     kind: Literal["gift_received", "burned", "defect_attempt", "defect_result", "need_lost",
-                  "delayed", "won", "system"]
+                  "delayed", "won", "left", "system"]   # left: a winner left (winner_policy sit_out)
     text: str
     ref: str | None = None             # truth pointer (event/msg id); never rendered
     deliver_from_turn: int | None = None   # None = next observation; else first obs with t >= this

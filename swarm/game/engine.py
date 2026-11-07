@@ -29,6 +29,11 @@ concurrently (asyncio.gather, bounded by the LLM client's semaphore; if one act(
 others are cancelled); actions resolve in turn-priority order (st.order: fixed or reshuffled per
 round), each stamped at its own slot; a give_key / defect that fails at resolution (e.g. the key
 was already taken) also sends the actor a "system" notice.
+game.winner_policy = "sit_out" (winners leave the game; rules.departed): a winner is skipped from the
+moment it wins, in both modes. Sequential: its later slots (also later in the same round) are
+skipped. Simultaneous: a turn chosen at s0 by an agent that won during this round's resolution is
+still logged, but each of its actions fails "actor_left". Its score is locked (rules), and the game
+ends when every remaining agent is done.
 game.board.post_costs_turn (default off): a post_board uses the whole action budget of its turn. The
 first post_board of a turn is applied; every other action of that turn (before or after it; grep_log
 and noop excepted) fails with reason "board_post_uses_whole_turn" without using a slot, and the agent
@@ -229,7 +234,7 @@ class GameEngine:
         s = self.state.agents[agent]
         if self.state.round <= s.delayed_until_round:
             return False
-        if self.g.winner_policy == "sit_out" and s.won_round is not None:
+        if rules.departed(self.state, agent, self.g):     # winner_policy=sit_out: it left the game
             return False
         return True
 

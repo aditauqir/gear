@@ -79,7 +79,8 @@ def system_context(cfg: RunConfig) -> dict[str, Any]:
                  "grep_enabled": g.view_log.grep_enabled, "max_message_chars": g.max_message_chars,
                  "board_costs_turn": g.board.post_costs_turn, "board_anonymous": g.board.anonymous,
                  "board_skip_rounds": g.board.post_skip_rounds, "board_enabled": g.board.enabled,
-                 "board_delay_rounds": g.board.visible_delay_rounds},
+                 "board_delay_rounds": g.board.visible_delay_rounds,
+                 "winners_leave": g.winner_policy == "sit_out"},
         "cot_mode": cfg.reasoning.cot_mode,
         "scratchpad": cfg.reasoning.scratchpad.enabled,
     }

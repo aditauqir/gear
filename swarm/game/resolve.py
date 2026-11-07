@@ -11,6 +11,8 @@ Per action, in order:
   slot limit      beyond game.actions_per_turn -> "action_limit"
   otherwise       rules.apply; in simultaneous mode a failed give_key / defect also queues a "system"
                   notice (conflict_text): the state may have changed since the agent observed it
+                  (not for winner_policy=sit_out departures: rules already sent a "left" notice, or
+                  the actor itself has left, "actor_left")
 After the loop: one notice for board-blocked actions, then the post_skip_rounds skip (if a post
 succeeded). The engine emits `events` in order, so the event stream is the one the old inline loop
 produced. Pure apart from mutating `state` (no I/O). Imports: config, schema, game.rules, game.board.
@@ -39,6 +41,8 @@ from swarm.schema import (
 from . import board, rules
 
 Result = tuple[bool, str | None]
+# sit_out departures: the actor already got a "left" notice (or has itself left), so no conflict notice
+_NO_CONFLICT_NOTICE = (*rules.LEFT_REASONS, "actor_left")
 
 
 @dataclass
@@ -89,7 +93,8 @@ def resolve_turn(state: GameState, agent: AgentId, actions: Sequence[Action], gr
         out.results.append(res)
         used += 1
         posted = posted or (res[0] and isinstance(act, PostBoard))
-        if not res[0] and cfg.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction)):
+        if (not res[0] and cfg.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction))
+                and res[1] not in _NO_CONFLICT_NOTICE):
             out.events.append(rules.notice(state, agent, "system", conflict_text(act, res[1])))
     if blocked:
         out.events.append(rules.notice(state, agent, "system", board.whole_turn_text(blocked)))

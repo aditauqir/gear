@@ -38,7 +38,7 @@ from collections.abc import Callable, Sequence
 
 from swarm.config import GameCfg
 from swarm.context.base import render_log_line
-from swarm.game.rules import open_needs, score
+from swarm.game.rules import departed, open_needs, score
 from swarm.schema import (
     ActionRecord,
     AgentId,
@@ -79,7 +79,8 @@ def _msg_view(m: Message, cfg: GameCfg) -> AgentMessageView:
 
 
 def pinned_facts(state: GameState, agent: AgentId, cfg: GameCfg) -> PinnedFacts:
-    """Identity, needs, holdings (with key ids, D15), score. Rebuilt from state every turn."""
+    """Identity, needs, holdings (with key ids, D15), score. Rebuilt from state every turn.
+    peers = the players still in the game (winner_policy=sit_out: departed winners are dropped)."""
     s = state.agents[agent]
     holdings = sorted((KeyView(info_id=k.info_id, key=k.key) for k in s.keys),
                       key=lambda kv: (kv.info_id, kv.key))
@@ -87,7 +88,8 @@ def pinned_facts(state: GameState, agent: AgentId, cfg: GameCfg) -> PinnedFacts:
         agent=agent, round=state.round, max_rounds=cfg.max_rounds,
         needs_open=list(open_needs(state, agent)), needs_burned=list(s.burned), needs_lost=list(s.lost),
         holdings=holdings, can_give=sorted({k.info_id for k in s.keys}), score=score(state, agent),
-        peers=sorted(a for a in state.agents if a != agent), won=s.won_round is not None,
+        peers=sorted(a for a in state.agents if a != agent and not departed(state, a, cfg)),
+        won=s.won_round is not None,
     )
 
 
