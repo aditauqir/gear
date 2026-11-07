@@ -8,8 +8,8 @@ Inputs:
         DecideFn(obs, grep_result | None) -> AgentOutput  (tests / scripted stubs; adapted by
             DecideAgent: called again with the GrepResult when its first output has a grep_log).
     god: GodLike | None  (swarm.adversary.base.GodRunner): init_game(state), should_wake(state),
-        await wake(state) -> object with `.events`. Called with state.turn_index = the slot about to
-        be played, so anything God delivers is stamped with the wake slot.
+        await wake(state) -> object with `.events`. Called with state.turn_index = the slot S about to
+        be played; GodRunner stamps what God delivers S - 1 (visible at S; adversary/base.py).
     god_hook(state, round, next_turn) -> list[EventBody]   (legacy form of god; sync or async)
         FROZEN convention (runner/wiring.py's _SlotGod depends on it): called before every slot
         (sequential; skipped slots too) / once at the round's first slot (simultaneous) with

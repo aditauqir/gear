@@ -6,7 +6,8 @@ import asyncio
 
 from swarm.game.engine import GameEngine
 from swarm.llm.base import BudgetExceeded
-from swarm.schema import AgentOutput, MemorySink, Noop
+from swarm.memory import MemoryStore
+from swarm.schema import AgentOutput, MemorySink, Noop, turn_index
 
 from .helpers import FOUR, fresh_game, run_cfg
 
@@ -75,3 +76,35 @@ def test_budget_stop_closes_the_partial_round():
     assert out.end_reason == "budget_exceeded" and out.rounds_played == 2
     assert ends == [1, 2] and [s.round for s in eng.snapshots] == [0, 1, 2]
     assert eng.sink.events[-1].type == "game_end"
+
+
+def test_one_god_stamp_convention_god_and_hook_paths_agree():
+    """Review #7: GodRunner via `god=` now stamps what God delivers at S - 1, like the hook path the
+    real runner used, so a forged DM is in the victim's inbox at the wake slot (simultaneous: the
+    same round) on both paths, with identical event streams."""
+    from swarm.adversary.base import GodRunner
+    from swarm.adversary.scripted_god import ScriptedGod
+    from swarm.runner.god_adapter import _SlotGod, make_god_hook
+
+    cfg = run_cfg(game={"turn_mode": "simultaneous", "max_rounds": 3},
+                  god={"kind": "scripted", "start_round": 2, "budget": {"k": 1},
+                       "schedule": [{"round": 2, "power": "message_fraud", "args": {"text": "psst"}}]})
+
+    def play(path):
+        st = fresh_game(FOUR)
+        if path == "god":
+            kw = {"god": GodRunner(ScriptedGod(cfg.god, seed=1), cfg.god, MemoryStore(cfg.reasoning))}
+        else:
+            slot = _SlotGod(ScriptedGod(cfg.god, seed=1))
+            runner = GodRunner(slot, cfg.god, MemoryStore(cfg.reasoning))
+            runner.init_game(st)
+            kw = {"god_hook": make_god_hook(runner, slot)}
+        eng = GameEngine(cfg, st, lambda obs, g: AgentOutput(actions=[Noop()]), sink=MemorySink(), **kw)
+        asyncio.run(eng.run())
+        return eng
+    a, b = play("god"), play("hook")
+    assert [e.model_dump_json() for e in a.sink.events] == [e.model_dump_json() for e in b.sink.events]
+    forged = next(m for m in a.state.messages if m.forged)
+    assert forged.turn_index == turn_index(2, 0, 4) - 1
+    seen = [e.data.obs for e in a.sink.events if e.type == "turn" and e.data.agent == forged.receiver]
+    assert any(m.text == "psst" for o in seen if o.round == 2 for m in o.inbox)

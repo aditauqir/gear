@@ -39,6 +39,7 @@ Python `/home/iraj/miniconda3/envs/swarm/bin/python` with `PYTHONNOUSERSITE=1`. 
 - **Victim notice**: delivered at the victim's next observation, except in `delayed` mode, where the victim also waits for release. Use `Notice.deliver_from_turn` for that case.
 - **Wrong defects (DECIDED)**: the target of a wrong defect also gets a notice (`kind="defect_attempt"`). The same `defect_visibility` rules apply as for a hit: the target sees it at once, and everyone else sees it after the delay. The actor learns the outcome from its own `action_result`.
 - **Inbox and board**: show messages delivered since the agent's previous observation. Order them by `(Message.turn_index, msg_id)`. Forged DMs are stamped with the turn index of the God wake slot and use the same `make_msg_id(game_id, index_in_messages)` scheme as real ones.
+  - **Clarified (2026-11-07, CODE_REVIEW #7):** God *decides* at the wake slot S. Everything it *delivers* (forged DMs, memory overwrites, power events) is stamped S − 1, so it is visible at S. Every real run used this, through the HookGod adapter. `GodRunner.wake` now owns the convention for both engine paths.
 
 ## 3. Actions and events
 - `Action` is a tagged union on `kind`: `SendMessage(to,text)`, `PostBoard(text)`, `GiveKey(to,info_id)`, `DefectAction(target,info_id)`, `GrepLog(pattern≤80, rounds?)` and `Noop`. Parse with `ACTION_ADAPTER.validate_python(d)`.

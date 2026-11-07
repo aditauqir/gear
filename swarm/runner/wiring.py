@@ -189,16 +189,14 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
     client = OracleClient(clients.get("agent"), oracle)
     agents = {a: LLMAgent(a, client, cfg, counter=counter) for a in state.order}   # policy: make_policy
     god = make_god(cfg.god, seed=spec.world_seed, client=clients.get("god"))
-    hook = None
-    if god is not None:
-        slot = _SlotGod(god)
-        runner = GodRunner(slot, cfg.god, memory, max_message_chars=cfg.game.max_message_chars)
-        runner.init_game(state)
-        hook = make_god_hook(runner, slot)
+    # GodRunner owns the stamp convention (decide at slot S, deliver stamped S - 1); the engine calls
+    # runner.init_game in start(). (_SlotGod + make_god_hook did the same and stay importable.)
+    runner = (GodRunner(god, cfg.god, memory, max_message_chars=cfg.game.max_message_chars)
+              if god is not None else None)
     engine_ref: list[Any] = []
     decide = make_decide(agents, state, memory, ledger_sink, cfg, spec.game_id, engine_ref)
     # on_snapshot writes the round-0 snapshot (engine.start) and every end-of-round deep copy.
-    eng = GameEngine(cfg, state, decide, god_hook=hook, sink=ledger_sink, seed=spec.world_seed, memory=memory,
+    eng = GameEngine(cfg, state, decide, god=runner, sink=ledger_sink, seed=spec.world_seed, memory=memory,
                      on_snapshot=sink.snapshot)
     engine_ref.append(eng)
     outcome = await eng.run()

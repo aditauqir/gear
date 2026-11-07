@@ -254,7 +254,8 @@ def test_scripted_schedule_timing_and_resolution():
     (fraud,) = res.actions
     assert fraud.receiver == closest_to_winning(s) == "coral_elk"
     assert fraud.sender != fraud.receiver and "zq" in fraud.text and "{" not in fraud.text
-    assert s.messages[-1].turn_index == turn_index(3, 2, len(AG))
+    assert s.messages[-1].turn_index == turn_index(3, 2, len(AG)) - 1     # delivered stamped S - 1 (#7)
+    assert s.turn_index == turn_index(3, 2, len(AG))                       # restored to S
     s.round, s.turn_index = 4, turn_index(4, 0, len(AG))
     res = _run(runner.wake(s))
     (cot,) = res.actions

@@ -7,8 +7,12 @@
         res = await runner.wake(state)           # mutates state (inbox / memory / budget)
         for body in res.events: sink.emit(body)
 
-`state.turn_index` must already be the slot about to be played: God acts *between* turns, and
-forged DMs are stamped with that slot (see powers.py).
+`state.turn_index` must already be the slot S about to be played: God acts *between* turns.
+ONE stamp convention (CODE_REVIEW #7): God DECIDES at S (its schedule and free tools see
+turn_index = S), and everything it DELIVERS (forged DMs, memory overwrites, power and post-step tool
+events) is stamped S - 1, i.e. like the previous slot, so it is visible to the observation at S.
+This is what every real run used (formerly via runner/wiring's _SlotGod adapter); wake() restores
+turn_index = S before returning.
 """
 
 from __future__ import annotations
@@ -70,18 +74,25 @@ class GodRunner:
     async def wake(self, state: GameState) -> WakeResult:
         self._budget_round = refresh_budget(state, self.cfg, self._budget_round)
         view = GodView(state, ceiling=self.cfg.tool_call_safety_ceiling)
-        actions = await self.god.step(state, view)
-        out = WakeResult(actions=list(actions))
-        for a in actions:
-            if is_power(a):
-                continue
-            view.run(a)                       # tool actions returned by step (LLM God style)
-        out.events.extend(view.events)        # tool events happened before the powers
-        for a in actions:
-            if not is_power(a):
-                continue
-            res = apply_power(state, a, self.cfg, self.memory, max_message_chars=self.max_message_chars)
-            out.results.append(res)
-            out.events.extend(res.events)
-        out.ceiling_hit = view.exhausted
-        return out
+        slot = state.turn_index
+        try:
+            actions = await self.god.step(state, view)     # decides at the slot about to be played
+        finally:
+            state.turn_index = slot - 1                    # ... delivers stamped like the slot before
+        try:
+            out = WakeResult(actions=list(actions))
+            for a in actions:
+                if is_power(a):
+                    continue
+                view.run(a)                       # tool actions returned by step (LLM God style)
+            out.events.extend(view.events)        # tool events happened before the powers
+            for a in actions:
+                if not is_power(a):
+                    continue
+                res = apply_power(state, a, self.cfg, self.memory, max_message_chars=self.max_message_chars)
+                out.results.append(res)
+                out.events.extend(res.events)
+            out.ceiling_hit = view.exhausted
+            return out
+        finally:
+            state.turn_index = slot
