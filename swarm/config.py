@@ -57,6 +57,17 @@ class ViewLogCfg(Cfg):
     grep_max_pattern_chars: int = Field(80, ge=1, le=80)
 
 
+class BoardCfg(Cfg):
+    """Public message board options (added after the WP0 freeze; both default off = original rules).
+    post_costs_turn: a post_board uses the agent's WHOLE action budget for that turn. The first
+        post_board of a turn is applied and every other (non-grep) action of that turn fails with
+        reason "board_post_uses_whole_turn" (the agent also gets a system notice). DMs cost one slot.
+    anonymous: agents see board posts without the author (board view, view_log, grep_log and so
+        the context built from them). God, events and analysis still see the true author."""
+    post_costs_turn: bool = False
+    anonymous: bool = False
+
+
 class GameCfg(Cfg):
     """Game rules knobs (PDF items mapped to config; ARCHITECTURE_v2 s1)."""
     n_agents: int = Field(20, ge=2)
@@ -75,6 +86,7 @@ class GameCfg(Cfg):
     winner_policy: Literal["sit_out", "continue"] = "continue"   # continue: winners act, cannot be burned
     max_message_chars: int = Field(500, ge=1)
     view_log: ViewLogCfg = ViewLogCfg()
+    board: BoardCfg = BoardCfg()
 
     @model_validator(mode="after")
     def _check(self) -> GameCfg:
@@ -295,8 +307,13 @@ class RunConfig(Cfg):
         return self
 
     def config_hash(self) -> str:
-        """sha256 of the resolved config, excluding `sweep` (each expanded cell has its own hash)."""
-        return sha256_hex(canonical_json(self.model_dump(mode="json", exclude={"sweep"})))
+        """sha256 of the resolved config, excluding `sweep` (each expanded cell has its own hash).
+        `game.board` is left out while it equals its defaults, so configs written before it existed
+        keep their hash (and so their game ids, agent seeds and LLM cache keys)."""
+        d = self.model_dump(mode="json", exclude={"sweep"})
+        if self.game.board == BoardCfg():
+            d["game"].pop("board")
+        return sha256_hex(canonical_json(d))
 
     def model_for(self, role: str) -> tuple[str, str]:
         """-> (backend, model name) for a role."""

@@ -131,6 +131,12 @@ Python `/home/iraj/miniconda3/envs/swarm/bin/python` with `PYTHONNOUSERSITE=1`. 
   - An openrouter role is an error unless openrouter is enabled.
   - `immediate_reply` and `observe_mode=tools` are not implemented.
 
+## 9b. Extension (2026-11-07): board options `game.board` (both default off = the rules above)
+Added to `GameCfg` / `configs/base.yaml` on the lead's request. `config_hash()` leaves `game.board` out while it equals its defaults, so older configs keep their hash, game ids, seeds and cache keys.
+- `post_costs_turn: bool`. A post_board takes the agent's whole action budget for that turn. The turn's **first** post_board is applied. Every other action that turn, before or after it (grep_log and noop excepted), fails with `reason="board_post_uses_whole_turn"` and uses no slot. The agent gets one `system` notice at its next observation. send_message still costs one slot. Enforced in `GameEngine._resolve`, so it is the same in both turn modes. When the option is on, system.j2 says: "Posting to the public board uses your whole turn; a direct message costs one action."
+- `anonymous: bool`. Agents see board posts with no author. The board view has `sender="(anonymous)"` (`observe.ANON_SENDER`), and `board_post` LogLines have `actor=None`, which covers view_log, grep_log and every context section built from observations. DMs are unchanged. Truth is unchanged: `Message.sender_shown`/`true_sender`, `message` events and God's tools all keep the real author. When the option is on, system.j2 says the board is anonymous.
+- `system_context()["game"]` gains `board_costs_turn` and `board_anonymous`.
+
 ## 10. Fixtures (`tests/conftest.py`)
 - `tiny_cfg` is 6 agents, 5 rounds, every role on the fake backend, with the `words` tokenizer.
 - `fake_llm`, `tmp_run_dir`.

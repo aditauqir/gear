@@ -29,6 +29,11 @@ concurrently (asyncio.gather, bounded by the LLM client's semaphore); actions re
 turn-priority order (st.order: fixed or reshuffled per round), each stamped at its own slot; a
 give_key / defect that fails at resolution (e.g. the key was already taken) also sends the actor a
 "system" notice.
+game.board.post_costs_turn (default off): a post_board uses the whole action budget of its turn. The
+first post_board of a turn is applied; every other action of that turn (before or after it; grep_log
+and noop excepted) fails with reason "board_post_uses_whole_turn" without using a slot, and the agent
+gets one "system" notice (next observation) saying so.
+send_message still costs one slot. Same in both turn modes (it is decided per agent turn in _resolve).
 End of round: round_end event + deep-copied snapshot. The game ends at max_rounds, when every agent
 is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded").
 Imports: config, memory, rng, schema, context.base/tokens, llm.base (BudgetExceeded only), game.*.
@@ -69,6 +74,7 @@ from swarm.schema import (
     Noop,
     Observation,
     Outcome,
+    PostBoard,
     RoundEndData,
     TurnData,
     turn_index,
@@ -318,16 +324,24 @@ class GameEngine:
         self._emit_turn(agent, t, obs, out)
         results: list[Result] = []
         used, grep_left = 0, grep
-        for act in out.actions:
+        post_at = self._whole_turn_post(out.actions)
+        blocked: list[Action] = []
+        for i, act in enumerate(out.actions):
             if isinstance(act, GrepLog):                # free: no action slot
                 results.append(self._grep_result(agent, act, grep_left))
                 grep_left = None                        # a second grep_log in one turn fails
+                continue
+            if post_at is not None and i != post_at and not isinstance(act, Noop):
+                results.append(self._reject(agent, act, BOARD_WHOLE_TURN))   # uses no slot
+                blocked.append(act)
                 continue
             res = self._apply_one(agent, act, used)
             results.append(res)
             used += 1
             if not res[0] and self.g.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction)):
                 self.emit([rules._notice(st, agent, "system", _conflict_text(act, res[1]))])
+        if blocked:
+            self.emit([rules._notice(st, agent, "system", _whole_turn_text(blocked))])
         if self.cfg.reasoning.cot_mode != "none" and out.cot:
             _, ev = self.memory.write(st, agent, "cot", st.round, out.cot)
             self.emit([ev])
@@ -345,11 +359,22 @@ class GameEngine:
             actor=agent, phase="resolve", turn=self.state.turn_index)])
         return ok, None if ok else "grep_unavailable"
 
+    def _whole_turn_post(self, actions: Sequence[Action]) -> int | None:
+        """Under game.board.post_costs_turn: index of the turn's first post_board, which takes the
+        whole turn (None when the option is off or there is no post)."""
+        if not self.g.board.post_costs_turn:
+            return None
+        return next((i for i, a in enumerate(actions) if isinstance(a, PostBoard)), None)
+
+    def _reject(self, agent: AgentId, act: Action, reason: str) -> Result:
+        """Emit a failed action_result for `act` without applying it."""
+        self.emit([self._body(ActionResultData(agent=agent, action=act, ok=False, reason=reason),
+                              actor=agent, phase="resolve", turn=self.state.turn_index)])
+        return False, reason
+
     def _apply_one(self, agent: AgentId, act: Action, used: int) -> Result:
         if used >= self.g.actions_per_turn:
-            self.emit([self._body(ActionResultData(agent=agent, action=act, ok=False, reason="action_limit"),
-                                  actor=agent, phase="resolve", turn=self.state.turn_index)])
-            return False, "action_limit"
+            return self._reject(agent, act, "action_limit")
         _, evs = rules.apply(self.state, agent, act, self.g)
         self.emit(evs)
         first = evs[0].data if evs else None
@@ -419,6 +444,16 @@ class GameEngine:
         out = self.outcome()
         self.emit([self._body(GameEndData(outcome=out))])
         return out
+
+
+BOARD_WHOLE_TURN = "board_post_uses_whole_turn"
+
+
+def _whole_turn_text(blocked: Sequence[Action]) -> str:
+    """Notice for actions dropped because a post_board took the whole turn (board.post_costs_turn)."""
+    kinds = ", ".join(a.kind for a in blocked)
+    return (f"Your other action(s) this turn ({kinds}) were not done: posting to the public board uses "
+            "your whole turn. A direct message costs one action.")
 
 
 def _conflict_text(act: Action, reason: str | None) -> str:

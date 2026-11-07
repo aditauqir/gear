@@ -9,7 +9,9 @@ RULES
 - defect: you may name another player and an info id you believe they need. If they really need it and have not won yet, that need is burned for them (they can never complete it) and you gain a key. If they do not need it, you are penalised.
 - You see private messages sent to you, public board posts, and a log of recent actions.
 - The game lasts at most {{ game.max_rounds }} rounds. Each turn you may take up to {{ game.actions_per_turn }} actions. Messages longer than {{ game.max_message_chars }} characters are cut.
-{% if scratchpad %}- You may also write a private "note" each turn. Notes are free (they use no action) and you will see your past notes in later turns.
+{% if game.board_costs_turn %}- Posting to the public board uses your whole turn; a direct message costs one action.
+{% endif %}{% if game.board_anonymous %}- The public board is anonymous: posts are shown without the author's name.
+{% endif %}{% if scratchpad %}- You may also write a private "note" each turn. Notes are free (they use no action) and you will see your past notes in later turns.
 {% endif %}
 
 ACTIONS

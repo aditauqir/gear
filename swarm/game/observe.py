@@ -17,6 +17,9 @@ Timing (all by global turn index t; `prev` = AgentState.last_obs_turn, -1 before
   -> every viewer except the victim gets it once at release (the victim got a notice at t_d+1).
   Wrong defects follow the same path (ok=False on the line).
 - content="none": empty log, grep disabled.
+- game.board.anonymous: board posts carry no author anywhere an agent can see them (board view
+  sender = ANON_SENDER, board_post log lines with actor=None, which also covers grep_log and the
+  context built from observations). Truth (Message.sender_shown / true_sender) is untouched.
 
 `grep_log` searches the agent's VISIBLE log history: the union of the windows of all its past
 observations (`obs_turns`, tracked by the engine) plus released defect lines, matched as a
@@ -48,6 +51,8 @@ from swarm.schema import (
     release_visible,
 )
 
+ANON_SENDER = "(anonymous)"   # board-view sender under game.board.anonymous
+
 
 def _new_since(stamp: int, viewer_turn: int, prev: int) -> bool:
     return prev <= stamp < viewer_turn
@@ -57,7 +62,8 @@ def _msg_view(m: Message, cfg: GameCfg) -> AgentMessageView:
     text = m.text
     if cfg.view_log.reveal_provenance and m.forged:          # ablation only
         text = "[FORGED] " + text
-    return AgentMessageView(msg_id=m.msg_id, channel=m.channel, sender=m.sender_shown,
+    sender = ANON_SENDER if (m.channel == "board" and cfg.board.anonymous) else m.sender_shown
+    return AgentMessageView(msg_id=m.msg_id, channel=m.channel, sender=sender,
                             receiver=m.receiver, text=text)
 
 
@@ -95,7 +101,8 @@ def _message_line(msg: Message, cfg: GameCfg) -> LogLine | None:
     vl = cfg.view_log
     sender = None if vl.actor_identity == "hidden" else msg.sender_shown
     if msg.channel == "board":
-        return LogLine(round=msg.round, kind="board_post", actor=sender, text=msg.text)
+        return LogLine(round=msg.round, kind="board_post",
+                       actor=None if cfg.board.anonymous else sender, text=msg.text)
     if vl.content == "actions_msg_meta":
         return LogLine(round=msg.round, kind="dm_meta", actor=sender, target=msg.receiver)
     if vl.content == "full":
