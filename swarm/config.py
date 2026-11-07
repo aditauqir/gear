@@ -144,6 +144,11 @@ class ReasoningCfg(Cfg):
     cot_replay_window: int = Field(0, ge=0)        # 0: past CoT is logged, never re-shown
     max_cot_chars: int = Field(1200, ge=1)         # stored/replayed CoT only
     scratchpad: ScratchpadCfg = ScratchpadCfg()
+    # Added after the freeze (default False = original behaviour, left out of config_hash): when a reply
+    # was cut off by max_tokens (finish_reason=length) and has no decodable JSON object, keep every
+    # complete action object after its "actions" key instead of retrying. A reply cut inside "thought"
+    # (before "actions") has nothing to salvage and is retried as before.
+    salvage_truncated: bool = False
 
 
 # ---------------------------------------------------------------- roles / llm
@@ -359,6 +364,8 @@ class RunConfig(Cfg):
             for k in path[:-1]:
                 cur = cur[k]
             cur[path[-1]] = copy.deepcopy(value)
+        if not self.reasoning.salvage_truncated:                  # added later; board rule
+            d["reasoning"].pop("salvage_truncated")
         orr = d["llm"]["openrouter"]
         for k in ("reasoning_effort", "provider_sort"):           # added later; board rule
             if orr[k] is None:

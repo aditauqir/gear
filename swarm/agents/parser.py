@@ -19,7 +19,11 @@ invalid): the caller retries once, then falls back to [Noop()].
 
 Error codes (strings, logged in TurnData.errors): no_json, bad_json, not_object, no_actions_key,
 actions_not_list, action_not_object:<i>, unknown_kind:<i>:<kind>, invalid_action:<i>:<kind>:<field>,
-too_many_actions:<n>, duplicate_grep:<i>, all_actions_invalid, think_leak.
+too_many_actions:<n>, duplicate_grep:<i>, all_actions_invalid, think_leak, salvaged_truncated.
+
+salvage=True (the caller passes it only for a reply cut off by max_tokens, reasoning.salvage_truncated):
+if no JSON object decodes, keep the complete {...} action objects after the "actions" key (plus a
+complete "thought"/"note" string before it) and add "salvaged_truncated".
 
 Imports: schema only. Pure.
 """
@@ -158,6 +162,30 @@ def extract_json(text: str) -> tuple[Any, list[str]]:
     return None, [*errs, "no_json"]
 
 
+_ACTIONS_KEY = re.compile(r'"actions"\s*:\s*\[')
+_STR_FIELD = r'"{}"\s*:\s*"((?:[^"\\]|\\.)*)"'
+
+
+def salvage_truncated(text: str) -> dict[str, Any] | None:
+    """{"actions": [complete objects], thought?, note?} from a JSON reply cut off mid-way, else None."""
+    t, _ = strip_noise(text)
+    m = _ACTIONS_KEY.search(t)
+    if m is None:
+        return None
+    acts = [v for v in (_loads(sp) for sp in _balanced_spans(t[m.end():], "{", "}")) if isinstance(v, dict)]
+    if not acts:
+        return None
+    out: dict[str, Any] = {"actions": acts}
+    head = t[:m.start()]
+    for k in ("thought", "note"):
+        fm = re.search(_STR_FIELD.format(k), head)
+        if fm:
+            v = _loads('"' + fm.group(1) + '"')
+            if isinstance(v, str):
+                out[k] = v
+    return out
+
+
 # ------------------------------------------------------------------ normalisation
 def _to_int(v: Any) -> Any:
     if isinstance(v, bool):
@@ -218,7 +246,7 @@ def normalize_action(a: dict[str, Any]) -> tuple[dict[str, Any] | None, str | No
 
 def parse_reply(text: str, *, actions_per_turn: int = 2, scratchpad: bool = True,
                 want_thought: bool = True, grep_free: bool = False,
-                max_text_chars: int | None = None) -> ParsedReply:
+                max_text_chars: int | None = None, salvage: bool = False) -> ParsedReply:
     """Parse one model reply. Never raises.
 
     want_thought: keep the "thought" field (cot_mode=explicit). scratchpad: keep "note".
@@ -227,6 +255,10 @@ def parse_reply(text: str, *, actions_per_turn: int = 2, scratchpad: bool = True
     """
     res = ParsedReply()
     obj, errs = extract_json(text or "")
+    if obj is None and salvage:
+        obj = salvage_truncated(text or "")
+        if obj is not None:
+            errs = [e for e in errs if e not in ("bad_json", "no_json")] + ["salvaged_truncated"]
     res.errors.extend(errs)
     if obj is None:
         res.ok = False

@@ -56,6 +56,7 @@ def test_defaults_off_and_hash_unchanged():
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD   # cap is hashed as legacy $2
     for k in ("reasoning_effort", "provider_sort"):                     # later fields, off by default
         d["llm"]["openrouter"].pop(k)
+    d["reasoning"].pop("salvage_truncated")
     assert cfg.config_hash() == sha256_hex(canonical_json(d))       # pre-option hash preserved
     on = RunConfig.model_validate({"game": {"board": {"anonymous": True}}})
     assert on.config_hash() != cfg.config_hash()
@@ -266,6 +267,7 @@ def test_post_skip_hash_unchanged_at_default():
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD
     for k in ("reasoning_effort", "provider_sort"):
         d["llm"]["openrouter"].pop(k)
+    d["reasoning"].pop("salvage_truncated")
     assert base.config_hash() == sha256_hex(canonical_json(d))
     on = RunConfig.model_validate({"game": {"board": {"post_skip_rounds": 3}}})
     assert on.config_hash() != RunConfig().config_hash()

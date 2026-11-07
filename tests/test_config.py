@@ -151,3 +151,9 @@ def test_config_hash_all_operational_at_once_and_new_fields_default_off():
     assert allops.config_hash() == RunConfig().config_hash()
     d = RunConfig().model_dump(mode="json")
     assert d["llm"]["openrouter"]["reasoning_effort"] is None and d["llm"]["openrouter"]["provider_sort"] is None
+
+
+def test_salvage_truncated_default_off_and_hashed_only_when_on():
+    assert RunConfig().reasoning.salvage_truncated is False
+    on = from_dict({}, ["reasoning.salvage_truncated=true"])
+    assert on.config_hash() != RunConfig().config_hash()

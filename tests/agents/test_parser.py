@@ -107,3 +107,36 @@ def test_never_raises_and_never_empty(text):
     r = parse_reply(text)
     assert r.actions
     assert r.ok or r.actions == [Noop()]
+
+
+# ------------------------------------------------------------------ salvage (reasoning.salvage_truncated)
+CUT_AFTER_ONE_ACTION = ('{"thought": "need 3", "note": "owl", "actions": [{"kind": "give_key", "to": "blue_owl", '
+                        '"info_id": 1}, {"kind": "send_message", "to": "blue_owl", "text": "sent you 1, could y')
+CUT_IN_THOUGHT = '{"thought": "I need keys for 3 and 4. Blue owl said earlier that it might have'
+
+
+def test_salvage_keeps_complete_actions_of_a_cut_reply():
+    from swarm.agents.parser import parse_reply
+    from swarm.schema import GiveKey
+
+    off = parse_reply(CUT_AFTER_ONE_ACTION)
+    assert not off.ok and "bad_json" in off.errors                 # default: unchanged behaviour
+    on = parse_reply(CUT_AFTER_ONE_ACTION, salvage=True)
+    assert on.ok and on.actions == [GiveKey(to="blue_owl", info_id=1)]
+    assert on.thought == "need 3" and on.note == "owl" and "salvaged_truncated" in on.errors
+    assert "bad_json" not in on.errors
+
+
+def test_salvage_nothing_when_cut_inside_thought_or_no_actions():
+    from swarm.agents.parser import parse_reply
+
+    for text in (CUT_IN_THOUGHT, '{"thought": "x", "actions": [{"kind": "give_key", "to": "bl'):
+        r = parse_reply(text, salvage=True)
+        assert not r.ok and "salvaged_truncated" not in r.errors
+
+
+def test_salvage_does_not_touch_valid_replies():
+    from swarm.agents.parser import parse_reply
+
+    ok = '{"thought": "t", "actions": [{"kind": "noop"}]}'
+    assert parse_reply(ok, salvage=True).errors == parse_reply(ok).errors == []

@@ -128,11 +128,12 @@ class LLMAgent:
                           purpose=purpose, prompt_set=self.prompts.name, prompt_set_hash=self.prompts.hash,
                           prompt_hash=ph))
 
-    def _parse(self, text: str, grep_free: bool) -> ParsedReply:
+    def _parse(self, text: str, grep_free: bool, truncated: bool = False) -> ParsedReply:
         return parse_reply(text, actions_per_turn=self.cfg.game.actions_per_turn,
                            scratchpad=self.cfg.reasoning.scratchpad.enabled,
                            want_thought=wants_thought_field(self.cot_mode), grep_free=grep_free,
-                           max_text_chars=self.cfg.game.max_message_chars)
+                           max_text_chars=self.cfg.game.max_message_chars,
+                           salvage=truncated and self.cfg.reasoning.salvage_truncated)
 
     async def _call_parse(self, messages: list[ChatMessage], *, game_id: str, round: int, purpose: str,
                           attempt_base: int, grep_free: bool, errors: list[str],
@@ -154,7 +155,7 @@ class LLMAgent:
                 return None, cot, retries
             self.last.responses.append(resp)
             self.last.raw_texts.append(resp.text)
-            parsed = self._parse(resp.text, grep_free)
+            parsed = self._parse(resp.text, grep_free, truncated=resp.finish_reason == "length")
             errors.extend(parsed.errors)
             cot = extract_cot(self.cot_mode, parsed.thought, resp.reasoning) or cot
             if parsed.ok:

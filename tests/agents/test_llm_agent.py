@@ -173,3 +173,20 @@ def test_framing_slot_empty_by_default_and_rendered_when_set(cfg, tmp_path):
     assert ps.framing_text == ""
     assert ps.render("system.j2", **system_context(cfg)) == load_prompt_set("agent/v1").render(
         "system.j2", **system_context(cfg))
+
+
+@pytest.mark.parametrize("finish,salvage,expect_retry", [("length", True, False), ("length", False, True),
+                                                         ("stop", True, True)])
+def test_salvage_only_for_length_cutoffs_when_enabled(finish, salvage, expect_retry):
+    """reasoning.salvage_truncated keeps the complete actions of a max_tokens cut-off instead of
+    retrying; never for a reply that stopped normally; default off."""
+    cut = ('{"thought": "t", "actions": [{"kind": "give_key", "to": "blue_owl", "info_id": 1}, '
+           '{"kind": "send_message", "to": "blue_owl", "text": "abc')
+    full = json.dumps({"thought": "t2", "actions": [{"kind": "noop"}]})
+    c = from_dict({**TINY, "reasoning": {"salvage_truncated": salvage}})
+    f = FakeLLM(script=[cut, full], finish_reason=finish)
+    out = run(LLMAgent("amber_fox", f, c).act(obs(), game_id="g1"))
+    if expect_retry:
+        assert out.retries == 1 and len(f.requests) == 2
+    else:
+        assert out.retries == 0 and len(f.requests) == 1 and out.actions == [GiveKey(to="blue_owl", info_id=1)]

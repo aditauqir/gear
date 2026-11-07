@@ -51,6 +51,7 @@ reasoning:
     enabled: true
     window: null
     max_chars: 400
+  salvage_truncated: false
 roles:
   agent:
     backend: vllm
