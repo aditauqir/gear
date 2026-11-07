@@ -76,8 +76,8 @@ class RedactingFilter(logging.Filter):
 
 
 def install_log_redaction(logger: logging.Logger | None = None) -> None:
-    """Attach the filter to every handler of `logger` (root by default), present and future-proofed
-    by also filtering at the logger level."""
+    """Attach the filter to `logger` (root by default) and to each of its current handlers.
+    Handlers added later need `h.addFilter(RedactingFilter())` themselves."""
     lg = logger or logging.getLogger()
     f = RedactingFilter()
     lg.addFilter(f)
