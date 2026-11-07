@@ -25,6 +25,8 @@ engine or observe) and asserts, per game:
              "Your keys" == pinned holdings; "(key K)" in notices only for keys the agent holds or
              held; every "Your note (round r): ..." is the agent's own CURRENT entry; a replaced
              original note never re-appears as that round's entry
+  replay     (--base) runner.fork.control_god cells: each control equals the base run's nogod game
+             until the base game's first uncacheable call (empty response / error), then may re-sample
   fork       god vs nogod of one game_idx: identical events and LLM calls (requests AND responses)
              before God's first event (common random numbers); the noise branch has no God events
 Exit code 1 when any violation is found.
@@ -645,14 +647,71 @@ def check_run(run_dir: Path, *, prompts: bool = True, only: str | None = None) -
     return out
 
 
+def _uncacheable_round(calls_path: Path) -> int | None:
+    """First round with a call the LLM cache cannot replay (error, or empty response text: never cached)."""
+    rounds = [c["request"]["meta"].get("round") or 0 for c in _jsonl(calls_path)
+              if c.get("error") or not ((c.get("response") or {}).get("text") or "").strip()]
+    return min(rounds) if rounds else None
+
+
+def _norm_cross(e: dict[str, Any]) -> str:
+    return json.dumps({k: v for k, v in e.items() if k not in ("seq", "run_id")}, sort_keys=True)
+
+
+def control_replay_checks(run_dir: Path, base_dir: Path) -> tuple[list[Violation], list[str]]:
+    """runner.fork.control_god cells: each control (nogod) game must equal the base run's nogod game of
+    the same game_idx (same game_id, events, prompts, responses) up to the base game's first
+    uncacheable call; from that round on it may re-sample. -> (violations, info lines)."""
+    out: list[Violation] = []
+    info: list[str] = []
+    for g in sorted((run_dir / "games").glob("*-nogod")):
+        b = base_dir / "games" / g.name
+        label = f"{g.name} vs {base_dir.name}"
+        if not b.is_dir():
+            out.append(Violation(label, "replay", "no base game with this label"))
+            continue
+        ea, eb = list(_jsonl(g / "events.jsonl")), list(_jsonl(b / "events.jsonl"))
+        if not ea or not eb or ea[0]["game_id"] != eb[0]["game_id"]:
+            out.append(Violation(label, "replay", "game_id differs (control_god not matching the base)"))
+            continue
+        brk = _uncacheable_round(b / "llm_calls.jsonl")
+        div = next((i for i, (x, y) in enumerate(zip(ea, eb, strict=False)) if _norm_cross(x) != _norm_cross(y)), None)
+        finished = bool(ea) and ea[-1]["type"] == "game_end"
+        if div is None and len(ea) != len(eb) and (finished or len(ea) > len(eb)):
+            div = min(len(ea), len(eb))                   # (a still-running control is just shorter)
+        div_round = None if div is None else (ea[div]["round"] if div < len(ea) else eb[div]["round"])
+        ca = {c["request"]["call_id"]: c for c in _jsonl(g / "llm_calls.jsonl")}
+        cb = {c["request"]["call_id"]: c for c in _jsonl(b / "llm_calls.jsonl")}
+        bad_calls = sorted(((ca[k]["request"]["meta"].get("round") or 0), k) for k in set(ca) & set(cb)
+                           if ca[k]["request"]["messages"] != cb[k]["request"]["messages"]
+                           or (ca[k].get("response") or {}).get("text") != (cb[k].get("response") or {}).get("text"))
+        call_round = bad_calls[0][0] if bad_calls else None
+        found = [x for x in (div_round, call_round) if x is not None]
+        first = min(found) if found else None
+        info.append(f"{label}: base break r{brk}, control diverges at "
+                    f"{'never' if first is None else f'r{first}'}")
+        if first is not None and (brk is None or first < brk):
+            out.append(Violation(label, "replay", f"control diverges from the base at r{first} "
+                                 f"(base break {'none' if brk is None else f'r{brk}'}): event {div}, "
+                                 f"call {bad_calls[0][1] if bad_calls else '-'}"))
+    return out, info
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("run", type=Path)
     ap.add_argument("--examples", type=int, default=5, help="violations printed per check")
     ap.add_argument("--no-prompts", action="store_true", help="skip the llm_calls prompt checks")
     ap.add_argument("--game", default=None, help="only this game label or game index prefix (e.g. g03)")
+    ap.add_argument("--base", type=Path, default=None,
+                    help="runner.fork.control_god cells: base run whose nogod games the controls replay")
     args = ap.parse_args(argv)
     vs = check_run(args.run, prompts=not args.no_prompts, only=args.game)
+    if args.base is not None:
+        rv, info = control_replay_checks(args.run, args.base)
+        vs += rv
+        for ln in info:
+            print(f"  replay {ln}")
     by = collections.defaultdict(list)
     for v in vs:
         by[v.check].append(v)

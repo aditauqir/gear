@@ -142,3 +142,29 @@ def test_duplicated_own_action_line_is_caught(sim_run: Path, tmp_path: Path) -> 
         raise AssertionError("no own-action line found")
     _rewrite(gdir / "llm_calls.jsonl", dup)
     assert any(v.check == "prompts" and "own action" in v.detail for v in check_run(run))
+
+
+def test_control_replay_check(sim_run: Path, tmp_path: Path) -> None:
+    """--base: a control identical to the base's nogod game passes; a divergence before the base's
+    first uncacheable call is a violation; after it (empty response in the base) it is allowed."""
+    from swarm.analysis.invariants import control_replay_checks
+
+    base, cell = _copy(sim_run, tmp_path / "b"), _copy(sim_run, tmp_path / "c")
+    vs, info = control_replay_checks(cell, base)
+    assert vs == [] and all("never" in ln for ln in info)
+
+    def change_r3_turn(evs):
+        e = next(e for e in evs if e["type"] == "turn" and e["round"] == 3)
+        e["data"]["note"] = (e["data"]["note"] or "") + " changed"
+        return evs
+    _rewrite(cell / "games" / "g00-nogod" / "events.jsonl", change_r3_turn)
+    vs, _ = control_replay_checks(cell, base)
+    assert len(vs) == 1 and "r3" in vs[0].detail
+
+    def empty_r2_response(calls):
+        c = next(c for c in calls if c["request"]["meta"]["round"] == 2)
+        c["response"]["text"] = ""
+        return calls
+    _rewrite(base / "games" / "g00-nogod" / "llm_calls.jsonl", empty_r2_response)
+    vs, info = control_replay_checks(cell, base)
+    assert vs == [] and any("base break r2" in ln for ln in info)
