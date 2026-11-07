@@ -120,6 +120,7 @@ class LedgerSink:
     def __init__(self, inner: Any, counter: Any = None) -> None:
         self.inner, self.counter = inner, counter
         self.ledgers: dict[str, list[Any]] = {}
+        self._own_n: dict[tuple[str, int], int] = {}   # own actions seen per (agent, round)
 
     def emit(self, body: Any) -> Any:
         from swarm.context.base import items_from_observation, own_action_items
@@ -129,8 +130,15 @@ class LedgerSink:
         if d.type == "turn":
             self.ledgers.setdefault(d.agent, []).extend(items_from_observation(d.obs, self.counter))
         elif d.type == "action_result" and d.action.kind != "grep_log":
-            self.ledgers.setdefault(d.agent, []).extend(
-                own_action_items(d.agent, body.round, [d.action], [(d.ok, d.reason)], self.counter))
+            # Number own actions per (agent, round): own_action_items() numbers within ONE call, and
+            # we call it once per action, so without this every action got item_id ...:own_action:0
+            # and the context policy (items keyed by id) dropped all but the last (CODE_REVIEW #1).
+            k = (d.agent, body.round)
+            n = self._own_n.get(k, 0)
+            self._own_n[k] = n + 1
+            (item,) = own_action_items(d.agent, body.round, [d.action], [(d.ok, d.reason)], self.counter)
+            self.ledgers.setdefault(d.agent, []).append(
+                item.model_copy(update={"item_id": f"{d.agent}:{body.round}:own_action:{n}"}))
         return ev
 
     def __getattr__(self, name: str) -> Any:
