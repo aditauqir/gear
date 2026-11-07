@@ -20,7 +20,7 @@ from matplotlib.patches import Patch
 from swarm.analysis.outcomes import final_scores, god_actions
 from swarm.analysis.ripple import RippleResult
 from swarm.runlog.trace import GameTrace
-from swarm.viz.style import C, INK2, SURFACE, fig_to_png
+from swarm.viz.style import INK2, SURFACE, C, fig_to_png
 
 
 def save(png: bytes, path: str | Path) -> Path:

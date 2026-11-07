@@ -10,6 +10,8 @@ Timing (all by global turn index t; `prev` = AgentState.last_obs_turn, -1 before
   Notices with `deliver_from_turn` d use schema.release_visible(d, t, prev) instead (shown once).
 - view_log: the rolling window schema.log_visible(s, t, window_turns) (window = n_agents by default)
   over give / board_post (+ dm_meta / dm under actions_msg_meta / full; never under actions_only).
+  Message lines are rendered from state.messages (not ActionRecords) because God's forged DMs are
+  appended by adversary.powers without an ActionRecord; this keeps forged DMs indistinguishable.
 - Defects (D12): `public` -> in the rolling window like any action. `victim_only` -> never in the log.
   `delayed` -> every viewer gets the line once, at release (release_visible). `victim_then_delayed`
   -> every viewer except the victim gets it once at release (the victim got a notice at t_d+1).
@@ -25,7 +27,7 @@ The engine calls `mark_observed(state, agent, t)` after each observation; `obser
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from swarm.config import GameCfg
 from swarm.context.base import render_log_line
@@ -73,41 +75,33 @@ def pinned_facts(state: GameState, agent: AgentId, cfg: GameCfg) -> PinnedFacts:
 
 
 # ------------------------------------------------------------------ view_log
-def _line(rec: ActionRecord, state: GameState, cfg: GameCfg) -> LogLine | None:
-    """Render one ActionRecord as a LogLine under cfg.view_log (None = not shown at all)."""
+def _record_line(rec: ActionRecord, cfg: GameCfg) -> LogLine | None:
+    """Render a give / defect ActionRecord as a LogLine under cfg.view_log."""
     vl = cfg.view_log
-    hidden = vl.actor_identity == "hidden"
     if rec.kind == "defect":
         ident = vl.defect_actor_identity or vl.actor_identity
         return LogLine(round=rec.round, kind="defect",
                        actor=None if ident == "hidden" else rec.actor,
                        target=rec.target, info_id=rec.info_id, ok=rec.ok)
     if rec.kind == "give":
-        return LogLine(round=rec.round, kind="give", actor=None if hidden else rec.actor,
+        return LogLine(round=rec.round, kind="give", actor=None if vl.actor_identity == "hidden" else rec.actor,
                        target=rec.target, info_id=rec.info_id)
-    msg = _msg_by_id(state, rec.msg_id)
-    if msg is None:
-        return None
-    sender = None if hidden else msg.sender_shown          # never the true sender
-    if rec.kind == "board_post":
-        return LogLine(round=rec.round, kind="board_post", actor=sender, text=msg.text)
-    if rec.kind == "dm":
-        if vl.content == "actions_msg_meta":
-            return LogLine(round=rec.round, kind="dm_meta", actor=sender, target=msg.receiver)
-        if vl.content == "full":
-            text = ("[FORGED] " + msg.text) if (vl.reveal_provenance and msg.forged) else msg.text
-            return LogLine(round=rec.round, kind="dm", actor=sender, target=msg.receiver, text=text)
-        return None                                         # actions_only: no message events at all
     return None
 
 
-def _msg_by_id(state: GameState, msg_id: str | None) -> Message | None:
-    if msg_id is None:
-        return None
-    for m in state.messages:
-        if m.msg_id == msg_id:
-            return m
-    return None
+def _message_line(msg: Message, cfg: GameCfg) -> LogLine | None:
+    """Render a board post / DM as a LogLine (None under actions_only for DMs). Uses the SHOWN sender
+    only, so a forged DM renders exactly like a real one."""
+    vl = cfg.view_log
+    sender = None if vl.actor_identity == "hidden" else msg.sender_shown
+    if msg.channel == "board":
+        return LogLine(round=msg.round, kind="board_post", actor=sender, text=msg.text)
+    if vl.content == "actions_msg_meta":
+        return LogLine(round=msg.round, kind="dm_meta", actor=sender, target=msg.receiver)
+    if vl.content == "full":
+        text = ("[FORGED] " + msg.text) if (vl.reveal_provenance and msg.forged) else msg.text
+        return LogLine(round=msg.round, kind="dm", actor=sender, target=msg.receiver, text=text)
+    return None                                             # actions_only: no message events at all
 
 
 def _defect_shown_by_release(rec: ActionRecord, viewer: AgentId, cfg: GameCfg) -> bool:
@@ -120,33 +114,44 @@ def _defect_shown_by_release(rec: ActionRecord, viewer: AgentId, cfg: GameCfg) -
     return False
 
 
-def _window_record(rec: ActionRecord, cfg: GameCfg) -> bool:
-    """Records that use the rolling-window rule."""
-    if rec.kind == "defect":
-        return cfg.view_log.defect_visibility == "public"
-    return True
+def _log_lines(state: GameState, viewer: AgentId, cfg: GameCfg,
+               in_window: Callable[[int], bool], released: Callable[[int], bool]) -> list[LogLine]:
+    """Every line `viewer` may see, given predicates for window records (by stamp) and for delayed
+    defects (by release turn). Messages come from state.messages (God's forged DMs have no
+    ActionRecord); gives / defects from state.history. Ordered by (turn_index, messages first, index)."""
+    if cfg.view_log.content == "none":
+        return []
+    out: list[tuple[int, int, int, LogLine]] = []
+    for idx, m in enumerate(state.messages):
+        if in_window(m.turn_index):
+            line = _message_line(m, cfg)
+            if line is not None:
+                out.append((m.turn_index, 0, idx, line))
+    mode = cfg.view_log.defect_visibility
+    for idx, rec in enumerate(state.history):
+        if rec.kind not in ("give", "defect"):
+            continue
+        if rec.kind == "give" or mode == "public":
+            show = in_window(rec.turn_index)
+        elif rec.release_turn is not None and _defect_shown_by_release(rec, viewer, cfg):
+            show = released(rec.release_turn)
+        else:
+            show = False                                    # victim_only, or the victim's own burn
+        if show:
+            line = _record_line(rec, cfg)
+            if line is not None:
+                out.append((rec.turn_index, 1, idx, line))
+    out.sort(key=lambda x: x[:3])
+    return [ln for *_, ln in out]
 
 
 def view_log(state: GameState, viewer: AgentId, cfg: GameCfg, viewer_turn: int,
              prev_obs_turn: int) -> list[LogLine]:
     """The log lines `viewer` sees in the observation at `viewer_turn` (D5/D12/D16)."""
-    if cfg.view_log.content == "none":
-        return []
     w = cfg.window_turns
-    out: list[tuple[int, int, LogLine]] = []
-    for idx, rec in enumerate(state.history):
-        if _window_record(rec, cfg):
-            show = log_visible(rec.turn_index, viewer_turn, w)
-        elif rec.release_turn is not None and _defect_shown_by_release(rec, viewer, cfg):
-            show = release_visible(rec.release_turn, viewer_turn, prev_obs_turn)
-        else:
-            show = False
-        if show:
-            line = _line(rec, state, cfg)
-            if line is not None:
-                out.append((rec.turn_index, idx, line))
-    out.sort(key=lambda x: (x[0], x[1]))
-    return [ln for _, _, ln in out]
+    return _log_lines(state, viewer, cfg,
+                      in_window=lambda s: log_visible(s, viewer_turn, w),
+                      released=lambda rel: release_visible(rel, viewer_turn, prev_obs_turn))
 
 
 # ------------------------------------------------------------------ observe
@@ -186,24 +191,13 @@ def grep_text(line: LogLine) -> str:
 def visible_history(state: GameState, viewer: AgentId, cfg: GameCfg, obs_turns: Sequence[int]) -> list[LogLine]:
     """Union of everything view_log showed `viewer` at the observations `obs_turns` (ascending, the
     current one included), with defect releases evaluated as of the latest observation."""
-    if cfg.view_log.content == "none" or not obs_turns:
+    if not obs_turns:
         return []
     w = cfg.window_turns
     now = max(obs_turns)
-    out: list[tuple[int, int, LogLine]] = []
-    for idx, rec in enumerate(state.history):
-        if _window_record(rec, cfg):
-            show = any(log_visible(rec.turn_index, t, w) for t in obs_turns)
-        elif rec.release_turn is not None and _defect_shown_by_release(rec, viewer, cfg):
-            show = rec.release_turn <= now
-        else:
-            show = False
-        if show:
-            line = _line(rec, state, cfg)
-            if line is not None:
-                out.append((rec.turn_index, idx, line))
-    out.sort(key=lambda x: (x[0], x[1]))
-    return [ln for _, _, ln in out]
+    return _log_lines(state, viewer, cfg,
+                      in_window=lambda s: any(log_visible(s, t, w) for t in obs_turns),
+                      released=lambda rel: rel <= now)
 
 
 def grep_log(state: GameState, viewer: AgentId, cfg: GameCfg, pattern: str, obs_turns: Sequence[int],

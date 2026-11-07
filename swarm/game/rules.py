@@ -6,8 +6,9 @@ returns a single `action_result` event with ok=False and leaves the state unchan
 
 Timing convention: every record created here is stamped with `state.turn_index` (the slot of the
 acting agent). A record is visible to observations with index STRICTLY greater than its stamp
-(see game/observe.py). The engine runs the God hook with `state.turn_index = next_slot - 1`, so
-forged messages are stamped like the previous slot's real messages.
+(see game/observe.py). The engine wakes God with `state.turn_index` = the slot about to be played,
+so forged messages carry the wake slot (CONTRACTS §2) and reach the receiver at its next observation
+after that slot.
 
 Rules (ARCHITECTURE_v2 §1, D1-D4, D12, D13):
 - send_message / post_board: always succeed for a valid peer; text truncated to max_message_chars.

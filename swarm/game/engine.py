@@ -1,38 +1,51 @@
-"""Game engine (WP1b): the round/turn loop. No LLM import: decisions are INJECTED.
+"""Game engine (WP1b): the round/turn loop. No LLM client import: players and God are INJECTED.
 
-    decide(obs: Observation, grep: GrepResult | None) -> AgentOutput   (sync or async)
-        Called once per agent turn with grep=None. If the output contains a grep_log action (and grep
-        is enabled), the engine runs it and calls decide AGAIN with the GrepResult; the second output
-        is the final one (it may use actions_per_turn - 1 further actions; grep is once per turn).
-    god_hook(state, round, next_turn) -> list[EventBody]                 (sync or async, optional)
-        Called before every agent turn (sequential) / before the round's observations (simultaneous)
-        with state.turn_index = next_turn - 1, so anything it delivers is stamped like the previous
-        slot's real actions. The hook decides itself whether to act (start_round, wake schedule, ...).
+Inputs:
+    agents: Mapping[AgentId, TurnAgent]  (e.g. swarm.agents.llm_agent.LLMAgent), or one DecideFn
+        TurnAgent.act(obs, *, ledger, memory, game_id, grep) -> AgentOutput   (async or sync)
+            `grep` is a callback GrepLog -> GrepResult (None when grep is disabled). grep_log is FREE:
+            it does not use an action slot; only the first grep of a turn is run.
+        DecideFn(obs, grep_result | None) -> AgentOutput  (tests / scripted stubs; adapted by
+            DecideAgent: called again with the GrepResult when its first output has a grep_log).
+    god: GodLike | None  (swarm.adversary.base.GodRunner): init_game(state), should_wake(state),
+        await wake(state) -> object with `.events`. Called with state.turn_index = the slot about to
+        be played, so anything God delivers is stamped with the wake slot.
+    god_hook(state, round, next_turn) -> list[EventBody]   (legacy/test form of god; sync or async)
+Outputs: events through `sink`, end-of-round snapshots (`snapshots`, `on_snapshot`), per-agent
+ledgers (`ledgers`), and the Outcome from `run()`.
 
-Round r (sequential, default): order = fixed or reshuffled by make_rng(seed, game_id, "order", r);
-for each position p: slot t = turn_index(r, p, N); skip agents that are delayed or sat out (the slot
-is still counted); otherwise god_hook -> observe -> mark_observed -> decide -> turn event -> apply each
-action -> memory.write(cot, note). Simultaneous: god_hook, observe all at slot (r-1)*N, decide all
-(asyncio.gather), resolve in priority order stamped at their own slots.
-End of round: round_end event + deep-copied snapshot. Game ends at max_rounds or when every agent is
-done (won or no open need).
+Round r, sequential (default): order = fixed, or reshuffled by make_rng(seed, game_id, "order", r).
+For each position p, slot t = turn_index(r, p, N): God (before EVERY slot, skipped ones too) ->
+skip if the agent is delayed / a sat-out winner (the slot still counts) -> observe at t ->
+mark_observed -> act -> turn event (+ context_built) -> apply each action stamped t -> memory.write
+(cot, note) -> ledger += observation items + own-action items.
+Simultaneous: God once at s0 = turn_index(r, 0, N); every active agent observes at s0; all act
+concurrently (asyncio.gather); actions resolve in order position, each stamped at its own slot.
+End of round: round_end event + deep-copied snapshot. The game ends at max_rounds, when every agent
+is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded").
+Imports: config, memory, rng, schema, context.base/tokens, llm.base (BudgetExceeded only), game.*.
 """
 
 from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any, Protocol
 
 from swarm.config import RunConfig
+from swarm.context.base import TokenCounter, items_from_observation, own_action_items
+from swarm.context.tokens import make_counter
+from swarm.llm.base import BudgetExceeded
 from swarm.memory import MemoryStore
 from swarm.rng import canonical_json, make_rng, sha256_hex
 from swarm.schema import (
+    Action,
     ActionResultData,
     AgentId,
     AgentOutcome,
     AgentOutput,
+    ContextBuiltData,
     EventBody,
     EventSink,
     GameEndData,
@@ -40,7 +53,9 @@ from swarm.schema import (
     GameState,
     GrepLog,
     GrepResult,
+    HistoryItem,
     MemorySink,
+    MemoryView,
     Noop,
     Observation,
     Outcome,
@@ -54,36 +69,120 @@ from .observe import grep_log, mark_observed, observe
 
 DecideFn = Callable[[Observation, GrepResult | None], AgentOutput | Awaitable[AgentOutput]]
 GodHook = Callable[[GameState, int, int], list[EventBody] | Awaitable[list[EventBody]]]
+GrepFn = Callable[[GrepLog], GrepResult]
+Result = tuple[bool, str | None]
+
+
+class TurnAgent(Protocol):
+    """A player: LLMAgent or any object with this act() signature."""
+
+    def act(self, obs: Observation, *, ledger: Sequence[HistoryItem], memory: Sequence[MemoryView],
+            game_id: str, grep: GrepFn | None) -> Awaitable[AgentOutput] | AgentOutput:
+        """Play one turn from the observation."""
+        ...
+
+
+class GodLike(Protocol):
+    """GodRunner's surface used by the engine (init_game is optional)."""
+
+    def should_wake(self, state: GameState) -> bool:
+        """Wake before slot state.turn_index?"""
+        ...
+
+    def wake(self, state: GameState) -> Awaitable[Any]:
+        """Act on state; the result has `.events: list[EventBody]`."""
+        ...
 
 
 async def _maybe_await(x: Any) -> Any:
     return await x if inspect.isawaitable(x) else x
 
 
+class DecideAgent:
+    """Adapts a two-call DecideFn (obs, grep_result|None) to the TurnAgent protocol (tests, stubs).
+    Mirrors LLMAgent: final actions = [grep_log, *follow-up actions] when a grep ran."""
+
+    def __init__(self, decide: DecideFn) -> None:
+        self.decide = decide
+
+    async def act(self, obs: Observation, *, ledger: Sequence[HistoryItem] = (),
+                  memory: Sequence[MemoryView] = (), game_id: str = "g0",
+                  grep: GrepFn | None = None) -> AgentOutput:
+        """Call decide; if it asked for a grep and grep is available, call it again with the result."""
+        first: AgentOutput = await _maybe_await(self.decide(obs, None))
+        g = next((a for a in first.actions if isinstance(a, GrepLog)), None)
+        if g is None or grep is None:
+            return first
+        second: AgentOutput = await _maybe_await(self.decide(obs, grep(g)))
+        follow = [a for a in second.actions if not isinstance(a, GrepLog)]
+        return AgentOutput(
+            cot="\n".join(c for c in (first.cot, second.cot) if c) or None,
+            note=second.note if second.note is not None else first.note,
+            actions=[g, *follow], parse_ok=first.parse_ok and second.parse_ok,
+            retries=first.retries + second.retries, errors=first.errors + second.errors,
+            llm_call_ids=first.llm_call_ids + second.llm_call_ids)
+
+
+class _HookResult:
+    def __init__(self, events: list[EventBody]) -> None:
+        self.events = events
+
+
+class HookGod:
+    """Adapts a legacy god_hook(state, round, next_turn) -> events to the GodLike protocol."""
+
+    def __init__(self, hook: GodHook) -> None:
+        self.hook = hook
+
+    def should_wake(self, state: GameState) -> bool:
+        """The hook decides itself; always consult it."""
+        return True
+
+    async def wake(self, state: GameState) -> _HookResult:
+        """Run the hook at slot state.turn_index."""
+        return _HookResult(list(await _maybe_await(self.hook(state, state.round, state.turn_index))))
+
+
 class GameEngine:
     """Runs one game. `state` is mutated in place; `snapshots` holds end-of-round deep copies."""
 
-    def __init__(self, cfg: RunConfig, state: GameState, decide: DecideFn, *,
-                 god_hook: GodHook | None = None, sink: EventSink | None = None, seed: int | None = None,
-                 memory: MemoryStore | None = None) -> None:
+    def __init__(self, cfg: RunConfig, state: GameState,
+                 agents: Mapping[AgentId, TurnAgent] | DecideFn, *,
+                 god: GodLike | None = None, god_hook: GodHook | None = None,
+                 sink: EventSink | None = None, memory: MemoryStore | None = None,
+                 on_snapshot: Callable[[GameState], None] | None = None, seed: int | None = None,
+                 ledgers: dict[AgentId, list[HistoryItem]] | None = None,
+                 counter: TokenCounter | None = None) -> None:
         self.cfg, self.g = cfg, cfg.game
         self.state = state
-        self.decide = decide
-        self.god_hook = god_hook
+        if callable(agents) and not isinstance(agents, Mapping):
+            shared = DecideAgent(agents)
+            self.agents: dict[AgentId, Any] = {a: shared for a in state.agents}
+        else:
+            self.agents = dict(agents)
+        missing = set(state.agents) - set(self.agents)
+        if missing:
+            raise ValueError(f"no player for agents {sorted(missing)}")
+        self.god: GodLike | None = god if god is not None else (HookGod(god_hook) if god_hook else None)
         self.sink: EventSink = sink or MemorySink(game_id=state.game_id)
         self.seed = cfg.run.seed if seed is None else seed
         self.memory = memory or MemoryStore(cfg.reasoning)
+        self.on_snapshot = on_snapshot
+        self.counter = counter or make_counter(cfg.context.tokenizer)
+        self.ledgers: dict[AgentId, list[HistoryItem]] = ledgers or {a: [] for a in state.agents}
         self.obs_turns: dict[AgentId, list[int]] = {a: [] for a in state.agents}   # for grep_log
         self.snapshots: list[GameState] = []
         self.end_reason: str | None = None
         self._started = False
 
     # ------------------------------------------------------------------ helpers
-    def emit(self, bodies: list[EventBody]) -> None:
+    def emit(self, bodies: Sequence[EventBody]) -> None:
+        """Send event bodies to the sink (which stamps run/game ids and seq)."""
         for b in bodies:
             self.sink.emit(b)
 
-    def _body(self, data, *, actor: str = "SYSTEM", phase="end", turn: int | None = None) -> EventBody:
+    def _body(self, data: Any, *, actor: str = "SYSTEM", phase: str = "end",
+              turn: int | None = None) -> EventBody:
         return EventBody(round=self.state.round, turn_index=turn, phase=phase, actor=actor, data=data)
 
     def active(self, agent: AgentId) -> bool:
@@ -96,46 +195,62 @@ class GameEngine:
         return True
 
     def order_for_round(self, r: int) -> list[AgentId]:
-        names = sorted(self.state.agents) if self.g.turn_order == "reshuffle" else list(self.state.order)
-        if self.g.turn_order == "reshuffle":
-            make_rng(self.seed, self.state.game_id, "order", r).shuffle(names)
+        """Turn order of round r: fixed (state.order) or a seeded reshuffle."""
+        if self.g.turn_order != "reshuffle":
+            return list(self.state.order)
+        names = sorted(self.state.agents)
+        make_rng(self.seed, self.state.game_id, "order", r).shuffle(names)
         return names
 
     def scores(self) -> dict[AgentId, float]:
+        """Current score per agent."""
         return {a: rules.score(self.state, a) for a in sorted(self.state.agents)}
 
     def all_done(self) -> bool:
+        """Every agent has won or has no open need left."""
         return all(rules.is_done(self.state, a) for a in self.state.agents)
+
+    def _snapshot(self) -> None:
+        snap = self.state.model_copy(deep=True)
+        self.snapshots.append(snap)
+        if self.on_snapshot is not None:
+            self.on_snapshot(snap)
+
+    def memory_views(self, agent: AgentId) -> list[MemoryView]:
+        """Scratchpad (+ CoT when cot_replay_window > 0) entries the agent is shown this turn."""
+        rc, st = self.cfg.reasoning, self.state
+        out: list[MemoryView] = []
+        if rc.scratchpad.enabled:
+            out += self.memory.views(st, agent, "scratchpad", st.round, rc.scratchpad.window)
+        if rc.cot_mode != "none" and rc.cot_replay_window > 0:
+            out += self.memory.views(st, agent, "cot", st.round, rc.cot_replay_window)
+        return out
 
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> None:
+        """Emit game_start and the start snapshot; initialise God's budget. Idempotent."""
         if self._started:
             return
         self._started = True
         st = self.state
-        self.emit([EventBody(round=0, turn_index=None, phase="setup", actor="SYSTEM", data=GameStartData(
+        init = getattr(self.god, "init_game", None)
+        if init is not None:
+            init(st)
+        self.emit([EventBody(round=st.round, turn_index=None, phase="setup", actor="SYSTEM", data=GameStartData(
             config_hash=self.cfg.config_hash(), n_agents=len(st.agents), max_rounds=self.g.max_rounds,
             order=list(st.order), agents={a: s.model_copy(deep=True) for a, s in st.agents.items()},
             branch=self.cfg.run.branch, replica=self.cfg.run.replica))])
-        self.snapshots.append(st.model_copy(deep=True))
+        self._snapshot()
 
-    async def _god(self, r: int, next_turn: int) -> None:
-        if self.god_hook is None:
+    async def _god(self, slot: int) -> None:
+        """Give God the chance to act before `slot`; its records are stamped with `slot`."""
+        if self.god is None:
             return
-        self.state.turn_index = next_turn - 1
-        self.emit(list(await _maybe_await(self.god_hook(self.state, r, next_turn))))
-
-    async def _decide(self, obs: Observation) -> tuple[AgentOutput, AgentOutput | None, GrepResult | None]:
-        first: AgentOutput = await _maybe_await(self.decide(obs, None))
-        grep_act = next((a for a in first.actions if isinstance(a, GrepLog)), None)
-        if grep_act is None:
-            return first, None, None
-        res = grep_log(self.state, obs.agent, self.g, grep_act.pattern, self.obs_turns[obs.agent],
-                       rounds=grep_act.rounds)
-        if not self.g.view_log.grep_enabled or self.g.view_log.content == "none":
-            return first, None, None
-        second: AgentOutput = await _maybe_await(self.decide(obs, res))
-        return first, second, res
+        self.state.turn_index = slot
+        if self.god.should_wake(self.state):
+            res = await self.god.wake(self.state)
+            self.emit(list(res.events))
+        self.state.turn_index = slot
 
     def _observe(self, agent: AgentId, t: int) -> Observation:
         obs = observe(self.state, agent, self.g, t)
@@ -143,46 +258,87 @@ class GameEngine:
         self.obs_turns[agent].append(t)
         return obs
 
-    def _resolve(self, agent: AgentId, t: int, obs: Observation, first: AgentOutput,
-                 second: AgentOutput | None, grep: GrepResult | None) -> None:
+    def _grep_fn(self, agent: AgentId, store: list[GrepResult]) -> GrepFn | None:
+        """Per-turn grep callback over the agent's visible log history (None if grep is off)."""
+        vl = self.g.view_log
+        if not vl.grep_enabled or vl.content == "none":
+            return None
+
+        def run(action: GrepLog) -> GrepResult:
+            if store:                                  # once per turn
+                return store[0]
+            res = grep_log(self.state, agent, self.g, action.pattern, self.obs_turns[agent],
+                           rounds=action.rounds)
+            store.append(res)
+            return res
+        return run
+
+    async def _act(self, agent: AgentId, obs: Observation) -> tuple[AgentOutput, GrepResult | None]:
+        greps: list[GrepResult] = []
+        out = await _maybe_await(self.agents[agent].act(
+            obs, ledger=list(self.ledgers[agent]), memory=self.memory_views(agent),
+            game_id=self.state.game_id, grep=self._grep_fn(agent, greps)))
+        return out, (greps[0] if greps else None)
+
+    def _emit_turn(self, agent: AgentId, t: int, obs: Observation, out: AgentOutput) -> None:
         st = self.state
-        st.turn_index = t
-        final = second or first
-        limit = self.g.actions_per_turn
-        planned: list = []
-        if grep is not None:
-            g = next(a for a in first.actions if isinstance(a, GrepLog))
-            planned.append(g)
-        planned += [a for a in final.actions if not isinstance(a, GrepLog) or grep is None]
-        cot = final.cot if final.cot is not None else first.cot
-        note = final.note if final.note is not None else first.note
+        trace = getattr(self.agents[agent], "last", None)
         self.emit([EventBody(round=st.round, turn_index=t, phase="agents", actor=agent, data=TurnData(
             agent=agent, obs=obs, obs_hash=sha256_hex(canonical_json(obs)),
-            llm_call_ids=first.llm_call_ids + (second.llm_call_ids if second else []),
-            cot=cot, note=note, actions=planned, parse_ok=final.parse_ok,
-            retries=first.retries + (second.retries if second else 0),
-            errors=first.errors + (second.errors if second else [])))])
-        used_grep = False
-        for n, act in enumerate(planned):
-            if n >= limit:
-                self.emit([self._body(ActionResultData(agent=agent, action=act, ok=False, reason="action_limit"),
-                                      actor=agent, phase="resolve", turn=t)])
+            prompt_set_hash=getattr(trace, "prompt_set_hash", None),
+            prompt_hash=getattr(trace, "prompt_hash", None), llm_call_ids=list(out.llm_call_ids),
+            cot=out.cot, note=out.note, actions=list(out.actions), parse_ok=out.parse_ok,
+            retries=out.retries, errors=list(out.errors)))])
+        bundle = getattr(trace, "bundle", None)
+        if bundle is not None and getattr(bundle, "agent", None) == agent:
+            self.emit([EventBody(round=st.round, turn_index=t, phase="agents", actor=agent, data=ContextBuiltData(
+                agent=agent, policy=bundle.policy, tokens_by_section={s.name: s.tokens for s in bundle.sections},
+                tokens_total=bundle.tokens_total, budget=bundle.budget,
+                included_item_ids=list(bundle.items), dropped_count=len(bundle.dropped_item_ids)))])
+
+    def _resolve(self, agent: AgentId, t: int, obs: Observation, out: AgentOutput,
+                 grep: GrepResult | None) -> None:
+        """Log the turn, apply its actions at slot t, write memory, extend the ledger."""
+        st = self.state
+        st.turn_index = t
+        self._emit_turn(agent, t, obs, out)
+        results: list[Result] = []
+        used, grep_left = 0, grep
+        for act in out.actions:
+            if isinstance(act, GrepLog):                # free: no action slot
+                results.append(self._grep_result(agent, act, grep_left))
+                grep_left = None                        # a second grep_log in one turn fails
                 continue
-            if isinstance(act, GrepLog):
-                ok = grep is not None and not used_grep
-                used_grep = True
-                self.emit([self._body(ActionResultData(
-                    agent=agent, action=act, ok=ok, reason=None if ok else "grep_unavailable",
-                    n_hits=len(grep.hits) if (ok and grep) else None), actor=agent, phase="resolve", turn=t)])
-                continue
-            _, evs = rules.apply(st, agent, act, self.g)
-            self.emit(evs)
-        if self.cfg.reasoning.cot_mode != "none" and cot:
-            _, ev = self.memory.write(st, agent, "cot", st.round, cot)
+            results.append(self._apply_one(agent, act, used))
+            used += 1
+        if self.cfg.reasoning.cot_mode != "none" and out.cot:
+            _, ev = self.memory.write(st, agent, "cot", st.round, out.cot)
             self.emit([ev])
-        if self.cfg.reasoning.scratchpad.enabled and note:
-            _, ev = self.memory.write(st, agent, "scratchpad", st.round, note)
+        if self.cfg.reasoning.scratchpad.enabled and out.note:
+            _, ev = self.memory.write(st, agent, "scratchpad", st.round, out.note)
             self.emit([ev])
+        self.ledgers[agent] += items_from_observation(obs, self.counter)
+        self.ledgers[agent] += own_action_items(agent, st.round, list(out.actions), results, self.counter)
+
+    def _grep_result(self, agent: AgentId, act: GrepLog, grep: GrepResult | None) -> Result:
+        ok = grep is not None
+        self.emit([self._body(ActionResultData(
+            agent=agent, action=act, ok=ok, reason=None if ok else "grep_unavailable",
+            n_hits=len(grep.hits) if grep is not None else None),
+            actor=agent, phase="resolve", turn=self.state.turn_index)])
+        return ok, None if ok else "grep_unavailable"
+
+    def _apply_one(self, agent: AgentId, act: Action, used: int) -> Result:
+        if used >= self.g.actions_per_turn:
+            self.emit([self._body(ActionResultData(agent=agent, action=act, ok=False, reason="action_limit"),
+                                  actor=agent, phase="resolve", turn=self.state.turn_index)])
+            return False, "action_limit"
+        _, evs = rules.apply(self.state, agent, act, self.g)
+        self.emit(evs)
+        first = evs[0].data if evs else None
+        if isinstance(first, ActionResultData):
+            return first.ok, first.reason
+        return True, None
 
     async def run_round(self) -> None:
         """Play the next round (state.round + 1)."""
@@ -194,30 +350,30 @@ class GameEngine:
         if self.g.turn_mode == "sequential":
             for p, agent in enumerate(list(st.order)):
                 t = turn_index(r, p, n)
+                await self._god(t)
                 if not self.active(agent):
                     continue
-                await self._god(r, t)
-                st.turn_index = t
                 obs = self._observe(agent, t)
-                first, second, grep = await self._decide(obs)
-                self._resolve(agent, t, obs, first, second, grep)
+                out, grep = await self._act(agent, obs)
+                self._resolve(agent, t, obs, out, grep)
         else:
             s0 = turn_index(r, 0, n)
-            await self._god(r, s0)
+            await self._god(s0)
             st.turn_index = s0
             actors = [a for a in st.order if self.active(a)]
             obs_by = {a: self._observe(a, s0) for a in actors}
-            outs = await asyncio.gather(*(self._decide(obs_by[a]) for a in actors))
+            outs = await asyncio.gather(*(self._act(a, obs_by[a]) for a in actors))
             pos = {a: p for p, a in enumerate(st.order)}
-            for a, (first, second, grep) in zip(actors, outs, strict=True):
-                self._resolve(a, turn_index(r, pos[a], n), obs_by[a], first, second, grep)
+            for a, (out, grep) in zip(actors, outs, strict=True):
+                self._resolve(a, turn_index(r, pos[a], n), obs_by[a], out, grep)
         st.turn_index = turn_index(r + 1, 0, n) - 1
         sc = self.scores()
         self.emit([self._body(RoundEndData(state_hash=st.state_hash(), scores=sc,
                                            welfare=sum(sc.values()) / max(len(sc), 1)))])
-        self.snapshots.append(st.model_copy(deep=True))
+        self._snapshot()
 
     def outcome(self) -> Outcome:
+        """The game's Outcome from the current state."""
         st = self.state
         sc = self.scores()
         per = {a: AgentOutcome(score=sc[a], won_round=s.won_round, burned=list(s.burned), lost=list(s.lost))
@@ -228,25 +384,30 @@ class GameEngine:
                        win_rate=sum(1 for o in per.values() if o.won_round is not None) / n)
 
     async def run(self, max_rounds: int | None = None) -> Outcome:
-        """Play until max_rounds or all agents done; emits game_end and returns the Outcome."""
+        """Play until max_rounds, all agents done, or BudgetExceeded; emits game_end, returns Outcome.
+        Other exceptions from players / God (AuthError, CacheMiss, bugs) propagate."""
         self.start()
         limit = max_rounds or self.g.max_rounds
-        while self.state.round < limit:
-            if self.all_done():
-                self.end_reason = "all_done"
-                break
-            await self.run_round()
-        else:
-            self.end_reason = "all_done" if self.all_done() else "max_rounds"
+        try:
+            while self.state.round < limit:
+                if self.all_done():
+                    self.end_reason = "all_done"
+                    break
+                await self.run_round()
+            else:
+                self.end_reason = "all_done" if self.all_done() else "max_rounds"
+        except BudgetExceeded:
+            self.end_reason = "budget_exceeded"
         self.state.done = True
         out = self.outcome()
         self.emit([self._body(GameEndData(outcome=out))])
         return out
 
 
-def play_game(cfg: RunConfig, state: GameState, decide: DecideFn, **kw: Any) -> tuple[Outcome, GameEngine]:
+def play_game(cfg: RunConfig, state: GameState, agents: Mapping[AgentId, TurnAgent] | DecideFn,
+              **kw: Any) -> tuple[Outcome, GameEngine]:
     """Synchronous convenience wrapper: run a whole game, return (outcome, engine)."""
-    eng = GameEngine(cfg, state, decide, **kw)
+    eng = GameEngine(cfg, state, agents, **kw)
     return asyncio.run(eng.run()), eng
 
 

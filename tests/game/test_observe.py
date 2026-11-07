@@ -172,7 +172,13 @@ def test_defect_visibility_table(mode, delay, correct):
             assert first.turn_index == next(o.turn_index for o in obs if o.turn_index >= release)
             for o in obs:                         # nothing engine-generated before release
                 if o.turn_index < release and agent != "bob":
-                    assert not defect_lines(o) and all(f"#{info}" not in n.text for n in o.notices)
+                    assert not defect_lines(o)
+                    if agent != "ann":            # third parties: no hint at all via notices
+                        assert all(f"#{info}" not in n.text for n in o.notices)
+        if agent == "ann":                         # the actor learns its own outcome at once, only once
+            results = [(o.turn_index, n.text) for o in obs for n in o.notices if n.kind == "defect_result"]
+            assert len(results) == 1 and results[0][0] == obs[1].turn_index
+            assert ("correct" if correct else "wrong") in results[0][1]
         assert defect_lines(first)[0].ok is correct
         assert defect_lines(first)[0].info_id == info
 

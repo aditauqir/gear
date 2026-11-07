@@ -16,6 +16,7 @@ def run_cfg(game: dict[str, Any] | None = None, view_log: dict[str, Any] | None 
     g = {"n_agents": 4, "max_rounds": 6, "turn_order": "fixed", **(game or {})}
     if view_log:
         g["view_log"] = view_log
+    top.setdefault("god", {"kind": "none"})       # engine tests inject God via god= / god_hook=
     return from_dict({"run": {"seed": 3}, "game": g, "roles": FAKE_ROLES, "context": {"tokenizer": "words"},
                       "llm": {"cache": {"mode": "off"}}, **top})
 
