@@ -38,6 +38,7 @@ from swarm.schema import (
 
 
 class MemoryStore:
+    """Stateless access to GameState.memory, configured with reasoning caps."""
     def __init__(self, cfg: ReasoningCfg | None = None) -> None:
         self.cfg = cfg or ReasoningCfg()
 
@@ -49,10 +50,12 @@ class MemoryStore:
         return None
 
     def get(self, state: GameState, agent: AgentId, kind: MemoryKind, round: int) -> MemoryEntry | None:
+        """The entry for (agent, kind, round), or None."""
         i = self._index(state, make_entry_id(agent, kind, round))
         return None if i is None else state.memory[i]
 
     def entries(self, state: GameState, agent: AgentId, kind: MemoryKind) -> list[MemoryEntry]:
+        """All entries of one agent and kind, oldest first."""
         return sorted((e for e in state.memory if e.agent == agent and e.kind == kind), key=lambda e: e.round)
 
     def window(self, state: GameState, agent: AgentId, kind: MemoryKind, upto_round: int,
@@ -79,6 +82,7 @@ class MemoryStore:
 
     def write(self, state: GameState, agent: AgentId, kind: MemoryKind, round: int, text: str, *,
               phase: Phase = "agents") -> tuple[MemoryEntry, EventBody]:
+        """Agent-authored write (capped). Appends if the round already has an entry. Returns (entry, event body)."""
         text = self._cap(kind, text)
         eid = make_entry_id(agent, kind, round)
         i = self._index(state, eid)
@@ -97,6 +101,7 @@ class MemoryStore:
     def overwrite(self, state: GameState, agent: AgentId, kind: MemoryKind, round: int, text: str, *,
                   intervention_id: str, now_round: int, mode: Literal["replace", "append"] = "replace",
                   by: Literal["GOD"] = GOD) -> tuple[MemoryEntry, EventBody]:
+        """God's mind-control write (replace/append; creates if missing). Returns (entry, memory_overwrite body)."""
         if round > now_round:
             raise ValueError("cannot overwrite a future round")
         eid = make_entry_id(agent, kind, round)

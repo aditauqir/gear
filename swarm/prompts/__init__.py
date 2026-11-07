@@ -31,12 +31,14 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def hash_dir(d: Path) -> tuple[str, dict[str, str]]:
+    """(combined hash, {relpath: file sha256}) of a directory."""
     files = {p.relative_to(d).as_posix(): sha256_hex(p.read_bytes())
              for p in sorted(d.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
     return sha256_hex(canonical_json(sorted(files.items()))), files
 
 
 def prompt_hash(messages: Sequence[ChatMessage | Mapping[str, Any]]) -> str:
+    """sha256 of the canonical JSON of rendered messages."""
     return sha256_hex(canonical_json(list(messages)))
 
 
@@ -65,6 +67,7 @@ def _env(d: Path) -> jinja2.Environment:
 
 
 class PromptSet:
+    """A loaded, hashed template set (+ optional framing set)."""
     def __init__(self, name: str, framing: str | None = None, root: Path | str = TEMPLATES_DIR) -> None:
         root = Path(root)
         self.name = name
@@ -86,16 +89,20 @@ class PromptSet:
         self._env = _env(self.dir)
 
     def has(self, template: str) -> bool:
+        """Whether the set contains this template file."""
         return template in self.files
 
     def render(self, template: str, **ctx: Any) -> str:
+        """Render a template with an AgentView-only context (StrictUndefined)."""
         _check_ctx(ctx)
         return self._env.get_template(template).render(framing=self.framing_text, **ctx)
 
     def manifest(self) -> dict[str, Any]:
+        """Set name, hashes and per-file hashes for manifest.json."""
         return {"set": self.name, "hash": self.hash, "set_hash": self.set_hash, "files": self.files,
                 "framing": self.framing_name, "framing_hash": self.framing_hash or None}
 
 
 def load_prompt_set(name: str, framing: str | None = None, root: Path | str = TEMPLATES_DIR) -> PromptSet:
+    """Load a PromptSet by name (e.g. 'agent/v1')."""
     return PromptSet(name, framing=framing, root=root)

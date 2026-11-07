@@ -27,7 +27,10 @@ __all__ = [
 
 @runtime_checkable
 class LLMClient(Protocol):
-    async def chat(self, req: ChatRequest) -> ChatResponse: ...
+    """Anything that can serve a ChatRequest (backends, middleware, FakeLLM)."""
+    async def chat(self, req: ChatRequest) -> ChatResponse:
+        """Serve one request."""
+        ...
 
 
 class LLMError(Exception):
@@ -35,6 +38,7 @@ class LLMError(Exception):
 
 
 class BudgetExceeded(LLMError):
+    """A paid call would exceed the per-run or global USD cap. Raised before the call."""
     def __init__(self, scope: str, spent: float, estimate: float, cap: float) -> None:
         super().__init__(f"budget exceeded ({scope}): spent={spent:.4f} + est={estimate:.4f} > cap={cap:.4f}")
         self.scope, self.spent, self.estimate, self.cap = scope, spent, estimate, cap
@@ -45,6 +49,7 @@ class AuthError(LLMError):
 
 
 class RateLimited(LLMError):
+    """429 from the provider; retry after retry_after_s if given."""
     def __init__(self, msg: str = "rate limited", retry_after_s: float | None = None) -> None:
         super().__init__(msg)
         self.retry_after_s = retry_after_s
@@ -109,6 +114,7 @@ class FakeLLM:
 
     @property
     def n_calls(self) -> int:
+        """Number of chat() calls so far."""
         return self._n
 
     def _text(self, idx: int, req: ChatRequest) -> str:
@@ -123,6 +129,7 @@ class FakeLLM:
         return NOOP_REPLY
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
+        """Serve one request."""
         idx = self._n
         self._n += 1
         self.requests.append(req)

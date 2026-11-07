@@ -36,6 +36,7 @@ def _plain(obj: Any) -> Any:
 
 
 def sha256_hex(data: str | bytes) -> str:
+    """Hex sha256 of a str (utf-8) or bytes."""
     if isinstance(data, str):
         data = data.encode("utf-8")
     return hashlib.sha256(data).hexdigest()
@@ -60,6 +61,7 @@ def make_rng(base: int, *parts: Any, branch: str = MAIN_BRANCH, replica: int | s
 
 
 def make_id(*parts: Any, n: int = 16) -> str:
+    """Deterministic short hex id from typed parts (sha256 prefix)."""
     return _digest(parts).hex()[:n]
 
 

@@ -25,11 +25,13 @@ _SECRETS: set[str] = set()
 
 
 def register_secret(value: str) -> None:
+    """Remember a secret value so redact() masks it."""
     if value and len(value) >= 8:
         _SECRETS.add(value)
 
 
 def redact(text: str) -> str:
+    """Replace every registered secret in text with '***'."""
     for s in _SECRETS:
         if s in text:
             text = text.replace(s, "***")
@@ -48,6 +50,7 @@ def mask(secret: SecretStr | str | None) -> str:
 
 def load_openrouter_key(key_file: str | Path | None = None, *, env: Mapping[str, str] | None = None,
                         env_var: str = OPENROUTER_ENV) -> SecretStr | None:
+    """Key from env (first) or the raw-key file; registered for redaction; None if absent."""
     env = os.environ if env is None else env
     value = (env.get(env_var) or "").strip()
     if not value and key_file is not None:
@@ -61,12 +64,15 @@ def load_openrouter_key(key_file: str | Path | None = None, *, env: Mapping[str,
 
 
 def key_status(env_var: str = OPENROUTER_ENV, *, env: Mapping[str, str] | None = None) -> dict[str, object]:
+    """Manifest-safe key info: env var name and whether it is set."""
     env = os.environ if env is None else env
     return {"api_key_env": env_var, "api_key_present": bool((env.get(env_var) or "").strip())}
 
 
 class RedactingFilter(logging.Filter):
+    """logging.Filter that masks registered secrets in every record."""
     def filter(self, record: logging.LogRecord) -> bool:
+        """Mask secrets in the record's message; always keep the record."""
         if _SECRETS:
             msg = record.getMessage()
             red = redact(msg)

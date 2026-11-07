@@ -25,11 +25,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Cfg(BaseModel):
+    """Base for config sections: frozen, extra=forbid (typos are errors)."""
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 # ---------------------------------------------------------------- run
 class RunCfg(Cfg):
+    """Run identity: name, base seed, games, output dir, fork branch/replica labels."""
     name: str = "base"
     seed: int = 0
     n_games: int = Field(1, ge=1)
@@ -41,6 +43,7 @@ class RunCfg(Cfg):
 
 # ---------------------------------------------------------------- game
 class ViewLogCfg(Cfg):
+    """What agents see of others' actions (view_log, defect visibility, grep_log)."""
     content: Literal["none", "actions_only", "actions_msg_meta", "full"] = "actions_only"
     actor_identity: Literal["shown", "hidden"] = "shown"
     reveal_provenance: bool = False                # ablation only: tag forged DMs / tampered entries
@@ -55,6 +58,7 @@ class ViewLogCfg(Cfg):
 
 
 class GameCfg(Cfg):
+    """Game rules knobs (PDF items mapped to config; ARCHITECTURE_v2 s1)."""
     n_agents: int = Field(20, ge=2)
     keys_per_agent: int = Field(5, ge=1)
     needs_per_agent: int = Field(3, ge=1)
@@ -82,17 +86,20 @@ class GameCfg(Cfg):
 
     @property
     def window_turns(self) -> int:
+        """Effective view_log window in agent-turn slots (default n_agents)."""
         return self.view_log.window_turns or self.n_agents
 
 
 # ---------------------------------------------------------------- reasoning
 class ScratchpadCfg(Cfg):
+    """Scratchpad (free `note` field): on/off, entries shown, char cap."""
     enabled: bool = True
     window: int | None = Field(None, ge=1)         # None = all entries (subject to the context budget)
     max_chars: int = Field(400, ge=1)
 
 
 class ReasoningCfg(Cfg):
+    """CoT mode, CoT replay window and caps; the scratchpad is the persistent store."""
     cot_mode: Literal["none", "native", "explicit"] = "explicit"
     cot_replay_window: int = Field(0, ge=0)        # 0: past CoT is logged, never re-shown
     max_cot_chars: int = Field(1200, ge=1)         # stored/replayed CoT only
@@ -104,6 +111,7 @@ Backend = Literal["vllm", "openrouter", "fake"]
 
 
 class RoleCfg(Cfg):
+    """Per-role LLM choice: backend, model override, prompt set, framing, sampling."""
     backend: Backend = "vllm"
     model: str | None = None                       # None = backend default model
     prompt_set: str = "agent/v1"
@@ -114,6 +122,7 @@ class RoleCfg(Cfg):
 
 
 class RolesCfg(Cfg):
+    """LLM settings for each role (agent, god, judge, summarizer)."""
     agent: RoleCfg = RoleCfg()
     god: RoleCfg = RoleCfg(prompt_set="god/v1", temperature=0.7, max_tokens=700)
     judge: RoleCfg = RoleCfg(prompt_set="judge/v1", temperature=0.0, max_tokens=200)
@@ -121,6 +130,7 @@ class RolesCfg(Cfg):
 
 
 class VLLMCfg(Cfg):
+    """Local vLLM server settings (infra/README.md)."""
     base_url: str = "http://localhost:8000/v1"
     model: str = "Qwen/Qwen3-8B"
     max_concurrency: int = Field(64, ge=1)
@@ -128,6 +138,7 @@ class VLLMCfg(Cfg):
 
 
 class OpenRouterCfg(Cfg):
+    """OpenRouter settings. OFF by default; key only via env/key file; $2 global ledger cap."""
     enabled: bool = False                          # OFF by default; any role on openrouter needs True
     base_url: str = "https://openrouter.ai/api/v1"
     model: str = DEFAULT_OPENROUTER_MODEL
@@ -140,15 +151,18 @@ class OpenRouterCfg(Cfg):
 
 
 class FakeCfg(Cfg):
+    """FakeLLM backend settings (tests)."""
     model: str = "fake"
 
 
 class CacheCfg(Cfg):
+    """sqlite response cache mode and path (WP2)."""
     mode: Literal["off", "read_write", "read_only", "write_only"] = "read_write"
     path: str = "cache/llm.sqlite"
 
 
 class RetryCfg(Cfg):
+    """Retry/backoff and per-request timeouts (WP2)."""
     max_retries: int = Field(5, ge=0)
     base_delay_s: float = 1.0
     max_delay_s: float = 30.0
@@ -157,6 +171,7 @@ class RetryCfg(Cfg):
 
 
 class LLMCfg(Cfg):
+    """LLM layer: per-run budget, backends, cache, retry."""
     budget_usd: float = Field(2.0, ge=0.0)         # per-run cap on paid spend
     vllm: VLLMCfg = VLLMCfg()
     openrouter: OpenRouterCfg = OpenRouterCfg()
@@ -167,16 +182,19 @@ class LLMCfg(Cfg):
 
 # ---------------------------------------------------------------- god
 class BudgetCfg(Cfg):
+    """God power budget K, per game or per round."""
     k: int = Field(3, ge=0)
     scope: Literal["game", "round"] = "game"
 
 
 class MessageFraudCfg(Cfg):
+    """Message Fraud power: enabled and cost."""
     enabled: bool = True
     cost: int = Field(1, ge=0)
 
 
 class CotControlCfg(Cfg):
+    """CoT Control power: enabled, cost, allowed memory targets, edit mode."""
     enabled: bool = True
     cost: int = Field(1, ge=0)
     targets: list[Literal["scratchpad", "cot", "summary"]] = ["scratchpad"]
@@ -184,11 +202,13 @@ class CotControlCfg(Cfg):
 
 
 class PowersCfg(Cfg):
+    """God's powers."""
     message_fraud: MessageFraudCfg = MessageFraudCfg()
     cot_control: CotControlCfg = CotControlCfg()
 
 
 class ScheduledPower(Cfg):
+    """One ScriptedGod schedule entry (round, wake point, power, args)."""
     round: int = Field(ge=1)
     after_turns: int = Field(0, ge=0)              # sequential: wake after this many turns of the round
     power: Literal["message_fraud", "cot_control"]
@@ -196,6 +216,7 @@ class ScheduledPower(Cfg):
 
 
 class GodCfg(Cfg):
+    """God: kind, timing, free-observation safety ceiling, budget, powers, schedule."""
     kind: Literal["none", "scripted", "llm"] = "scripted"
     start_round: int = Field(3, ge=1)
     wake_every_turns: int | None = Field(None, ge=1)   # None = once per round
@@ -212,6 +233,7 @@ SUMMARIZING_POLICIES = ("rolling_summary", "hybrid")
 
 
 class ContextCfg(Cfg):
+    """Agent context policy and token budget (WP13 implements policies)."""
     policy: Literal["full_truncate", "window", "rolling_summary", "hybrid"] = "full_truncate"
     budget_tokens: int = Field(14000, ge=256)      # whole prompt incl. system
     safety_margin: float = Field(0.05, ge=0.0, lt=0.5)
@@ -228,6 +250,7 @@ class ContextCfg(Cfg):
 
 # ---------------------------------------------------------------- root
 class RunConfig(Cfg):
+    """Root config. Validates cross-field rules (see _cross)."""
     run: RunCfg = RunCfg()
     game: GameCfg = GameCfg()
     reasoning: ReasoningCfg = ReasoningCfg()
@@ -285,6 +308,7 @@ class RunConfig(Cfg):
 
 # ================================================================ loading
 def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    """Recursive dict merge; `over` wins; lists are replaced, not merged."""
     out = copy.deepcopy(base)
     for k, v in over.items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -295,6 +319,7 @@ def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_override(s: str) -> tuple[list[str], Any]:
+    """'a.b.c=value' -> (['a','b','c'], yaml.safe_load(value))."""
     if "=" not in s:
         raise ValueError(f"override must be a.b.c=value, got {s!r}")
     key, raw = s.split("=", 1)
@@ -305,6 +330,7 @@ def parse_override(s: str) -> tuple[list[str], Any]:
 
 
 def set_path(d: dict[str, Any], parts: list[str], value: Any) -> None:
+    """Set d[a][b][c] = value, creating intermediate dicts."""
     cur = d
     for p in parts[:-1]:
         nxt = cur.get(p)
@@ -316,6 +342,7 @@ def set_path(d: dict[str, Any], parts: list[str], value: Any) -> None:
 
 
 def apply_overrides(raw: dict[str, Any], overrides: list[str] | None) -> dict[str, Any]:
+    """Return a copy of raw with every CLI override applied."""
     out = copy.deepcopy(raw)
     for o in overrides or []:
         parts, value = parse_override(o)
@@ -324,6 +351,7 @@ def apply_overrides(raw: dict[str, Any], overrides: list[str] | None) -> dict[st
 
 
 def load_raw(path: str | Path) -> dict[str, Any]:
+    """Read YAML and resolve one level of `extends` (relative to the file)."""
     path = Path(path)
     data = yaml.safe_load(path.read_text()) or {}
     if not isinstance(data, dict):
@@ -339,14 +367,17 @@ def load_raw(path: str | Path) -> dict[str, Any]:
 
 
 def from_dict(raw: dict[str, Any], overrides: list[str] | None = None) -> RunConfig:
+    """Validate a raw dict (after overrides) into a RunConfig."""
     return RunConfig.model_validate(apply_overrides(raw, overrides))
 
 
 def load(path: str | Path, overrides: list[str] | None = None) -> RunConfig:
+    """Load, merge `extends`, apply overrides and validate a config file."""
     return from_dict(load_raw(path), overrides)
 
 
 def dump_yaml(cfg: RunConfig) -> str:
+    """Resolved config as YAML (written to runs/<id>/config.resolved.yaml)."""
     return yaml.safe_dump(cfg.model_dump(mode="json"), sort_keys=False)
 
 

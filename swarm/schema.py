@@ -48,6 +48,7 @@ class Record(BaseModel):
 
 
 class MutableState(BaseModel):
+    """Base for mutable engine state (extra=forbid, not frozen)."""
     model_config = ConfigDict(extra="forbid")
 
 
@@ -97,6 +98,7 @@ class KeyCopy(Record):
 
 
 class AgentState(MutableState):
+    """One agent's truth state: inventory, needs, burns, penalties, win, last observation slot."""
     agent: AgentId
     keys: list[KeyCopy]
     needs: list[InfoId]
@@ -125,6 +127,7 @@ class Message(Record):
 
 
 class Taint(Record):
+    """Hidden provenance mark: which intervention influenced an entry, and how."""
     intervention_id: str
     via: Literal["direct", "derived", "exposed"]
 
@@ -174,6 +177,7 @@ class Notice(Record):
 
 
 class GameState(MutableState):
+    """The whole game's truth state (mutable; snapshotted per round; no ledgers)."""
     game_id: GameId
     round: int = 0
     turn_index: int = 0
@@ -188,6 +192,7 @@ class GameState(MutableState):
     done: bool = False
 
     def state_hash(self) -> str:
+        """sha256 of the canonical JSON of the full state."""
         return sha256_hex(canonical_json(self))
 
 
@@ -201,6 +206,7 @@ class AgentView(Record):
 
 
 class KeyView(AgentView):
+    """A key as the agent sees it: info id and key number only."""
     info_id: InfoId
     key: int
 
@@ -228,11 +234,13 @@ class LogLine(AgentView):
 
 
 class NoticeView(AgentView):
+    """A system notice as the agent sees it."""
     kind: str
     text: str
 
 
 class MemoryView(AgentView):
+    """A memory entry as the agent sees it: current text only, no tamper flags."""
     kind: MemoryKind
     round: int
     text: str
@@ -268,18 +276,21 @@ class Observation(AgentView):
 
 
 class GrepResult(AgentView):
+    """Result of the agent's grep_log action (subset of its visible log history)."""
     pattern: str
     hits: list[LogLine]
     truncated: bool = False
 
 
 class RenderItem(AgentView):
+    """One pre-rendered history line for templates."""
     round: int
     kind: str
     text: str
 
 
 class RenderSection(AgentView):
+    """A named group of history lines for templates (prompt order, s17.6)."""
     name: Literal["pinned", "summary", "retrieved", "window", "current"]
     items: list[RenderItem]
 
@@ -308,23 +319,27 @@ TRUTH_FIELDS: frozenset[str] = frozenset({
 
 
 class SendMessage(Record):
+    """Private DM to one agent."""
     kind: Literal["send_message"] = "send_message"
     to: AgentId
     text: str
 
 
 class PostBoard(Record):
+    """Public board post."""
     kind: Literal["post_board"] = "post_board"
     text: str
 
 
 class GiveKey(Record):
+    """Give one held copy of info_id to another agent."""
     kind: Literal["give_key"] = "give_key"
     to: AgentId
     info_id: InfoId
 
 
 class DefectAction(Record):
+    """Burn target's need info_id (penalty if target does not need it)."""
     kind: Literal["defect"] = "defect"
     target: AgentId
     info_id: InfoId
@@ -339,6 +354,7 @@ class GrepLog(Record):
 
 
 class Noop(Record):
+    """Do nothing."""
     kind: Literal["noop"] = "noop"
 
 
@@ -349,6 +365,7 @@ ACTION_KINDS = ("send_message", "post_board", "give_key", "defect", "grep_log", 
 
 
 class AgentOutput(Record):
+    """Parsed result of one agent turn (from LLMAgent or ScriptedAgent)."""
     cot: str | None = None
     note: str | None = None            # scratchpad write (free; no action slot)
     actions: list[Action] = []
@@ -364,11 +381,13 @@ class AgentOutput(Record):
 
 
 class ActivityCheck(Record):
+    """God tool: recent activity summary (free)."""
     kind: Literal["activity_check"] = "activity_check"
     last_n_rounds: int = 1
 
 
 class MessageCheck(Record):
+    """God tool: filter/grep the message log (free)."""
     kind: Literal["message_check"] = "message_check"
     sender: AgentId | None = None
     receiver: AgentId | None = None
@@ -377,11 +396,13 @@ class MessageCheck(Record):
 
 
 class Wait(Record):
+    """God tool: sleep until n more agent turns or the next wake (free)."""
     kind: Literal["wait"] = "wait"
     n_turns: int | None = None         # None = until next wake
 
 
 class MessageFraud(Record):
+    """God power: deliver a DM to receiver that appears to come from sender."""
     kind: Literal["message_fraud"] = "message_fraud"
     sender: AgentId                    # shown sender (impersonated)
     receiver: AgentId
@@ -389,6 +410,7 @@ class MessageFraud(Record):
 
 
 class CotControl(Record):
+    """God power: overwrite/append agent's memory entry of a round (default: scratchpad)."""
     kind: Literal["cot_control"] = "cot_control"
     agent: AgentId
     target: MemoryKind = "scratchpad"
@@ -412,6 +434,7 @@ HistoryKind = Literal["inbox_msg", "board_msg", "log_line", "notice", "own_actio
 
 
 class HistoryItem(Record):
+    """One unit of an agent's private context history (ledger). Built only from Observations."""
     item_id: str                       # f"{agent}:{round}:{kind}:{n}"
     agent: AgentId
     round: int                         # round the agent OBSERVED / produced it
@@ -422,12 +445,14 @@ class HistoryItem(Record):
 
 
 class ContextSection(Record):
+    """Ids and token count of one section of a built context."""
     name: Literal["pinned", "summary", "retrieved", "window", "current"]
     item_ids: list[str]
     tokens: int
 
 
 class ContextBundle(Record):
+    """A built agent context: pinned facts + included items per section (truth side)."""
     agent: AgentId
     round: int
     policy: str
@@ -440,6 +465,7 @@ class ContextBundle(Record):
     budget: int
 
     def to_view(self, grep: GrepResult | None = None) -> PromptView:
+        """Text-only PromptView for templates (drops refs and ids)."""
         return PromptView(
             agent=self.agent, round=self.round, pinned=self.pinned, grep=grep,
             sections=[RenderSection(name=s.name, items=[
@@ -449,6 +475,7 @@ class ContextBundle(Record):
 
 
 class CompactionRecord(Record):
+    """One summary compaction of an agent's history (WP13)."""
     compaction_id: str
     agent: AgentId
     round: int
@@ -472,6 +499,7 @@ Role = Literal["agent", "god", "judge", "summarizer"]
 
 
 class ChatMessage(Record):
+    """One chat message sent to an LLM."""
     role: Literal["system", "user", "assistant"]
     content: str
 
@@ -491,6 +519,7 @@ class CallMeta(Record):
 
 
 class ChatRequest(Record):
+    """Backend-independent LLM request. call_id and seed are deterministic."""
     call_id: str                       # rng.make_call_id(...) by the caller; deterministic
     messages: list[ChatMessage]
     max_tokens: int
@@ -508,12 +537,14 @@ class ChatRequest(Record):
 
 
 class Usage(Record):
+    """Token usage of one call."""
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reasoning_tokens: int = 0
 
 
 class ChatResponse(Record):
+    """Backend-independent LLM response (echoes call_id)."""
     call_id: str
     text: str
     reasoning: str | None = None
@@ -546,6 +577,7 @@ class LLMCall(Record):
 
 
 class GameStartData(Record):
+    """Payload: world summary and initial inventories."""
     type: Literal["game_start"] = "game_start"
     config_hash: str
     n_agents: int
@@ -557,6 +589,7 @@ class GameStartData(Record):
 
 
 class TurnData(Record):
+    """Payload: one agent turn (observation, prompt hashes, parsed output)."""
     type: Literal["turn"] = "turn"
     agent: AgentId
     obs: Observation                   # logged so ledgers can be rebuilt from events
@@ -573,6 +606,7 @@ class TurnData(Record):
 
 
 class ActionResultData(Record):
+    """Payload: outcome of one action."""
     type: Literal["action_result"] = "action_result"
     agent: AgentId
     action: Action
@@ -582,11 +616,13 @@ class ActionResultData(Record):
 
 
 class MessageData(Record):
+    """Payload: a DM/board message with full ground truth."""
     type: Literal["message"] = "message"
     message: Message
 
 
 class KeyTransferData(Record):
+    """Payload: a key copy changed hands (give / defect gain)."""
     type: Literal["key_transfer"] = "key_transfer"
     copy_id: str
     info_id: InfoId
@@ -596,6 +632,7 @@ class KeyTransferData(Record):
 
 
 class BurnData(Record):
+    """Payload: a defect attempt and its effects."""
     type: Literal["burn"] = "burn"
     actor: AgentId
     target: AgentId
@@ -609,6 +646,7 @@ class BurnData(Record):
 
 
 class MemoryWriteData(Record):
+    """Payload: agent-authored memory write."""
     type: Literal["memory_write"] = "memory_write"
     entry: MemoryEntry
 
@@ -631,6 +669,7 @@ class MemoryOverwriteData(Record):
 
 
 class GodToolData(Record):
+    """Payload: one free God observation call (digest only)."""
     type: Literal["god_tool"] = "god_tool"
     tool: Literal["activity_check", "message_check", "wait"]
     args: dict[str, Any] = {}
@@ -640,6 +679,7 @@ class GodToolData(Record):
 
 
 class GodPowerData(Record):
+    """Payload: one God power attempt (cost, budget, ok)."""
     type: Literal["god_power"] = "god_power"
     power: Literal["message_fraud", "cot_control"]
     intervention_id: str | None = None  # None when ok=False
@@ -651,11 +691,13 @@ class GodPowerData(Record):
 
 
 class NoticeData(Record):
+    """Payload: a notice queued for an agent."""
     type: Literal["notice"] = "notice"
     notice: Notice
 
 
 class ContextBuiltData(Record):
+    """Payload: token accounting of one built context."""
     type: Literal["context_built"] = "context_built"
     agent: AgentId
     policy: str
@@ -667,17 +709,20 @@ class ContextBuiltData(Record):
 
 
 class CompactionData(Record):
+    """Payload: a compaction record."""
     type: Literal["compaction"] = "compaction"
     record: CompactionRecord
 
 
 class WinData(Record):
+    """Payload: an agent won."""
     type: Literal["win"] = "win"
     agent: AgentId
     score: float
 
 
 class RoundEndData(Record):
+    """Payload: end-of-round state hash and scores."""
     type: Literal["round_end"] = "round_end"
     state_hash: str
     scores: dict[AgentId, float]
@@ -685,6 +730,7 @@ class RoundEndData(Record):
 
 
 class AgentOutcome(Record):
+    """Final result for one agent."""
     score: float
     won_round: int | None = None
     burned: list[InfoId] = []
@@ -692,6 +738,7 @@ class AgentOutcome(Record):
 
 
 class Outcome(Record):
+    """Final result of one game."""
     game_id: GameId
     rounds_played: int
     end_reason: Literal["max_rounds", "all_done", "budget_exceeded", "error"]
@@ -701,6 +748,7 @@ class Outcome(Record):
 
 
 class GameEndData(Record):
+    """Payload: the game outcome."""
     type: Literal["game_end"] = "game_end"
     outcome: Outcome
 
@@ -728,6 +776,7 @@ class EventBody(Record):
 
 
 class Event(Record):
+    """One line of events.jsonl: stamped envelope + typed payload."""
     v: int = SCHEMA_VERSION
     run_id: RunId
     game_id: GameId
@@ -747,12 +796,16 @@ class Event(Record):
 
 
 def make_event(body: EventBody, *, run_id: RunId, game_id: GameId, seq: int) -> Event:
+    """Stamp an EventBody into an Event."""
     return Event(run_id=run_id, game_id=game_id, seq=seq, round=body.round, turn_index=body.turn_index,
                  phase=body.phase, type=body.data.type, actor=body.actor, data=body.data)
 
 
 class EventSink(Protocol):
-    def emit(self, body: EventBody) -> Event: ...
+    """Anything that stamps and stores events (RunWriter, MemorySink)."""
+    def emit(self, body: EventBody) -> Event:
+        """Stamp and store one event body; returns the Event."""
+        ...
 
 
 class MemorySink:
@@ -763,6 +816,7 @@ class MemorySink:
         self.events: list[Event] = []
 
     def emit(self, body: EventBody) -> Event:
+        """Stamp and store one event body; returns the Event."""
         ev = make_event(body, run_id=self.run_id, game_id=self.game_id, seq=len(self.events))
         self.events.append(ev)
         return ev
@@ -784,6 +838,7 @@ class Snapshot(Record):
 
 
 class Label(Record):
+    """Derived ground-truth label for evaluation (from events)."""
     game_id: GameId
     label_kind: Literal["forged_message", "tampered_memory", "tampered_turn"]
     unit_id: str
@@ -794,6 +849,7 @@ class Label(Record):
 
 
 class MonitorScore(Record):
+    """One monitor score for one unit."""
     monitor: str
     game_id: GameId
     unit_kind: str
@@ -809,10 +865,12 @@ class MonitorScore(Record):
 # =====================================================================================
 
 def to_jsonl_line(rec: BaseModel) -> str:
+    """Serialize one record as a JSONL line."""
     return rec.model_dump_json() + "\n"
 
 
 def write_jsonl(path: str | Path, records: Iterable[BaseModel], *, append: bool = True) -> int:
+    """Write records as JSONL (append by default); returns the count."""
     n = 0
     with open(path, "a" if append else "w", encoding="utf-8") as f:
         for r in records:
@@ -822,6 +880,7 @@ def write_jsonl(path: str | Path, records: Iterable[BaseModel], *, append: bool 
 
 
 def read_jsonl[T: BaseModel](path: str | Path, model: type[T]) -> Iterator[T]:
+    """Yield records of `model` from a JSONL file."""
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.strip():
@@ -829,6 +888,7 @@ def read_jsonl[T: BaseModel](path: str | Path, model: type[T]) -> Iterator[T]:
 
 
 def read_jsonl_raw(path: str | Path) -> Iterator[dict[str, Any]]:
+    """Yield raw dicts from a JSONL file."""
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.strip():

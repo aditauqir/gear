@@ -41,13 +41,17 @@ from swarm.schema import (
 # ------------------------------------------------------------------ protocols
 @runtime_checkable
 class TokenCounter(Protocol):
+    """Counts tokens of a text (approx, words, or a real tokenizer)."""
     name: str
 
-    def count(self, text: str) -> int: ...
+    def count(self, text: str) -> int:
+        """Token count of text."""
+        ...
 
 
 @runtime_checkable
 class ContextPolicy(Protocol):
+    """Decides which history items an agent sees within its token budget."""
     name: str
 
     def build(self, *, agent: AgentId, round: int, ledger: Sequence[HistoryItem],
@@ -56,11 +60,15 @@ class ContextPolicy(Protocol):
         """PURE and synchronous. Never drops pinned facts or current-round inbox DMs."""
         ...
 
-    def due_for_compaction(self, *, agent: AgentId, round: int, ledger: Sequence[HistoryItem]) -> bool: ...
+    def due_for_compaction(self, *, agent: AgentId, round: int, ledger: Sequence[HistoryItem]) -> bool:
+        """Whether compact() should run for this agent now."""
+        ...
 
     async def compact(self, *, agent: AgentId, round: int, ledger: Sequence[HistoryItem],
                       memory: Sequence[MemoryView], pinned: PinnedFacts, counter: TokenCounter,
-                      seed: int) -> CompactionRecord | None: ...
+                      seed: int) -> CompactionRecord | None:
+        """Summarize aged history; returns None when nothing to do."""
+        ...
 
 
 class ContextOverflow(Exception):
@@ -69,21 +77,26 @@ class ContextOverflow(Exception):
 
 # ------------------------------------------------------------------ counters
 class WordCounter:
+    """Whitespace word count (tests: exact and fast)."""
     name = "words"
 
     def count(self, text: str) -> int:
+        """Token count of text."""
         return len(text.split())
 
 
 class ApproxCounter:
+    """ceil(chars / 3.5): rough token estimate without a tokenizer."""
     name = "approx"
 
     def count(self, text: str) -> int:
+        """Token count of text."""
         return math.ceil(len(text) / 3.5)
 
 
 # ------------------------------------------------------------------ item builders (the choke point)
 def render_log_line(line: LogLine) -> str:
+    """Default text for one LogLine (identity-hidden fields render as 'an agent')."""
     a = line.actor or "an agent"
     t = line.target or "an agent"
     if line.kind == "give":
@@ -105,6 +118,7 @@ def _item(agent: AgentId, round: int, kind: HistoryKind, n: int, text: str, ref:
 
 
 def items_from_observation(obs: Observation, counter: TokenCounter | None = None) -> list[HistoryItem]:
+    """History items for one Observation: the only constructor of ledger items."""
     a, r = obs.agent, obs.round
     out: list[HistoryItem] = []
     for n, m in enumerate(obs.inbox):
@@ -119,6 +133,7 @@ def items_from_observation(obs: Observation, counter: TokenCounter | None = None
 
 
 def render_action(action: Action) -> str:
+    """Default text for one of the agent's own actions."""
     k = action.kind
     if k == "send_message":
         return f"You messaged {action.to}: {action.text}"
@@ -146,6 +161,7 @@ def own_action_items(agent: AgentId, round: int, actions: Sequence[Action],
 
 def memory_items(agent: AgentId, memory: Sequence[MemoryView],
                  counter: TokenCounter | None = None) -> list[HistoryItem]:
+    """History items for the agent's memory views (scratchpad / cot / summary)."""
     label = {"scratchpad": "Your note", "cot": "Your thought", "summary": "Your summary"}
     return [_item(agent, m.round, m.kind, 0, f"{label[m.kind]} (round {m.round}): {m.text}",
                   make_entry_id(agent, m.kind, m.round), counter) for m in memory]
@@ -160,6 +176,7 @@ class PassthroughPolicy:
     def build(self, *, agent: AgentId, round: int, ledger: Sequence[HistoryItem],
               current: Sequence[HistoryItem], memory: Sequence[MemoryView], pinned: PinnedFacts,
               budget: int, counter: TokenCounter) -> ContextBundle:
+        """Assemble the context bundle for one turn (pure)."""
         mem = memory_items(agent, memory, counter)
         window = sorted([*ledger, *mem], key=lambda it: (it.round, it.item_id))
         cur = list(current)
@@ -179,7 +196,9 @@ class PassthroughPolicy:
                              tokens_total=sum(s.tokens for s in sections), budget=budget)
 
     def due_for_compaction(self, *, agent: AgentId, round: int, ledger: Sequence[HistoryItem]) -> bool:
+        """Whether compact() should run for this agent now."""
         return False
 
     async def compact(self, **kwargs: object) -> CompactionRecord | None:
+        """Summarize aged history; returns None when nothing to do."""
         return None
