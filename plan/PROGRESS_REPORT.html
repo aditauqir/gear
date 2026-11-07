@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan A Progress Report</title>
+<style>
+  @page { size: Letter; margin: 1in; }
+  :root { --ink: #1a1a1a; --muted: #555; --rule: #bbb; --tint: #f3f3f0; --flag: #8a2b0f; }
+  html { background: #fff; }
+  body { font-family: "Charter", "Bitstream Charter", "Georgia", "Times New Roman", serif; font-size: 11pt; line-height: 1.38; color: var(--ink); background: #fff; margin: 0; }
+  main { max-width: 6.5in; margin: 0 auto; }
+  h1 { font-size: 17pt; margin: 0 0 4pt; line-height: 1.2; }
+  h2 { font-size: 13pt; margin: 16pt 0 5pt; border-bottom: 0.6pt solid var(--rule); padding-bottom: 2pt; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 11pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  ul, ol { margin: 0 0 6pt; padding-left: 18pt; }
+  li { margin-bottom: 2.5pt; }
+  .meta { color: var(--muted); font-size: 9.5pt; margin-bottom: 10pt; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.8pt; line-height: 1.25; margin: 4pt 0 8pt; break-inside: auto; }
+  th, td { border-bottom: 0.4pt solid var(--rule); padding: 2.2pt 4pt; text-align: left; vertical-align: top; }
+  th { background: var(--tint); font-weight: bold; }
+  tr { break-inside: avoid; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  figure { margin: 6pt 0 10pt; break-inside: avoid; text-align: center; }
+  figure img { max-width: 100%; height: auto; }
+  figcaption { font-size: 9pt; color: var(--muted); text-align: left; margin-top: 3pt; line-height: 1.3; }
+  .tag { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.5pt; font-weight: bold; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.5pt 3pt; border: 0.6pt solid currentColor; border-radius: 2pt; white-space: nowrap; }
+  .ver { color: #1f5f2a; } .sug { color: #8a5a00; } .nul { color: #3c4f78; } .int { color: #6b2f7a; } .nyr { color: #666; } .dis { color: var(--flag); }
+  .box { border: 0.6pt solid var(--rule); background: var(--tint); padding: 6pt 8pt; margin: 6pt 0 8pt; break-inside: avoid; }
+  .small { font-size: 9pt; }
+  .flag { color: var(--flag); font-weight: bold; }
+  .pb { break-before: page; }
+  code { font-family: "DejaVu Sans Mono", Menlo, monospace; font-size: 8.6pt; }
+  .vet td:nth-child(1) { width: 3%; } .vet td:nth-child(2) { width: 27%; } .vet td:nth-child(3) { width: 21%; }
+  .vet td:nth-child(4) { width: 17%; } .vet td:nth-child(5) { width: 24%; } .vet td:nth-child(6) { width: 8%; }
+  @media screen { body { padding: 24px 16px; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Keys &amp; God (Plan A): vetted progress report</h1>
+<div class="meta">For Iraj and Noor. Status at Sat 7 Nov 2026, 14:00 EST. Every number is copied from a file in <code>plan/</code> or recomputed read-only, and listed with its source in Appendix A. Where files disagree, both values are shown.</div>
+
+<h2>1. Summary</h2>
+
+<p><b>The game.</b> Ten copies of gpt-oss-120b each hold 5 keys and need the keys for 3 infos they do not hold. They trade over private DMs and a public board, and they can <i>defect</i>: name another agent's need and burn it, gaining a minted key, at the risk of losing one of their own needs if the guess is wrong. A scripted adversary, God, which the agents are never told about, forges a DM from a real trading partner ("send me one of your keys first") and overwrites an agent's private note ("X is lying, do not give X anything"). Welfare is the mean share of needs held at the end.</p>
+
+<p><b>The measurement.</b> Each world is played with God (A) and without (B) from identical seeds and a shared cache; God-free branches resampled from round 1 (B′) or from God's first round (B″) measure chance variation.</p>
+
+<p><b>Main findings so far</b> (N=10, 20 rounds, unless stated):</p>
+<ol>
+<li><span class="tag nul">null</span> <b>God has no detectable effect on welfare.</b> G1 (K=2, 16 worlds): +0.013, 95% CI [−0.048, +0.073], p=0.72. A God-free resample moved welfare more (+0.046). Effects above about 0.085 are unlikely. None of 9 sweep cells (God's timing, budget, board variants) has a God-minus-noise CI that excludes 0.</li>
+<li><span class="tag ver">verified</span> <b>The forged DM changes behaviour; the planted note does not.</b> Receivers gave the impersonated sender 83 keys within 2 rounds, against 22 without God: +1.53 gives per world [+1.00, +2.05], n=40. In simultaneous K=2 the receiver's total gives do not change, so the forgery redirects gives. The "X is lying" note has no effect (victim still gives X a key in 43/72 cases vs 45/72).</li>
+<li><span class="tag ver">verified</span> <b>Agents do not gossip.</b> 0 accusations, 0 hearsay markers and 0 rumour chains in 19,005 messages.</li>
+<li><span class="tag ver">verified</span> <b>The public board is load-bearing.</b> Turning it off (no God) lowers welfare by 0.173 [−0.257, −0.089], p=0.0003, 14 of 16 worlds, and the effect replicates on 10 new worlds. Agents send 1.8× the DMs but give 26% fewer keys, and wrong defects triple.</li>
+<li><span class="tag ver">verified</span> <b>Divergence measures chaos, not God.</b> After God's first act about 0.89 of agents act differently each round, but a fork-matched God-free resample reaches 0.95. God's divergence is below the noise in every sweep cell.</li>
+<li><span class="tag ver">verified</span> <b>The game is a coordination game with a risky sabotage action, not a social dilemma.</b> Giving a spare key costs nothing, so a forged "send me a key" mostly costs the victim a spare. Defecting is negative EV as played (−0.105 needs per defect, n=441).</li>
+<li><span class="tag int">interim</span> <b>Networks (N=40, 4 worlds, still running).</b> On a sparse random graph where agents can only reach neighbours, almost nobody wins (7.5% at round 11, against 59% on the complete graph). Needs held 2 or more hops away are filled 6% of the time. No gossip. The interim figures in the brief (52% vs 4%, −0.31) reproduce only against a superseded run (Section 3.7).</li>
+</ol>
+
+<p><b>Running next.</b> E1 (a forged DM every round r3-r20, 18 acts, 16 worlds, A/B/B″) launched 13:56 EST, cap $1.20. Network runs are at rounds 11-28. E3 and E4 have config code on <code>game-fixes</code> (958ebd4), not merged or run.</p>
+
+<table>
+<tr><th>Status</th><th>Findings</th></tr>
+<tr><td><span class="tag ver">verified</span></td><td>Board-off effect; forged-DM redirect (simultaneous turns); zero gossip; divergence below fork-matched noise; game-structure facts. Each checked by a second source.</td></tr>
+<tr><td><span class="tag nul">null</span></td><td>God's welfare effect in every grid and sweep cell; planted note; forged DM under sequential turns (n=8).</td></tr>
+<tr><td><span class="tag sug">suggestive</span></td><td>Delayed board God − B″ +0.122 (p=0.031, t95 includes 0, n=6); K=1 −0.104 (p=0.062); forged-DM receiver's score −0.108; turn-mode "needs lost" (p=0.062).</td></tr>
+<tr><td><span class="tag int">interim</span> <span class="tag nyr">not yet run</span></td><td>N=40 network cells A/B/C, 4 worlds, in progress. Not yet run: E1 (running), E2-E6.</td></tr>
+</table>
+
+<h2 class="pb">2. The game and the measurement design</h2>
+
+<h3>2.1 Rules as run</h3>
+<ul>
+<li>N=10 agents, 20 rounds, 5 keys and 3 needs per agent, 2 copies of each info, up to 2 actions per turn. Actions: DM, board post, give key, defect, grep the log, noop, plus a free private note.</li>
+<li>Every world is feasible, and a held key is never its holder's need, so giving a spare costs the giver nothing.</li>
+<li>Defect: if the target really needs that info and has not won, the need is burned and the actor gets a minted key; otherwise the actor loses its lowest-id open need. Others see a defect 3 rounds later.</li>
+<li>Win is "holds every open need" and is sticky; score is held needs / 3. Winners keep playing.</li>
+<li>Model: openai/gpt-oss-120b, reasoning effort low, temperature 0.6, max 1000 output tokens, 14k-token context, price-sorted OpenRouter routing.</li>
+<li>God is scripted. At a fixed round it targets the agent closest to winning and impersonates (or names) that agent's most recent partner. G1 schedule: forged DM at r3, note overwrite at r5.</li>
+</ul>
+
+<figure>
+<img src="figs/paperfig1_schematic.png" alt="Schematic of the game and the paired fork design" style="width:92%">
+<figcaption><b>Figure 1.</b> The game and the paired-fork design. A (God) and B (no God) share every seed and cached response until God's first round F. B″ is God-free and resampled from F; B′ (G1 only) is resampled from round 1. Source: <code>plan/figs/paperfig1_schematic.png</code>.</figcaption>
+</figure>
+
+<h3>2.2 Why paired forks and two noise baselines</h3>
+<p>LLM agents diverge even when nothing is done to them, so a plain with/without comparison mixes God's effect with sampling noise. Pairing A and B on seeds tightens the comparison: in G1 the SD of the per-world welfare difference is 0.113 for A − B, against 0.189 for B′ − B.</p>
+<p>B′ was the original noise baseline, but it forks at round 1 while God first acts at round 3, so it is not aligned with God's fork. The sweep added B″, which shares A/B's history up to round F and resamples all 10 agents from F. Because it resamples everyone while God touches one input, B″ is an upper bound on noise; a victim-only resample would be tighter and has not been run.</p>
+<p>Seeds are only partly honoured by the provider (5 of 6 fixed-seed calls returned identical replies in a direct probe). The pre-fork identity of A and B therefore comes from the cache, not from the seeds.</p>
+
+<h3>2.3 Statistics</h3>
+<p>Each effect is a mean per-world paired difference with a Student-t 95% CI (t95) and an exact two-sided sign-flip p. The percentile bootstrap is secondary because it is too narrow at n=8 to 16 (the code review found a case with bootstrap [−0.125, −0.000] but p=0.25). Only H1 (G1 welfare) was the pre-registered primary test; about 27 grid tests and 9 sweep tests are uncorrected. Minimum detectable effects (MDE) are for 80% power at α=0.05.</p>
+
+<h2>3. Findings</h2>
+
+<h3>3.1 God's effect on welfare: no effect beyond noise <span class="tag nul">null</span></h3>
+
+<table>
+<tr><th>Comparison (welfare, paired by world)</th><th class="num">n</th><th class="num">mean Δ</th><th class="num">t95</th><th class="num">p</th><th class="num">MDE</th></tr>
+<tr><td>G1 sim K=2: God − B</td><td class="num">16</td><td class="num">+0.013</td><td class="num">[−0.048, +0.073]</td><td class="num">0.72</td><td class="num">0.085</td></tr>
+<tr><td>G1: B′ − B (God-free resample)</td><td class="num">16</td><td class="num">+0.046</td><td class="num">[−0.055, +0.146]</td><td class="num">0.38</td><td></td></tr>
+<tr><td>G3 sim K=6: God − B</td><td class="num">16</td><td class="num">+0.004</td><td class="num">[−0.097, +0.105]</td><td class="num">0.97</td><td class="num">0.14</td></tr>
+<tr><td>G2 seq K=2: God − B</td><td class="num">8</td><td class="num">+0.012</td><td class="num">[−0.144, +0.169]</td><td class="num">0.89</td><td class="num">0.22</td></tr>
+<tr><td>Dose, G3 Δ − G1 Δ</td><td class="num">16</td><td class="num">−0.008</td><td class="num">[−0.118, +0.101]</td><td class="num">0.90</td><td class="num">0.15</td></tr>
+<tr><td>Turn mode, G2 Δ − G1 Δ</td><td class="num">8</td><td class="num">+0.021</td><td class="num">[−0.170, +0.212]</td><td class="num">0.86</td><td class="num">0.26</td></tr>
+</table>
+
+<figure>
+<img src="figs/paperfig4a_grid_effects.png" alt="Grid welfare effects with confidence intervals" style="width:100%">
+<figcaption><b>Figure 2.</b> Grid welfare differences per world with mean and t95. Every interval contains 0. Source: <code>plan/figs/paperfig4a_grid_effects.png</code>; numbers in <code>plan/figs/NUMBERS.txt</code> and GRID_RESULTS §3-4.</figcaption>
+</figure>
+
+<p><b>Sweep.</b> One factor at a time around G1, on worlds 0-7, with God − B″ as the primary contrast:</p>
+<ul>
+<li>God's first round r1 / r3 / r8 / r14: +0.017, −0.062, +0.037, −0.025. The late God (r14) is tightly null, [−0.080, +0.030].</li>
+<li>Budget K=1 / 2 / 4: −0.104 [−0.213, +0.005] p=0.062, −0.062, −0.050. K=6 (G3), N=5 and N=20 had no noise arm; their God − B values are inside base's noise range.</li>
+<li>Board off: +0.056 [−0.170, +0.281], n=6. Delayed board: +0.122 [−0.024, +0.268], p=0.031, n=6 <span class="tag sug">suggestive</span>. God's branch beat B″ in all 6 worlds, which is the smallest p possible at n=6, but the t95 includes 0, it is about the 9th uncorrected test, and its direction (God helps) matches nothing else.</li>
+</ul>
+<p>At n=8 the God − B″ MDE is about 0.15 to 0.25, so the sweep rules out only large effects.</p>
+
+<figure>
+<img src="figs/paperfig4b_sweep_effects.png" alt="Sweep God minus noise per condition and the board-off effect" style="width:94%">
+<figcaption><b>Figure 3.</b> Left: God − B″ welfare per sweep condition (filled diamond, t95); open circle is God − B. Right: board off vs board on without God, 16 paired worlds. Source: <code>plan/figs/paperfig4b_sweep_effects.png</code>.</figcaption>
+</figure>
+
+<p><b>Why the dose is weak.</b> K=2 is one forged DM and one note overwrite among 10 agents × 20 rounds. The forged-DM receiver's own final score drops by 0.108 [−0.225, +0.008] (n=40, game theory §B8). Spread over 10 agents that is about 0.011 welfare, roughly 8× below G1's MDE of 0.085. A welfare null was close to guaranteed at this dose. E1 (18 forgeries per game) is the test of whether the effect adds up: if additive, about 18 × −0.011 ≈ −0.2, which would be detectable.</p>
+
+<h3>3.2 Forged DMs redirect gives; planted notes are ignored</h3>
+
+<table>
+<tr><th>Measure (40 matched grid worlds, 72 forgeries)</th><th class="num">God</th><th class="num">no God</th><th>Paired per-world Δ, t95, p (n)</th><th>Status</th></tr>
+<tr><td>Gives from receiver to the impersonated sender, rounds t..t+2</td><td class="num">83</td><td class="num">22</td><td>+1.53 [+1.00, +2.05], p&lt;1e-4 (40); 29 up, 2 down, 9 zero</td><td><span class="tag ver">verified</span></td></tr>
+<tr><td>&nbsp;&nbsp;sim K=2</td><td class="num">20</td><td class="num">4</td><td>+1.00 [+0.61, +1.39], p=0.0005 (16)</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;sim K=6</td><td class="num">56</td><td class="num">12</td><td>+2.75 [+1.75, +3.75], p=0.0001 (16)</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;seq K=2</td><td class="num">7</td><td class="num">6</td><td>+0.12 [−0.57, +0.82], p=1.0 (8)</td><td><span class="tag nul">null</span></td></tr>
+<tr><td>Receiver's total gives, sim K=2</td><td></td><td></td><td>+0.25 [−0.25, +0.75] (16)</td><td></td></tr>
+<tr><td>Planted note: victim still gives the "liar" ≥1 key</td><td class="num">43/72</td><td class="num">45/72</td><td>−0.05 [−0.36, +0.26], p=0.88 (40)</td><td><span class="tag nul">null</span></td></tr>
+</table>
+
+<ul>
+<li>The effect holds for other windows: t..t+1 gives +1.52, t..t+5 gives +1.77.</li>
+<li>57 of 72 receivers gave the impersonated agent a key within 2 rounds. Only 8 of those gives were a key the receiver itself needed (self-harm); 11 were a key the impersonated agent needed, so God helped.</li>
+<li>No receiver ever warned anyone about the forged sender. A cheated receiver never learned it had been lied to.</li>
+<li>The planted belief did not survive: the victim's next-round note was rewritten from the game state, for example "hazel_orchid wants to trade her key2 for my key1, so give her key1" (hazel_orchid was the planted liar).</li>
+<li>Not tested: why agents ignore the belief. The God/no-God counts are associations within matched worlds.</li>
+</ul>
+
+<h3>3.3 No gossip <span class="tag ver">verified</span></h3>
+<ul>
+<li>Corpus: 96 grid games, 19,005 messages (6,413 board, 12,592 DM).</li>
+<li>Only 76 messages (0.4%) name a third party, almost all trade solicitations or self-reports ("I gave honey_falcon my key 2"). 0 accusations, 0 "X burned me", 0 hearsay markers. Of 15 claims about third parties, 0 were repeated by anyone (0 chains).</li>
+<li>A broader regex for lying, distrust and warnings also finds 0 hits, and a 50-message random sample contained no missed accusation.</li>
+<li>With the board off (22 games, 5,598 DMs) third-party mentions fall to 0.7 per 1000 messages. Gossip does not move into DMs.</li>
+<li>Agents do keep promises and form partnerships: 121 explicit DM promises, 74% followed by a transfer within 2 rounds; 43% of give pairs went both ways.</li>
+<li>Limit: the regexes only match agent names, so pronoun-only references would be missed. Prompts never ask agents to talk about others; a "warn others" prompt would test whether gossip can appear at all.</li>
+</ul>
+
+<figure>
+<img src="figs/social_rumours.png" alt="Third-party mentions, planted lie vs forged DM, gossip rate" style="width:100%">
+<figcaption><b>Figure 4.</b> Left: the 76 messages that name a third party, by type. Middle: planted note vs forged DM, God vs no God (72 interventions each). Right: third-party mentions per 1000 messages. Source: <code>plan/figs/social_rumours.png</code>, SOCIAL_DYNAMICS.</figcaption>
+</figure>
+
+<h3>3.4 The board is load-bearing <span class="tag ver">verified</span></h3>
+
+<table>
+<tr><th>Per agent, no God, 16 paired worlds</th><th class="num">board on (G1)</th><th class="num">board off</th><th class="num">diff, t95</th><th class="num">p</th><th class="num">worlds &lt; 0</th></tr>
+<tr><td>Welfare</td><td class="num">0.440</td><td class="num">0.267</td><td class="num">−0.173 [−0.257, −0.089]</td><td class="num">0.0003</td><td class="num">14/16</td></tr>
+<tr><td>Win rate</td><td class="num">0.831</td><td class="num">0.525</td><td class="num">−0.306 [−0.406, −0.206]</td><td class="num">0.0001</td><td class="num">15/16</td></tr>
+<tr><td>Keys given</td><td class="num">6.71</td><td class="num">4.94</td><td class="num">−1.77 [−2.37, −1.16]</td><td class="num">0.0002</td><td class="num">15/16</td></tr>
+<tr><td>DMs sent</td><td class="num">14.0</td><td class="num">25.5</td><td class="num">+11.5 [+9.3, +13.6]</td><td class="num">&lt;0.0001</td><td class="num">0/16</td></tr>
+<tr><td>Wrong defects</td><td class="num">0.31</td><td class="num">0.94</td><td class="num">+0.63 [+0.43, +0.84]</td><td class="num">0.0001</td><td class="num">0/16</td></tr>
+<tr><td>Correct defects</td><td class="num">0.47</td><td class="num">0.44</td><td class="num">−0.03 [−0.16, +0.11]</td><td class="num">0.77</td><td class="num">7/16</td></tr>
+</table>
+
+<div style="display:flex; gap:12pt; align-items:flex-start; break-inside:avoid">
+<figure style="flex:0 0 44%; margin-top:0">
+<img src="figs/paperfig5_board_mechanism.png" alt="Board-off mechanism per metric">
+<figcaption><b>Figure 5.</b> Board off minus board on, no God, 16 worlds, t95. Source: <code>plan/figs/paperfig5_board_mechanism.png</code>.</figcaption>
+</figure>
+<div style="flex:1">
+<p><b>Replication.</b> The first 6 worlds gave −0.200 [−0.333, −0.067], p=0.031 (all 6 lower). The 10 new worlds gave −0.157 [−0.283, −0.030], p=0.016. p=0.0003 stays below a Bonferroni threshold over about 36 grid and sweep tests (0.05/36 ≈ 0.0014).</p>
+<p><b>Mechanism (descriptive).</b> Without the board agents do not know who holds or needs what. They message more but complete fewer trades, and their defect accuracy falls from 0.59 to 0.32 (game theory §B3). Wrong defects cost the defector one of its own needs. Mediation was not tested.</p>
+<p><b>Design note.</b> Board-off games share G1's worlds (keys, needs, names, world seed) but not its agent seeds, by design, so this comparison is paired by world, not by common random numbers.</p>
+<p><b>Delayed board</b> (posts shown 2 rounds late, no God, n=6): welfare −0.028 [−0.242, +0.186]; win rate −0.150 (p=0.06); gives −1.68 per agent. No clear welfare effect.</p>
+</div>
+</div>
+
+<h3>3.5 Divergence is chaos, not God <span class="tag ver">verified</span></h3>
+<p>From God's first act on, the share of agents whose round action differs from the no-God branch is 0.893 (G1), 0.897 (G2) and 0.882 (G3), and every agent diverges at least once. Neither dose nor turn mode changes this. Against fork-matched noise, God's divergence is lower: 0.90 vs 0.95 on G1's worlds 0-7. The gap God − B″ is negative in every sweep cell (−0.02 to −0.15), and its t95 excludes 0 in five (base, start8, start14, K=1, K=4; p ≤ 0.016). One changed action in the public log changes every agent's next prompt, so a divergence curve cannot attribute spread to God. Only outcome-level paired differences can.</p>
+
+<figure>
+<img src="figs/paperfig3_divergence.png" alt="Share of agents diverging, God vs fork-matched noise" style="width:100%">
+<figcaption><b>Figure 6.</b> Share of agents that have acted differently from B since the fork, God (blue) vs fork-matched noise B″ (dark grey), aligned at the fork round F. Source: <code>plan/figs/paperfig3_divergence.png</code>.</figcaption>
+</figure>
+
+<h3>3.6 Game theory: a coordination game, defects are negative EV, and two design flaws <span class="tag ver">verified</span></h3>
+<p>Two independent analyses (GAME_THEORY, from N=10 data plus a scripted simulation; GAME_THEORY_AUDIT, from the generator and rules at N=40) agree on the structure:</p>
+<ul>
+<li><b>Giving is free and nothing is scarce.</b> In 3,000 generated N=40 infos demand never exceeds supply. "Everyone gives" (welfare 1.0, reached by scripted cooperators in 2 to 5 rounds) and "nobody gives" (welfare 0) are both equilibria. A hoarder among cooperators scores 1.000, the same as a cooperator.</li>
+<li><b>Defecting is negative EV as played.</b> Board on: accuracy 0.594, q-discounted EV −0.105 needs per defect [−0.150, −0.059], n=441. Board off: accuracy 0.320, EV −0.292. Accuracy is 0.781 when the target had named the need, 0.019 when not. With perfect information a defect on a shared need would be weakly dominant; information friction is what holds it back.</li>
+<li><b>The LLM swarms reach welfare 0.465, not 1.0.</b> 22.1% of need slots were held once and then given away; 78% of winners gave away a key they still needed at least once. 13% of wins were triggered by losing a need (the win rule counts only open needs). World identity explains little of the outcome (ICC 0.13 [−0.18, 0.41]).</li>
+<li><b>This explains part of God's null.</b> The forged DM asks for "one of your keys". Complying usually costs the victim a spare it did not need.</li>
+<li><b>Design flaw 1, <code>sit_out</code>.</b> Removing winners strands their keys: with perfect cooperators and full information 13.4% of need slots become unsolvable and welfare falls to 0.838. A defector then strictly beats a cooperator (0.983 vs 0.817). Built, never used in an analysed run.</li>
+<li><b>Design flaw 2, network information starvation.</b> On ER mean-degree-3 graphs at N=40, 84% of needs have their nearest holder 2 or more hops away, and 60% of agents have no need held by a neighbour. Without forwarding or relays the all-cooperator ceiling is welfare 0.153. Forwarding has zero private value, so the network cells measure unrewarded altruistic forwarding.</li>
+<li><b>Other issues:</b> the wrong-defect penalty takes the lowest-id open need, so late in the game a hopeless agent's wrong defect is free; turn costs (posting, connect) tax help to others rather than the actor.</li>
+</ul>
+<p><span class="flag">Disagreement:</span> all-defector welfare is 0.753 in GAME_THEORY (sequential turns, oracle information) and 0.648 (N=10) / 0.661 (N=40) in the audit (simultaneous turns, one round of board lag). The audit attributes the gap to the setup; both agree on direction.</p>
+
+<figure>
+<img src="figs/gt_defect_ev.png" alt="Defect expected value against accuracy" style="width:96%">
+<figcaption><b>Figure 7.</b> Left: theoretical defect EV against accuracy, with the realized board-on (n=441) and board-off (n=222) points. Right: scripted simulation, a focal defector's score vs its accuracy. Source: <code>plan/figs/gt_defect_ev.png</code>.</figcaption>
+</figure>
+
+<h3>3.7 Networks, N=40 <span class="tag int">interim, 4 worlds, run in progress</span></h3>
+<p><b>Design.</b> No God. A: complete graph, global board, 20 rounds. B: Erdős-Rényi mean degree 3, agents can message and give only to neighbours, neighbour-scoped board, 30 rounds. C: same graph, but agents can contact anyone whose name they have learned. Worlds 0-3. At 13:55 EST, A had finished rounds 11-13, B rounds 23-28, C rounds 12-14. I recomputed the comparison read-only with <code>swarm/analysis/network_compare.py --at-round R --worlds 0-3</code>.</p>
+
+<table>
+<tr><th>Matched round</th><th>A baseline</th><th class="num">win rate A / B / C</th><th class="num">welfare A / B / C</th><th class="num">Δwelfare B − A, t95</th><th class="num">Δwelfare C − A, t95</th></tr>
+<tr><td>7</td><td>current A (20-round run)</td><td class="num">40.6% / 3.8% / 1.3%</td><td class="num">0.342 / 0.090 / 0.079</td><td class="num">−0.252 [−0.356, −0.148]</td><td class="num">−0.263 [−0.360, −0.165]</td></tr>
+<tr><td>7</td><td>superseded 30-round A (<code>partial_net40_complete_sim_30r_1322</code>)</td><td class="num">51.9% / 3.8% / 1.3%</td><td class="num">0.398 / 0.090 / 0.079</td><td class="num">−0.308 [−0.347, −0.269]</td><td class="num">−0.319 [−0.404, −0.234]</td></tr>
+<tr><td><b>11</b></td><td>current A</td><td class="num">58.8% / 7.5% / 5.0%</td><td class="num">0.356 / 0.083 / 0.104</td><td class="num">−0.273 [−0.358, −0.188]</td><td class="num">−0.252 [−0.315, −0.190]</td></tr>
+</table>
+<p class="small">All B and C differences are negative in 4 of 4 worlds; with n=4 the smallest possible sign-flip p is 0.125. Round 11 is the latest round all 12 games have reached.</p>
+
+<p><span class="flag">Disagreement with the brief.</span> The interim figures "52% vs 4% at round 7, Δ −0.31 [−0.35, −0.27]" (also in COHERENCE_REVIEW #11) reproduce exactly only when A is the superseded 30-round run. Against the current 20-round A, which is the planned comparison, round 7 gives 41% vs 4% and −0.25 [−0.36, −0.15]. The conclusion (B collapses) is the same; the size is smaller. The 30-round and 20-round A runs play the same worlds and differ only in the horizon printed in the prompt and in agent seeds, so the 52% vs 41% gap at round 7 is itself a hint that the horizon matters.</p>
+
+<ul>
+<li><b>Reach.</b> At round 11, needs whose nearest holder is a neighbour are filled 63% (B) and 59% (C) of the time; needs 2 or more hops away 5.7% (B) and 6.2% (C), pooled over 404 need slots; 53% in A on the same distances. Per distance bin, B and C range 0% to 9%. The brief's "3-8%" matches rounds 7-11.</li>
+<li><b>Relays.</b> B: 0 relay chains at rounds 7 and 11. C: 0 at round 7, 5 at round 11 (4 reaching beyond the neighbourhood). So "0 relay chains" holds for B only.</li>
+<li><b>Gossip.</b> 0 hearsay, 0 liar words and 0 rumour chains in all three cells at round 11 (1,865 / 2,798 / 2,872 messages).</li>
+<li><b>Name diffusion (C).</b> Coverage, the mean share of other agents whose name an agent knows, is 8.5% at round 0 and 8.5% at round 11; 2 names learned in 4 worlds. <span class="flag">The brief's "flat at about 17%" does not reproduce</span>: the flat shape agrees, the level does not. 17% is close to the neighbour share at N=20 (3/19), so it may come from the stopped N=20 runs; I could not confirm this.</li>
+<li><b>Against the theory ceiling.</b> LLM welfare in B and C (0.08 to 0.10) is below the audit's no-forwarding all-cooperator ceiling of 0.153, which itself is far below the complete graph's 1.0.</li>
+</ul>
+
+<figure>
+<img src="figs/progress_net40_r11_outcomes.png" alt="Network winners over time and outcomes at round 11" style="width:100%">
+<figcaption><b>Figure 8.</b> N=40 networks, worlds 0-3, analysed as of round 11. Left: share of agents that have won, by round. Middle: win rate, welfare and needs filled at round 11 (the panel title says "end of game" because the script treats round 11 as the end). Right: name coverage in C. Generated for this report from the live runs with <code>network_compare.py --at-round 11</code>; saved as <code>plan/figs/progress_net40_r11_outcomes.png</code>. Interim.</figcaption>
+</figure>
+
+<p><b>Confounds in the network design</b> (from COHERENCE_REVIEW §3.7): the horizon differs (A 20 rounds, B/C 30, and "Round r of R" is in every prompt); A's prompts hit the 14k-token cap by about round 9 while B/C's do not; B changes board scope, DM/give reach and the local log together; and N=40 is a different game from N=10 (bilateral swap partners exist for 27% of needs, against 82%). n=4 worlds. A side run with high reasoning effort (B, worlds 0-1) has reached only round 2.</p>
+
+<h2>4. Validity checks</h2>
+<ul>
+<li><b>Invariant checker</b> (re-derives every game from its events: turn order, key conservation, defects, scores, delays, observations, God's schedule, prompt hygiene, and byte-identity of A and B before God's first event). 0 violations on G1 (48 games), G3 (32), G2 (16), every sweep run in the analysis, the 16 board-off games and the 6 delayed-board worlds. It flags 102 violations each on the pre-fix pilots, which is the known own-action ledger bug fixed in 8ebbee7; no analysed run predates that fix.</li>
+<li><b>Leak oracle</b> (aborts a game if a prompt contains ground-truth fields, intervention ids, overwritten note text or God canaries). Sweep: 28,959 agent requests, 0 hits. Grid: the paper states 18,372 requests with 0 hits; no plan file states this directly, but 18,372 equals the total LLM calls in GRID_RESULTS §2 and no grid game ended in error, so it is consistent.</li>
+<li><b>Health.</b> Grid: 0 LLM errors, 0 parse failures, 0.43-0.48% truncated replies, 0 unhealthy branches, no world dropped. Sweep: 147 games done, none ended in budget_exceeded or error. Board follow-ups: 34 games done and healthy.</li>
+<li><b>Fork checks.</b> B″ forks exactly at F in 30 of 30 worlds, and 0 of 290 fork-round responses equal the control's. God fired exactly as scheduled in every God branch. 80 of 80 re-run games are identical to their originals for every round the original completed.</li>
+<li><b>Social claims</b> were recomputed from events by the reviewer (CODE_REVIEW, last section): 83 vs 22, 43/72 vs 45/72 and the zero-accusation count all reproduce.</li>
+<li><b>Costs</b> recomputed from <code>runs/openrouter_ledger.jsonl</code> by run id match GRID_RESULTS and SWEEP_RESULTS to the cent (Appendix B).</li>
+</ul>
+
+<h2>5. Known problems and limitations</h2>
+<ul>
+<li><b>Provider mix.</b> The grid did not log the serving provider. From cost per call, the cheapest fp4 provider served 87% of G1, 78% of G2 and 36% of G3 calls; the rest went to providers with other quantizations. Because the mix differs by cell, it confounds the dose contrast (G3 vs G1). Within a pair both branches draw from the same pool, so it adds variance there rather than bias. Sweep stage 1 (about 20k calls) is also unlogged. A provider pin exists and has not been used for a full cell.</li>
+<li><b>Partial seeds.</b> Common random numbers hold exactly only before the fork, through the cache.</li>
+<li><b>The God we ran is weaker than the God in the brief.</b> The PDF describes God as an LLM agent with observation tools and a budget K "per game or per round". Every result here uses a scripted God with fixed templates and K ≤ 6 per game; the LLM God was never run quantitatively. The null is a bound on this weak attacker, not on an adaptive one. E1 moves to the per-round budget.</li>
+<li><b>Power.</b> MDE 0.085 (G1) to 0.26 (turn mode). A null here means "no large effect". About 36 outcome tests are uncorrected; only H1 was primary.</li>
+<li><b>B″ is an upper bound on noise</b> because it resamples all 10 agents while God perturbs one.</li>
+<li><b>One model, one size.</b> gpt-oss-120b at low reasoning effort, N=10 for every God result. An earlier qwen n=1 hint (God −0.23 in simultaneous, +0.20 in sequential) did not replicate.</li>
+<li><b>Network design confounds:</b> horizon, context cap, bundled changes, N, n=4 (Section 3.7). The audit shows B's collapse is largely predicted by geometry, so the interesting LLM finding is that agents forward almost nothing.</li>
+<li><b>Engineering.</b> Grid manifests record dirty working trees (other agents' uncommitted files; none touched the configs these cells loaded). CODE_REVIEW's detailed sections still label bugs #5, #7, #9, #11, #12 and #13 as OPEN while its summary table and later section say they were fixed on <code>refactor-modular</code>; the fixes postdate the analysed runs, so the paper's statement that per-turn prompt hashes are missing in real runs is still true of the data.</li>
+<li><b>Pilots</b> (10×30 sim/seq, 60×20) predate the ledger fix and are used only as qualitative illustrations.</li>
+</ul>
+
+<h2>6. What's next</h2>
+<table>
+<tr><th>#</th><th>Experiment</th><th>Question</th><th>Status at 14:00 EST</th></tr>
+<tr><td>E0</td><td>Finish network A/B/C, analyse against audit ceilings</td><td>Do agents relay or gossip when reach is local?</td><td><span class="tag int">running</span> A r11-13 of 20, B r23-28 of 30, C r12-14 of 30</td></tr>
+<tr><td>E1</td><td>God forges a DM every round r3-r20 (18 acts), G1 worlds, A/B/B″</td><td>Does the null hold at the PDF's per-round dose?</td><td><span class="tag int">running</span> smoke passed ($0.025, 0 errors); main run launched 13:56, $0.012 spent of $1.20 at 13:58</td></tr>
+<tr><td>E2</td><td>Offline watchtower on the existing 72 forgeries and 72 overwrites</td><td>Can rule-based monitors find God?</td><td><span class="tag nyr">not started</span> ($0)</td></tr>
+<tr><td>E3</td><td>Forwarding incentive on B (team share or relay credit)</td><td>Do agents forward when it pays?</td><td><span class="tag nyr">not run</span> config switches committed on <code>game-fixes</code> (958ebd4), not merged</td></tr>
+<tr><td>E4</td><td>v2 "costly giving": lock_and_stay, lose_held_need, held_key_bonus 0.05</td><td>Is there a real dilemma, and does God bite once keys have value?</td><td><span class="tag nyr">not run</span> switches on <code>game-fixes</code>, not merged</td></tr>
+<tr><td>E5/E6</td><td>v2 board-off; LLM God (qualitative)</td><td>Does the board effect survive; the PDF's actual God</td><td><span class="tag nyr">not run</span></td></tr>
+</table>
+<p>COHERENCE_REVIEW's gating: E3 and E4 run only if their code is merged by Sat about 22:00; freeze all runs by Sun about 10:00.</p>
+
+<h3>Open questions for Iraj</h3>
+<ol>
+<li><b>Network baseline.</b> Report the network result against the 20-round A (planned; Δ −0.25 at r7, −0.27 at r11) and drop the 52%/−0.31 figures from the paper and the coherence review?</li>
+<li><b>God question.</b> E1 first ("can this liar hurt at all", v1 rules, no code), then E4 ("does it hurt once keys have value") if code lands in time?</li>
+<li><b>Winner policy.</b> Accept lock_and_stay as the v2 meaning of "winners are done", with sit_out reported as built but flawed (13.4% of needs stranded)?</li>
+<li><b>held_key_bonus.</b> Is ε=0.05 right, counted at game end for everyone?</li>
+<li><b>Forwarding incentive.</b> Switch from contact_share to a global team share or relay credit? contact_share rewards only the last hop. Tell agents it is a "team score"?</li>
+<li><b>Scarcity.</b> Confirm it stays out of this paper (it breaks "all worlds feasible").</li>
+<li><b>Network section.</b> Accept it as descriptive (n=4, horizon confound), reported against the audit ceilings?</li>
+<li><b>LLM God.</b> Run E6 as a qualitative stretch, or name it as future work?</li>
+<li><b>Deadline.</b> Is "Sunday 6pm" EST or 18:00 AoE? It sets the merge cutoff for E3 and E4.</li>
+</ol>
+
+<h2 class="pb">Appendix A. Vetting table</h2>
+<p class="small">Abbreviations: GR = GRID_RESULTS, SR = SWEEP_RESULTS, SP = SWEEP_PLAN, SD = SOCIAL_DYNAMICS, CR = CODE_REVIEW, GT = GAME_THEORY, GTA = GAME_THEORY_AUDIT, COH = COHERENCE_REVIEW, NP = NETWORK_PLAN, NUM = <code>plan/figs/NUMBERS.txt</code>, BE = <code>plan/figs/board_effect.txt</code>, BDE = <code>plan/figs/board_delay_effect.txt</code>, LED = <code>runs/openrouter_ledger.jsonl</code> summed by run id, NC = <code>network_compare.py</code> rerun read-only for this report. "Match" means the second source gives the same value to the stated precision. "Single" means only one source exists.</p>
+<table class="vet">
+<tr><th>#</th><th>Claim</th><th>Value</th><th>Primary source</th><th>Second source</th><th>Result</th></tr>
+<tr><td>1</td><td>G1 God − B welfare</td><td>+0.013 [−0.048, +0.073], p=0.72, n=16</td><td>GR §3 G1</td><td>NUM; draft §5.2</td><td>match</td></tr>
+<tr><td>2</td><td>G1 B′ − B welfare</td><td>+0.046 [−0.055, +0.146], p=0.38</td><td>GR §3</td><td>NUM (t95 match; bootstrap [−0.044, +0.137] vs GR [−0.042, +0.135])</td><td>match (t95); bootstrap differs by 0.002</td></tr>
+<tr><td>3</td><td>G3 God − B</td><td>+0.004 [−0.097, +0.105], p=0.97</td><td>GR §3 G3</td><td>NUM</td><td>match</td></tr>
+<tr><td>4</td><td>G2 God − B</td><td>+0.012 [−0.144, +0.169], p=0.89, n=8</td><td>GR §3 G2</td><td>NUM</td><td>match</td></tr>
+<tr><td>5</td><td>Dose and turn-mode contrasts</td><td>−0.008 [−0.118, +0.101]; +0.021 [−0.170, +0.212]</td><td>GR §4</td><td>NUM</td><td>match</td></tr>
+<tr><td>6</td><td>MDE G1 / G3 / G2</td><td>0.085 / 0.14 / 0.22</td><td>GR §5</td><td>recomputed by hand: (t.975+t.80)·SD/√n = 2.997·0.113/4 = 0.085; 2.997·0.189/4 = 0.142; 3.261·0.188/√8 = 0.217</td><td>match</td></tr>
+<tr><td>7</td><td>SD of welfare Δ, A − B vs B′ − B</td><td>0.113 vs 0.189</td><td>GR §3</td><td>draft §5.2</td><td>match (draft copies GR)</td></tr>
+<tr><td>8</td><td>Turn-mode "needs lost"</td><td>−0.113 [−0.207, −0.018], p=0.062</td><td>GR §4</td><td>draft Table E3</td><td>match</td></tr>
+<tr><td>9</td><td>Divergence G1 / G2 / G3; B′</td><td>0.893 / 0.897 / 0.882; 0.967</td><td>GR §3</td><td>draft §5.4 (first three)</td><td>match</td></tr>
+<tr><td>10</td><td>Grid health: errors, parse failures, truncation</td><td>0, 0, 0.43-0.48%</td><td>GR §2</td><td>draft Table B1</td><td>match</td></tr>
+<tr><td>11</td><td>Grid invariants</td><td>0 violations, 3 cells</td><td>GR §2</td><td>CR second pass, results table</td><td>match</td></tr>
+<tr><td>12</td><td>Grid leak oracle</td><td>18,372 requests, 0 hits</td><td>draft §5.1</td><td>not in any plan file; equals 9,047 + 3,039 + 6,286 calls (GR §2)</td><td>derived, not directly verified</td></tr>
+<tr><td>13</td><td>Provider share at cheapest price</td><td>87% / 78% / 36%</td><td>GR §2</td><td>draft §4</td><td>match (single analysis)</td></tr>
+<tr><td>14</td><td>Seed probe</td><td>5 of 6 identical</td><td>GR §2</td><td>draft §3.4</td><td>match</td></tr>
+<tr><td>15</td><td>Sweep base God − B″</td><td>−0.062 [−0.207, +0.082], p=0.36, n=8</td><td>SR tables</td><td>NUM</td><td>match</td></tr>
+<tr><td>16</td><td>K=1 God − B″</td><td>−0.104 [−0.213, +0.005], p=0.062</td><td>SR TL;DR 1</td><td>CR sweep check 5; NUM</td><td>match</td></tr>
+<tr><td>17</td><td>start14 God − B″</td><td>−0.025 [−0.080, +0.030]</td><td>SR</td><td>CR sweep check 5; NUM</td><td>match</td></tr>
+<tr><td>18</td><td>Board-off God − B″</td><td>+0.056 [−0.170, +0.281], n=6</td><td>SR</td><td>CR sweep check 5; NUM</td><td>match</td></tr>
+<tr><td>19</td><td>Delayed board God − B″</td><td>+0.122 [−0.024, +0.268], p=0.031, n=6</td><td>SR TL;DR 5</td><td>CR board follow-ups; NUM</td><td>match</td></tr>
+<tr><td>20</td><td>Noise baselines N − B on worlds 0-7</td><td>B″ +0.054 [−0.050, +0.158]; B′ −0.000 [−0.199, +0.199]</td><td>SR TL;DR 3</td><td>CR sweep check 5 (B″); NUM (B″)</td><td>match</td></tr>
+<tr><td>21</td><td>God divergence below B″ in every cell; t95 excludes 0 in 5</td><td>gaps −0.02 to −0.15; p ≤ 0.016</td><td>SR tables</td><td>draft §5.4</td><td>match</td></tr>
+<tr><td>22</td><td>B″ fork check</td><td>30/30 worlds at F; 0/290 identical responses</td><td>CR sweep check 4</td><td>SR "B″ forks exactly at F"</td><td>match</td></tr>
+<tr><td>23</td><td>Sweep games and re-runs; sweep leak oracle</td><td>147 done; 80/80 identical; 28,959 requests, 0 hits</td><td>CR sweep checks 2, leak oracle</td><td>draft §5.1</td><td>match (single analysis)</td></tr>
+<tr><td>24</td><td>Board-off welfare, n=16</td><td>−0.173 [−0.257, −0.089], p=0.0003, 14/16</td><td>SR board-off section</td><td>BE; CR board follow-ups; NUM</td><td>match</td></tr>
+<tr><td>25</td><td>Board-off win rate</td><td>0.831 → 0.525; −0.306 [−0.406, −0.206]</td><td>SR</td><td>BE; CR; GT B1 (0.525 board off)</td><td>match</td></tr>
+<tr><td>26</td><td>Board-off DMs, gives, wrong defects</td><td>25.5 vs 14.0; 4.94 vs 6.71; 0.94 vs 0.31</td><td>SR</td><td>BE; CR; GR per-branch means (G1 nogod gives 6.706, DMs 14.006)</td><td>match</td></tr>
+<tr><td>27</td><td>Board-off replication</td><td>6 worlds −0.200 p=0.031; 10 new −0.157 [−0.283, −0.030] p=0.016</td><td>SR</td><td>BE; CR sweep check 5 (6 worlds)</td><td>match</td></tr>
+<tr><td>28</td><td>Delayed board, no God</td><td>−0.028 [−0.242, +0.186]; win rate −0.150 p=0.06</td><td>SR TL;DR 5</td><td>BDE</td><td>match</td></tr>
+<tr><td>29</td><td>Defect accuracy board on / off</td><td>0.594 / 0.320</td><td>GT B3</td><td>derived from BE: 0.469/0.781 = 0.60; 0.444/1.387 = 0.32 (G1 nogod only)</td><td>match (different pools)</td></tr>
+<tr><td>30</td><td>Forged DM gives</td><td>83 vs 22; +1.53 [+1.00, +2.05], p&lt;1e-4, n=40</td><td>SD §3</td><td>CR social (a), recomputed from events</td><td>match</td></tr>
+<tr><td>31</td><td>Forged DM by cell; receiver total gives</td><td>+1.00 / +2.75 / +0.12; +0.25 [−0.25, +0.75]</td><td>CR social (a)</td><td>draft Table E5</td><td>single (CR computed these)</td></tr>
+<tr><td>32</td><td>Planted note</td><td>43/72 vs 45/72; −0.05 [−0.36, +0.26], p=0.88</td><td>SD §3</td><td>CR social (b)</td><td>match</td></tr>
+<tr><td>33</td><td>Zero gossip</td><td>0 accusations, 0 chains, 19,005 messages; 76 third-party</td><td>SD headline, §1-2</td><td>CR social (c), broader regex + 50-message sample</td><td>match</td></tr>
+<tr><td>34</td><td>Forged DM compliance, self-harm, help</td><td>57/72; 8; 11</td><td>GT B8</td><td>none (SD counts transfers, not cases)</td><td>single</td></tr>
+<tr><td>35</td><td>Receiver score effect; per-forgery welfare</td><td>−0.108 [−0.225, +0.008]; ≈ −0.011, 8× below MDE</td><td>GT B8</td><td>COH §4.7; arithmetic: 0.108/10 = 0.0108, 0.085/0.0108 = 7.9</td><td>match</td></tr>
+<tr><td>36</td><td>Defect EV as played</td><td>−0.105 [−0.150, −0.059], n=441; board off −0.292</td><td>GT B3</td><td>GTA §2 (LLM-like play p* = 0.67, blind EV −0.74; same sign, different model)</td><td>consistent</td></tr>
+<tr><td>37</td><td>Informed vs blind accuracy</td><td>0.781 vs 0.019</td><td>GT B3</td><td>GTA §2: random blind accuracy 1.6% from the generator</td><td>consistent</td></tr>
+<tr><td>38</td><td>Post-win self-harm; wins by losing a need</td><td>22.1% of slots; 78% of winners; 13% of wins</td><td>GT B1, B5</td><td>COH inventory #14 (22%); GTA §3 and §8 #5 (13%)</td><td>match</td></tr>
+<tr><td>39</td><td>All-cooperator welfare</td><td>1.000</td><td>GT C (N=10)</td><td>GTA headline (N=40)</td><td>match</td></tr>
+<tr><td>40</td><td>All-defector welfare</td><td>0.753 (GT) vs 0.648 / 0.661 (GTA)</td><td>GT C</td><td>GTA §7</td><td class="flag">differs; setup explains</td></tr>
+<tr><td>41</td><td>sit_out stranding</td><td>13.4%; welfare 0.838; D 0.983 vs C 0.817</td><td>GTA §2-3</td><td>COH inventory #10</td><td>match</td></tr>
+<tr><td>42</td><td>ER3 needs ≥2 hops; ceiling</td><td>84%; 0.153</td><td>GTA §4</td><td>NC on live worlds 0-3: 404/480 = 84.2% of need slots at d ≥ 2</td><td>match</td></tr>
+<tr><td>43</td><td>Network win rate at r7, complete vs ER3 contacts</td><td>brief: 52% vs 4%</td><td>brief; COH #11</td><td>NC: 40.6% vs 3.8% (current A); 51.9% vs 3.8% only with superseded 30-round A</td><td class="flag">disagree</td></tr>
+<tr><td>44</td><td>Network Δwelfare at r7, B − A</td><td>brief: −0.31 [−0.35, −0.27], 4/4</td><td>brief</td><td>NC: −0.252 [−0.356, −0.148] (current A); −0.308 [−0.347, −0.269] (superseded A)</td><td class="flag">disagree</td></tr>
+<tr><td>45</td><td>Needs at d ≥ 2 filled</td><td>brief: 3-8%</td><td>brief</td><td>NC pooled: r7 B 3.2%, C 2.5%; r11 B 5.7%, C 6.2%</td><td>approximately match</td></tr>
+<tr><td>46</td><td>Relay chains</td><td>brief: 0</td><td>brief; COH #11</td><td>NC: B 0 at r7 and r11; C 0 at r7, 5 at r11</td><td class="flag">holds for B only</td></tr>
+<tr><td>47</td><td>Network gossip</td><td>0</td><td>brief</td><td>NC r11: 0 hearsay, 0 liar words, 0 chains in A, B, C</td><td>match</td></tr>
+<tr><td>48</td><td>Name coverage in C</td><td>brief: flat about 17%</td><td>brief</td><td>NC: 8.5% at r0 and r11</td><td class="flag">level disagrees</td></tr>
+<tr><td>49</td><td>Grid cost</td><td>$1.9863 (G1 0.8508, G2 0.3431 + 0.0075, G3 0.7849)</td><td>GR §1</td><td>LED, same to 4 decimals</td><td>match</td></tr>
+<tr><td>50</td><td>Grid hard caps total</td><td>$2.84</td><td>GR §1</td><td>draft A.3: $1.35 + $0.55 + $0.95 = $2.85</td><td class="flag">differs by $0.01</td></tr>
+<tr><td>51</td><td>Sweep cost</td><td>$2.634 ($2.142 planned + $0.492 follow-ups)</td><td>SR spend</td><td>LED: $2.6341 over 22 sweep run ids</td><td>match</td></tr>
+<tr><td>52</td><td>Ledger at the grid/sweep boundary</td><td>$5.233 after grid (GR) vs $5.06 before sweep (SR, SP)</td><td>GR §1</td><td>LED: sweep smokes began 03:10 EST while G3 was finishing; probe at 03:26 brings the total to $5.24</td><td>explained by overlap</td></tr>
+<tr><td>53</td><td>Paper's sweep cost</td><td>$2.142</td><td>draft §4, A.3</td><td>SR: $2.634 including follow-ups</td><td>draft excludes follow-ups in A.3; not an error, but inconsistent</td></tr>
+<tr><td>54</td><td>CODE_REVIEW bug status #5, 7, 9, 11, 12, 13</td><td>"OPEN" in detail sections</td><td>CR detail</td><td>CR summary table and refactor section: fixed</td><td class="flag">internal inconsistency</td></tr>
+</table>
+
+<h2>Appendix B. Cost table</h2>
+<table>
+<tr><th>Block</th><th class="num">Spent</th><th>Source</th><th>Note</th></tr>
+<tr><td>Grid G1 / G2 / G3</td><td class="num">$0.851 / $0.351 / $0.785</td><td>GR §1; LED</td><td>G2 includes $0.0075 for the aborted 10-seed launch</td></tr>
+<tr><td><b>Grid total</b></td><td class="num"><b>$1.986</b></td><td>GR §1; LED</td><td>caps $2.84 (GR) or $2.85 (sum of cell caps)</td></tr>
+<tr><td>Sweep, planned cells</td><td class="num">$2.142</td><td>SR; SP</td><td>includes $0.192 smokes and about $0.11 of stopped runs</td></tr>
+<tr><td>Sweep follow-ups (board-off n=16, delayed board)</td><td class="num">$0.134 + $0.358</td><td>SR</td><td></td></tr>
+<tr><td><b>Sweep total</b></td><td class="num"><b>$2.634</b></td><td>SR; LED $2.6341</td><td></td></tr>
+<tr><td>Network N=40 A / B / C (ledger by run id, to 13:58)</td><td class="num">$0.843 / $0.433 / $0.162</td><td>LED</td><td>A's run id includes the superseded 30-round launch ($0.309, NP)</td></tr>
+<tr><td>Network B high reasoning; N=20 stopped runs; smokes and probe</td><td class="num">$0.038; $0.182; $0.039</td><td>LED; NP</td><td>caps: A $1.61, B $1.06, C $1.24 (NP §6b)</td></tr>
+<tr><td>E1 smoke; E1 main (at 13:58)</td><td class="num">$0.025; $0.012</td><td><code>runs/e1_driver.log</code></td><td>E1 cap $1.20; projected $0.85</td></tr>
+<tr><td><b>Ledger total, all runs since the start</b></td><td class="num"><b>$9.42</b></td><td>LED at 13:58 EST</td><td>global cap $20; includes pilots and qwen runs not listed here</td></tr>
+</table>
+<p class="small">All recomputation for this report was read-only: summing the ledger and rerunning <code>network_compare.py</code> on the live run directories. No LLM calls were made. The two new figures are <code>plan/figs/progress_net40_r11_outcomes.png</code> and <code>plan/figs/progress_net40_r11_distance.png</code>.</p>
+
+</main>
+</body>
+</html>
