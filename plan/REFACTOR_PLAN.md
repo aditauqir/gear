@@ -17,6 +17,15 @@
 - Commits are titled `Refactor: ...`.
 - Not touched: planA-sweep's files (`infra/sweep*`, `configs/sweep*`, `swarm/analysis/sweep_stats.py`, and its uncommitted edits in `swarm/config.py`, `swarm/llm/openrouter.py`, `swarm/runner/spec.py`, `infra/grid_driver.py`) and planA-viz's `swarm/viz/`.
 
+## Status (applied 2026-11-07, after GRID DONE 03:19)
+| Step | Commit | Check |
+|---|---|---|
+| R1 schema package | 95d3fc7 | 18/18 dry-run files byte-identical (sim, seq, board) |
+| R2 game/resolve.py + game/board.py | e4606ba | 18/18 byte-identical; new tests/game/test_resolve.py |
+| R3 runner/sinks.py + runner/god_adapter.py | 6073a0e | 18/18 byte-identical |
+
+All three commits were made in the worktree and cherry-picked onto the live tree. The check was then re-run on the live tree, which includes other agents' uncommitted edits: before vs after the pick, 18/18 files are byte-identical. The invariant checker reports 0 violations on the board-options dry run. Full suite: 553 passed. The 1 failure is `tests/viz/test_story.py`, caused by planA-viz's uncommitted `paper_figs.py` edit, not by the refactor. `CONTRACTS.md` still says `swarm/schema.py`; it now means the `swarm/schema/` package (same names).
+
 ## Steps to apply
 
 ### R1. `swarm/schema.py` becomes a package `swarm/schema/`
