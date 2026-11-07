@@ -90,12 +90,16 @@ def _ev(state: GameState, actor: str, data, phase: Phase = "resolve") -> EventBo
     return EventBody(round=state.round, turn_index=state.turn_index, phase=phase, actor=actor, data=data)
 
 
-def _notice(state: GameState, agent: AgentId, kind, text: str, *, ref: str | None = None,
-            deliver_from_turn: int | None = None) -> EventBody:
+def notice(state: GameState, agent: AgentId, kind, text: str, *, ref: str | None = None,
+           deliver_from_turn: int | None = None) -> EventBody:
+    """Queue a Notice for `agent` (stamped state.round / state.turn_index) and return its event body."""
     n = Notice(agent=agent, round=state.round, turn_index=state.turn_index, kind=kind, text=text,
                ref=ref, deliver_from_turn=deliver_from_turn)
     state.notices.append(n)
     return _ev(state, "SYSTEM", NoticeData(notice=n))
+
+
+_notice = notice   # the original private name (rules-internal callers)
 
 
 def update_win(state: GameState, agent: AgentId) -> Events:

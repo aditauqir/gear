@@ -33,7 +33,7 @@ game.board.post_costs_turn (default off): a post_board uses the whole action bud
 first post_board of a turn is applied; every other action of that turn (before or after it; grep_log
 and noop excepted) fails with reason "board_post_uses_whole_turn" without using a slot, and the agent
 gets one "system" notice (next observation) saying so.
-send_message still costs one slot. Same in both turn modes (it is decided per agent turn in _resolve).
+send_message still costs one slot. Same in both turn modes (decided per agent turn in game.resolve).
 game.board.post_skip_rounds = k > 0: an agent whose post_board succeeds in round r is skipped in
 rounds r+1..r+k (delayed_until_round), with a skip notice and a resume notice (both shown at its
 next observation, i.e. when it resumes).
@@ -56,19 +56,15 @@ from swarm.llm.base import BudgetExceeded
 from swarm.memory import MemoryStore
 from swarm.rng import canonical_json, make_rng, sha256_hex
 from swarm.schema import (
-    Action,
-    ActionResultData,
     AgentId,
     AgentOutcome,
     AgentOutput,
     ContextBuiltData,
-    DefectAction,
     EventBody,
     EventSink,
     GameEndData,
     GameStartData,
     GameState,
-    GiveKey,
     GrepLog,
     GrepResult,
     HistoryItem,
@@ -77,19 +73,21 @@ from swarm.schema import (
     Noop,
     Observation,
     Outcome,
-    PostBoard,
     RoundEndData,
     TurnData,
     turn_index,
 )
 
 from . import rules
+from .board import BOARD_WHOLE_TURN  # noqa: F401  (re-export: old engine name)
+from .board import whole_turn_text as _whole_turn_text  # noqa: F401
 from .observe import grep_log, mark_observed, observe
+from .resolve import Result, resolve_turn  # noqa: F401  (Result: re-export)
+from .resolve import conflict_text as _conflict_text  # noqa: F401
 
 DecideFn = Callable[[Observation, GrepResult | None], AgentOutput | Awaitable[AgentOutput]]
 GodHook = Callable[[GameState, int, int], list[EventBody] | Awaitable[list[EventBody]]]
 GrepFn = Callable[[GrepLog], GrepResult]
-Result = tuple[bool, str | None]
 
 
 class TurnAgent(Protocol):
@@ -337,34 +335,12 @@ class GameEngine:
 
     def _resolve(self, agent: AgentId, t: int, obs: Observation, out: AgentOutput,
                  grep: GrepResult | None) -> None:
-        """Log the turn, apply its actions at slot t, write memory, extend the ledger."""
+        """Log the turn, apply its actions at slot t (game.resolve), write memory, extend the ledger."""
         st = self.state
         st.turn_index = t
         self._emit_turn(agent, t, obs, out)
-        results: list[Result] = []
-        used, grep_left = 0, grep
-        post_at = self._whole_turn_post(out.actions)
-        blocked: list[Action] = []
-        posted = False
-        for i, act in enumerate(out.actions):
-            if isinstance(act, GrepLog):                # free: no action slot
-                results.append(self._grep_result(agent, act, grep_left))
-                grep_left = None                        # a second grep_log in one turn fails
-                continue
-            if post_at is not None and i != post_at and not isinstance(act, Noop):
-                results.append(self._reject(agent, act, BOARD_WHOLE_TURN))   # uses no slot
-                blocked.append(act)
-                continue
-            res = self._apply_one(agent, act, used)
-            results.append(res)
-            used += 1
-            posted = posted or (res[0] and isinstance(act, PostBoard))
-            if not res[0] and self.g.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction)):
-                self.emit([rules._notice(st, agent, "system", _conflict_text(act, res[1]))])
-        if blocked:
-            self.emit([rules._notice(st, agent, "system", _whole_turn_text(blocked))])
-        if posted and self.g.board.post_skip_rounds > 0:
-            self._skip_after_post(agent)
+        res = resolve_turn(st, agent, out.actions, grep, self.g)
+        self.emit(res.events)
         if self.cfg.reasoning.cot_mode != "none" and out.cot:
             _, ev = self.memory.write(st, agent, "cot", st.round, out.cot)
             self.emit([ev])
@@ -372,55 +348,7 @@ class GameEngine:
             _, ev = self.memory.write(st, agent, "scratchpad", st.round, out.note)
             self.emit([ev])
         self.ledgers[agent] += items_from_observation(obs, self.counter)
-        self.ledgers[agent] += own_action_items(agent, st.round, list(out.actions), results, self.counter)
-
-    def _grep_result(self, agent: AgentId, act: GrepLog, grep: GrepResult | None) -> Result:
-        ok = grep is not None
-        self.emit([self._body(ActionResultData(
-            agent=agent, action=act, ok=ok, reason=None if ok else "grep_unavailable",
-            n_hits=len(grep.hits) if grep is not None else None),
-            actor=agent, phase="resolve", turn=self.state.turn_index)])
-        return ok, None if ok else "grep_unavailable"
-
-    def _skip_after_post(self, agent: AgentId) -> None:
-        """game.board.post_skip_rounds = k: no turns in rounds r+1..r+k (via delayed_until_round, as
-        the wrong-defect delay). Two notices: the skip (now) and the resume (first slot of r+k+1);
-        the agent reads both at its next observation, which is the resume."""
-        st, k = self.state, self.g.board.post_skip_rounds
-        s = st.agents[agent]
-        last = st.round + k
-        s.delayed_until_round = max(s.delayed_until_round, last)
-        resume = turn_index(last + 1, 0, len(st.agents))
-        self.emit([
-            rules._notice(st, agent, "system",
-                          f"You posted on the public board in round {st.round}, so you skip your turns "
-                          f"in rounds {st.round + 1} to {last}. You can still receive keys and messages."),
-            rules._notice(st, agent, "system",
-                          f"Your {k} skipped turns (for your board post in round {st.round}) are over. "
-                          "You can act again.", deliver_from_turn=resume)])
-
-    def _whole_turn_post(self, actions: Sequence[Action]) -> int | None:
-        """Under game.board.post_costs_turn: index of the turn's first post_board, which takes the
-        whole turn (None when the option is off or there is no post)."""
-        if not self.g.board.post_costs_turn:
-            return None
-        return next((i for i, a in enumerate(actions) if isinstance(a, PostBoard)), None)
-
-    def _reject(self, agent: AgentId, act: Action, reason: str) -> Result:
-        """Emit a failed action_result for `act` without applying it."""
-        self.emit([self._body(ActionResultData(agent=agent, action=act, ok=False, reason=reason),
-                              actor=agent, phase="resolve", turn=self.state.turn_index)])
-        return False, reason
-
-    def _apply_one(self, agent: AgentId, act: Action, used: int) -> Result:
-        if used >= self.g.actions_per_turn:
-            return self._reject(agent, act, "action_limit")
-        _, evs = rules.apply(self.state, agent, act, self.g)
-        self.emit(evs)
-        first = evs[0].data if evs else None
-        if isinstance(first, ActionResultData):
-            return first.ok, first.reason
-        return True, None
+        self.ledgers[agent] += own_action_items(agent, st.round, list(out.actions), res.results, self.counter)
 
     async def _play_sequential(self, r: int, n: int) -> None:
         """One agent at a time in priority order; God before EVERY slot (skipped ones too)."""
@@ -494,25 +422,6 @@ class GameEngine:
         out = self.outcome()
         self.emit([self._body(GameEndData(outcome=out))])
         return out
-
-
-BOARD_WHOLE_TURN = "board_post_uses_whole_turn"
-
-
-def _whole_turn_text(blocked: Sequence[Action]) -> str:
-    """Notice for actions dropped because a post_board took the whole turn (board.post_costs_turn)."""
-    kinds = ", ".join(a.kind for a in blocked)
-    return (f"Your other action(s) this turn ({kinds}) were not done: posting to the public board uses "
-            "your whole turn. A direct message costs one action.")
-
-
-def _conflict_text(act: Action, reason: str | None) -> str:
-    """Notice for a failed give/defect in simultaneous mode (the state may have changed since the
-    agent observed it: actions resolve in turn-priority order)."""
-    what = (f"give_key of info #{act.info_id} to {act.to}" if isinstance(act, GiveKey)
-            else f"defect on {act.target} for info #{act.info_id}")
-    return (f"Your {what} failed ({reason or 'invalid'}). Actions this round resolved in turn order, "
-            "so players before you may have changed the state you saw.")
 
 
 def play_game(cfg: RunConfig, state: GameState, agents: Mapping[AgentId, TurnAgent] | DecideFn,
