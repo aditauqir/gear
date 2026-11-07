@@ -25,7 +25,10 @@ skip if the agent is delayed / a sat-out winner (the slot still counts) -> obser
 mark_observed -> act -> turn event (+ context_built) -> apply each action stamped t -> memory.write
 (cot, note) -> ledger += observation items + own-action items.
 Simultaneous: God once at s0 = turn_index(r, 0, N); every active agent observes at s0; all act
-concurrently (asyncio.gather); actions resolve in order position, each stamped at its own slot.
+concurrently (asyncio.gather, bounded by the LLM client's semaphore); actions resolve in
+turn-priority order (st.order: fixed or reshuffled per round), each stamped at its own slot; a
+give_key / defect that fails at resolution (e.g. the key was already taken) also sends the actor a
+"system" notice.
 End of round: round_end event + deep-copied snapshot. The game ends at max_rounds, when every agent
 is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded").
 Imports: config, memory, rng, schema, context.base/tokens, llm.base (BudgetExceeded only), game.*.
@@ -51,11 +54,13 @@ from swarm.schema import (
     AgentOutcome,
     AgentOutput,
     ContextBuiltData,
+    DefectAction,
     EventBody,
     EventSink,
     GameEndData,
     GameStartData,
     GameState,
+    GiveKey,
     GrepLog,
     GrepResult,
     HistoryItem,
@@ -318,8 +323,11 @@ class GameEngine:
                 results.append(self._grep_result(agent, act, grep_left))
                 grep_left = None                        # a second grep_log in one turn fails
                 continue
-            results.append(self._apply_one(agent, act, used))
+            res = self._apply_one(agent, act, used)
+            results.append(res)
             used += 1
+            if not res[0] and self.g.turn_mode == "simultaneous" and isinstance(act, (GiveKey, DefectAction)):
+                self.emit([rules._notice(st, agent, "system", _conflict_text(act, res[1]))])
         if self.cfg.reasoning.cot_mode != "none" and out.cot:
             _, ev = self.memory.write(st, agent, "cot", st.round, out.cot)
             self.emit([ev])
@@ -411,6 +419,15 @@ class GameEngine:
         out = self.outcome()
         self.emit([self._body(GameEndData(outcome=out))])
         return out
+
+
+def _conflict_text(act: Action, reason: str | None) -> str:
+    """Notice for a failed give/defect in simultaneous mode (the state may have changed since the
+    agent observed it: actions resolve in turn-priority order)."""
+    what = (f"give_key of info #{act.info_id} to {act.to}" if isinstance(act, GiveKey)
+            else f"defect on {act.target} for info #{act.info_id}")
+    return (f"Your {what} failed ({reason or 'invalid'}). Actions this round resolved in turn order, "
+            "so players before you may have changed the state you saw.")
 
 
 def play_game(cfg: RunConfig, state: GameState, agents: Mapping[AgentId, TurnAgent] | DecideFn,
