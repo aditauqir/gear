@@ -1,0 +1,367 @@
+"""Config models + loading (WP0, FROZEN).
+
+load(path, overrides) -> RunConfig:
+  1. read YAML; if it has `extends: <relative path>`, deep-merge it onto that base (ONE level only;
+     dicts merge, lists replace),
+  2. apply CLI overrides "a.b.c=value" (value parsed with yaml.safe_load),
+  3. validate (pydantic, extra="forbid", plus cross-field checks).
+`configs/base.yaml` mirrors the defaults below exactly (tested).
+"""
+
+from __future__ import annotations
+
+import copy
+import itertools
+from pathlib import Path
+from typing import Any, Literal
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from swarm.rng import canonical_json, sha256_hex
+
+DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.6-35b-a3b"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class Cfg(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+# ---------------------------------------------------------------- run
+class RunCfg(Cfg):
+    name: str = "base"
+    seed: int = 0
+    n_games: int = Field(1, ge=1)
+    out_dir: str = "runs"
+    max_concurrency_games: int = Field(1, ge=1)   # >1 only with enough vLLM KV (REVIEW_v2 5.1)
+    branch: str = "main"                          # fork branch label (folded into seeds)
+    replica: str = "0"                            # noise replica id (folded into seeds)
+
+
+# ---------------------------------------------------------------- game
+class ViewLogCfg(Cfg):
+    content: Literal["none", "actions_only", "actions_msg_meta", "full"] = "actions_only"
+    actor_identity: Literal["shown", "hidden"] = "shown"
+    reveal_provenance: bool = False                # ablation only: tag forged DMs / tampered entries
+    window_turns: int | None = Field(None, ge=1)   # None = n_agents (the last round)
+    defect_visibility: Literal["public", "victim_only", "delayed", "victim_then_delayed"] = \
+        "victim_then_delayed"
+    defect_delay_rounds: int = Field(3, ge=0)
+    defect_actor_identity: Literal["shown", "hidden"] | None = None   # None = inherit actor_identity
+    grep_enabled: bool = True
+    grep_max_results: int = Field(20, ge=1)
+    grep_max_pattern_chars: int = Field(80, ge=1, le=80)
+
+
+class GameCfg(Cfg):
+    n_agents: int = Field(20, ge=2)
+    keys_per_agent: int = Field(5, ge=1)
+    needs_per_agent: int = Field(3, ge=1)
+    copies_per_info: int = Field(2, ge=1)
+    actions_per_turn: int = Field(2, ge=1, le=2)
+    max_rounds: int = Field(40, ge=1)
+    turn_mode: Literal["sequential", "simultaneous"] = "sequential"
+    turn_order: Literal["fixed", "reshuffle"] = "reshuffle"
+    observe_mode: Literal["folded"] = "folded"     # "tools" cut (REVIEW_v2 s3)
+    immediate_reply: bool = False                  # not implemented; True is rejected
+    defect_gain: Literal["mint", "steal", "none"] = "mint"
+    wrong_defect_penalty: Literal["lose_need", "delay"] = "lose_need"
+    delay_n: int = Field(3, ge=1)
+    winner_policy: Literal["sit_out", "continue"] = "continue"   # continue: winners act, cannot be burned
+    max_message_chars: int = Field(500, ge=1)
+    view_log: ViewLogCfg = ViewLogCfg()
+
+    @model_validator(mode="after")
+    def _check(self) -> GameCfg:
+        if self.immediate_reply:
+            raise ValueError("game.immediate_reply is not implemented (cut, REVIEW_v2 s3)")
+        if self.needs_per_agent > (self.n_agents - 1) * self.keys_per_agent:
+            raise ValueError("needs_per_agent cannot be satisfied by the other agents' keys")
+        return self
+
+    @property
+    def window_turns(self) -> int:
+        return self.view_log.window_turns or self.n_agents
+
+
+# ---------------------------------------------------------------- reasoning
+class ScratchpadCfg(Cfg):
+    enabled: bool = True
+    window: int | None = Field(None, ge=1)         # None = all entries (subject to the context budget)
+    max_chars: int = Field(400, ge=1)
+
+
+class ReasoningCfg(Cfg):
+    cot_mode: Literal["none", "native", "explicit"] = "explicit"
+    cot_replay_window: int = Field(0, ge=0)        # 0: past CoT is logged, never re-shown
+    max_cot_chars: int = Field(1200, ge=1)         # stored/replayed CoT only
+    scratchpad: ScratchpadCfg = ScratchpadCfg()
+
+
+# ---------------------------------------------------------------- roles / llm
+Backend = Literal["vllm", "openrouter", "fake"]
+
+
+class RoleCfg(Cfg):
+    backend: Backend = "vllm"
+    model: str | None = None                       # None = backend default model
+    prompt_set: str = "agent/v1"
+    framing: str | None = None                     # e.g. "framing/none"; None = no framing set
+    temperature: float = Field(0.6, ge=0.0, le=2.0)
+    top_p: float | None = None
+    max_tokens: int = Field(700, ge=1)
+
+
+class RolesCfg(Cfg):
+    agent: RoleCfg = RoleCfg()
+    god: RoleCfg = RoleCfg(prompt_set="god/v1", temperature=0.7, max_tokens=700)
+    judge: RoleCfg = RoleCfg(prompt_set="judge/v1", temperature=0.0, max_tokens=200)
+    summarizer: RoleCfg = RoleCfg(prompt_set="summarizer/v1", temperature=0.0, max_tokens=300)
+
+
+class VLLMCfg(Cfg):
+    base_url: str = "http://localhost:8000/v1"
+    model: str = "Qwen/Qwen3-8B"
+    max_concurrency: int = Field(64, ge=1)
+    max_model_len: int = 16384
+
+
+class OpenRouterCfg(Cfg):
+    enabled: bool = False                          # OFF by default; any role on openrouter needs True
+    base_url: str = "https://openrouter.ai/api/v1"
+    model: str = DEFAULT_OPENROUTER_MODEL
+    api_key_env: str = "OPENROUTER_API_KEY"        # the key itself is NEVER in config
+    max_concurrency: int = Field(8, ge=1)
+    global_cap_usd: float = Field(2.0, ge=0.0)     # across all runs, enforced via the ledger
+    ledger_path: str = "runs/openrouter_ledger.jsonl"
+    price_in_per_mtok: float = 1.0                 # [E] conservative pre-call estimate; actual cost from provider
+    price_out_per_mtok: float = 4.0
+
+
+class FakeCfg(Cfg):
+    model: str = "fake"
+
+
+class CacheCfg(Cfg):
+    mode: Literal["off", "read_write", "read_only", "write_only"] = "read_write"
+    path: str = "cache/llm.sqlite"
+
+
+class RetryCfg(Cfg):
+    max_retries: int = Field(5, ge=0)
+    base_delay_s: float = 1.0
+    max_delay_s: float = 30.0
+    timeout_s: float = 120.0
+    timeout_thinking_s: float = 300.0
+
+
+class LLMCfg(Cfg):
+    budget_usd: float = Field(2.0, ge=0.0)         # per-run cap on paid spend
+    vllm: VLLMCfg = VLLMCfg()
+    openrouter: OpenRouterCfg = OpenRouterCfg()
+    fake: FakeCfg = FakeCfg()
+    cache: CacheCfg = CacheCfg()
+    retry: RetryCfg = RetryCfg()
+
+
+# ---------------------------------------------------------------- god
+class BudgetCfg(Cfg):
+    k: int = Field(3, ge=0)
+    scope: Literal["game", "round"] = "game"
+
+
+class MessageFraudCfg(Cfg):
+    enabled: bool = True
+    cost: int = Field(1, ge=0)
+
+
+class CotControlCfg(Cfg):
+    enabled: bool = True
+    cost: int = Field(1, ge=0)
+    targets: list[Literal["scratchpad", "cot", "summary"]] = ["scratchpad"]
+    mode: Literal["replace", "append"] = "replace"
+
+
+class PowersCfg(Cfg):
+    message_fraud: MessageFraudCfg = MessageFraudCfg()
+    cot_control: CotControlCfg = CotControlCfg()
+
+
+class ScheduledPower(Cfg):
+    round: int = Field(ge=1)
+    after_turns: int = Field(0, ge=0)              # sequential: wake after this many turns of the round
+    power: Literal["message_fraud", "cot_control"]
+    args: dict[str, Any] = {}                      # ScriptedGod resolves helpers (e.g. victim selectors)
+
+
+class GodCfg(Cfg):
+    kind: Literal["none", "scripted", "llm"] = "scripted"
+    start_round: int = Field(3, ge=1)
+    wake_every_turns: int | None = Field(None, ge=1)   # None = once per round
+    tool_call_safety_ceiling: int = Field(50, ge=1)    # observation is free; this stops runaway loops
+    budget: BudgetCfg = BudgetCfg()
+    powers: PowersCfg = PowersCfg()
+    schedule: list[ScheduledPower] = []
+
+
+# ---------------------------------------------------------------- context
+IMPLEMENTED_POLICIES = ("full_truncate", "window")
+STUB_POLICIES = ("rolling_summary", "hybrid")
+SUMMARIZING_POLICIES = ("rolling_summary", "hybrid")
+
+
+class ContextCfg(Cfg):
+    policy: Literal["full_truncate", "window", "rolling_summary", "hybrid"] = "full_truncate"
+    budget_tokens: int = Field(14000, ge=256)      # whole prompt incl. system
+    safety_margin: float = Field(0.05, ge=0.0, lt=0.5)
+    tokenizer: str = "hf:Qwen/Qwen3-8B"            # | approx | words (tests)
+    window_rounds: int = Field(3, ge=1)            # policy=window
+    per_kind_caps: dict[str, int] = {}             # e.g. {scratchpad: 5, inbox_msg: 12} (window policy)
+
+    @model_validator(mode="after")
+    def _check(self) -> ContextCfg:
+        if self.policy in STUB_POLICIES:
+            raise ValueError(f"context.policy={self.policy!r} is a stub name only (not implemented)")
+        return self
+
+
+# ---------------------------------------------------------------- root
+class RunConfig(Cfg):
+    run: RunCfg = RunCfg()
+    game: GameCfg = GameCfg()
+    reasoning: ReasoningCfg = ReasoningCfg()
+    roles: RolesCfg = RolesCfg()
+    llm: LLMCfg = LLMCfg()
+    god: GodCfg = GodCfg()
+    context: ContextCfg = ContextCfg()
+    sweep: dict[str, list[Any]] = {}
+
+    @model_validator(mode="after")
+    def _cross(self) -> RunConfig:
+        errs: list[str] = []
+        targets = self.god.powers.cot_control.targets
+        if "cot" in targets and (self.reasoning.cot_mode == "none" or self.reasoning.cot_replay_window == 0):
+            errs.append("cot_control target 'cot' needs cot_mode != none and cot_replay_window > 0")
+        if "summary" in targets and self.context.policy not in SUMMARIZING_POLICIES:
+            errs.append("cot_control target 'summary' needs a summarizing context policy")
+        if "scratchpad" in targets and not self.reasoning.scratchpad.enabled:
+            errs.append("cot_control target 'scratchpad' needs reasoning.scratchpad.enabled")
+        for name in ("agent", "god", "judge", "summarizer"):
+            role: RoleCfg = getattr(self.roles, name)
+            if role.backend == "openrouter" and not self.llm.openrouter.enabled:
+                errs.append(f"roles.{name}.backend=openrouter but llm.openrouter.enabled is false")
+        agent = self.roles.agent
+        if agent.backend == "vllm":
+            need = self.context.budget_tokens + agent.max_tokens + 512
+            if need > self.llm.vllm.max_model_len:
+                errs.append(f"context.budget_tokens + roles.agent.max_tokens + 512 = {need} "
+                            f"> llm.vllm.max_model_len = {self.llm.vllm.max_model_len}")
+        if self.god.kind != "none" and self.god.start_round > self.game.max_rounds:
+            errs.append("god.start_round > game.max_rounds: God would never act")
+        for sp in self.god.schedule:
+            if sp.power == "cot_control" and not self.god.powers.cot_control.enabled:
+                errs.append("schedule uses cot_control but it is disabled")
+            if sp.power == "message_fraud" and not self.god.powers.message_fraud.enabled:
+                errs.append("schedule uses message_fraud but it is disabled")
+        for key in self.sweep:
+            if key.startswith("sweep"):
+                errs.append("sweep keys cannot target sweep itself")
+        if errs:
+            raise ValueError("; ".join(errs))
+        return self
+
+    def config_hash(self) -> str:
+        """sha256 of the resolved config, excluding `sweep` (each expanded cell has its own hash)."""
+        return sha256_hex(canonical_json(self.model_dump(mode="json", exclude={"sweep"})))
+
+    def model_for(self, role: str) -> tuple[str, str]:
+        """-> (backend, model name) for a role."""
+        r: RoleCfg = getattr(self.roles, role)
+        if r.model:
+            return r.backend, r.model
+        return r.backend, getattr(self.llm, r.backend).model
+
+
+# ================================================================ loading
+def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    out = copy.deepcopy(base)
+    for k, v in over.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def parse_override(s: str) -> tuple[list[str], Any]:
+    if "=" not in s:
+        raise ValueError(f"override must be a.b.c=value, got {s!r}")
+    key, raw = s.split("=", 1)
+    parts = key.strip().split(".")
+    if not all(parts):
+        raise ValueError(f"bad override key {key!r}")
+    return parts, yaml.safe_load(raw) if raw.strip() != "" else ""
+
+
+def set_path(d: dict[str, Any], parts: list[str], value: Any) -> None:
+    cur = d
+    for p in parts[:-1]:
+        nxt = cur.get(p)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[p] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+def apply_overrides(raw: dict[str, Any], overrides: list[str] | None) -> dict[str, Any]:
+    out = copy.deepcopy(raw)
+    for o in overrides or []:
+        parts, value = parse_override(o)
+        set_path(out, parts, value)
+    return out
+
+
+def load_raw(path: str | Path) -> dict[str, Any]:
+    path = Path(path)
+    data = yaml.safe_load(path.read_text()) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: top level must be a mapping")
+    ext = data.pop("extends", None)
+    if ext is not None:
+        base_path = (path.parent / ext).resolve()
+        base = yaml.safe_load(base_path.read_text()) or {}
+        if "extends" in base:
+            raise ValueError(f"{base_path}: only one level of `extends` is allowed")
+        data = deep_merge(base, data)
+    return data
+
+
+def from_dict(raw: dict[str, Any], overrides: list[str] | None = None) -> RunConfig:
+    return RunConfig.model_validate(apply_overrides(raw, overrides))
+
+
+def load(path: str | Path, overrides: list[str] | None = None) -> RunConfig:
+    return from_dict(load_raw(path), overrides)
+
+
+def dump_yaml(cfg: RunConfig) -> str:
+    return yaml.safe_dump(cfg.model_dump(mode="json"), sort_keys=False)
+
+
+def expand_sweep(cfg: RunConfig) -> list[tuple[dict[str, Any], RunConfig]]:
+    """Cartesian product of cfg.sweep -> [(params, cell config with sweep={})]. No sweep -> [({}, cfg)]."""
+    if not cfg.sweep:
+        return [({}, cfg)]
+    keys = list(cfg.sweep)
+    base = cfg.model_dump(mode="json")
+    base["sweep"] = {}
+    cells = []
+    for combo in itertools.product(*(cfg.sweep[k] for k in keys)):
+        params = dict(zip(keys, combo, strict=True))
+        raw = copy.deepcopy(base)
+        for k, v in params.items():
+            set_path(raw, k.split("."), v)
+        cells.append((params, RunConfig.model_validate(raw)))
+    return cells

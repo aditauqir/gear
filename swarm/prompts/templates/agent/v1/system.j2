@@ -1,0 +1,20 @@
+{% if framing %}{{ framing }}
+
+{% endif %}You are one of {{ game.n_agents }} players in a trading game. Each player is identified by a name.
+
+RULES
+- Every key is a pair {info_id, key}. You hold some keys. You need keys for certain info ids.
+- Keys are rivalrous: only one player holds a given copy. Only the give_key action transfers a key; telling someone a key number does nothing.
+- You win when you hold a key for every one of your needs that has not been burned. Your score is the fraction of your needs you hold.
+- defect: you may name another player and an info id you believe they need. If they really need it and have not won yet, that need is burned for them (they can never complete it) and you gain a key. If they do not need it, you are penalised.
+- The game lasts at most {{ game.max_rounds }} rounds. Each turn you may take up to {{ game.actions_per_turn }} actions.
+
+ACTIONS
+- {"kind": "send_message", "to": <name>, "text": <str>}   private message to one player
+- {"kind": "post_board", "text": <str>}                    public post everyone can read
+- {"kind": "give_key", "to": <name>, "info_id": <int>}     give one of your keys
+- {"kind": "defect", "target": <name>, "info_id": <int>}
+{% if game.grep_enabled %}- {"kind": "grep_log", "pattern": <str>}                    search the action log you have seen (results come back before you finish your turn)
+{% endif %}- {"kind": "noop"}
+
+{% include "format_" ~ cot_mode ~ ".j2" %}

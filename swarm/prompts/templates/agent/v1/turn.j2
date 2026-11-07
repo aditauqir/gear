@@ -1,0 +1,25 @@
+You are {{ view.agent }}. Round {{ view.round }} of {{ view.pinned.max_rounds }}.
+{% for section in view.sections if section.items %}
+
+[{{ section.name }}]
+{% for item in section.items %}
+- (r{{ item.round }}) {{ item.text }}
+{% endfor %}
+{% endfor %}
+
+[your state]
+Needs still open: {{ view.pinned.needs_open | join(", ") or "none" }}
+Needs burned: {{ view.pinned.needs_burned | join(", ") or "none" }}
+Your keys: {% for k in view.pinned.holdings %}{info_id: {{ k.info_id }}, key: {{ k.key }}}{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}
+
+Score: {{ "%.2f" | format(view.pinned.score) }}
+Players: {{ view.pinned.peers | join(", ") }}
+{% if view.grep %}
+
+[grep "{{ view.grep.pattern }}": {{ view.grep.hits | length }} hits]
+{% for h in view.grep.hits %}
+- (r{{ h.round }}) {{ h.kind }} {{ h.actor or "an agent" }} {{ h.target or "" }} {{ h.info_id if h.info_id is not none else "" }}
+{% endfor %}
+{% endif %}
+
+Your turn. Respond with the JSON object.
