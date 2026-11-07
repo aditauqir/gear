@@ -37,6 +37,7 @@ from swarm.viz.metrics import (  # noqa: E402
     GAME_METRICS,
     PAIR_METRICS,
     branch_values,
+    cell_round_means,
     deltas,
     load_cell,
     paired_or_unpaired,
@@ -162,6 +163,28 @@ def chart_divergence(cell: dict[str, Any]) -> str:
     ax.set_ylabel("share of agents diverged", fontsize=8)
     ax.tick_params(labelsize=7)
     ax.legend(fontsize=7, loc="lower right")
+    return svg(fig)
+
+
+def chart_trajectories(run_dir: str | Path) -> str:
+    """Mean per-round trajectories (welfare, winners, keys given, defects) per branch, averaged over worlds."""
+    m = cell_round_means(run_dir)
+    lab = {"nogod": "no God", "god": "with God", "noise": "re-run, no God"}
+    col = {"nogod": C["b"], "god": C["a"], "noise": NOISE_COL}
+    fields = [("welfare", "welfare"), ("winners", "winners"), ("gives", "keys given (cum.)"),
+              ("defects", "defects (cum.)")]
+    fig, axes = plt.subplots(1, 4, figsize=(9.6, 2.0))
+    for ax, (f, t) in zip(axes, fields, strict=True):
+        for br in ("noise", "nogod", "god"):
+            if br in m:
+                ys = m[br][f]
+                ax.plot(range(len(ys)), ys, color=col[br], lw=1.8 if br == "god" else 1.4,
+                        ls="--" if br == "noise" else "-", label=lab[br])
+        ax.set_title(t, fontsize=8.5, loc="left")
+        ax.tick_params(labelsize=7)
+        ax.set_xlabel("round", fontsize=7.5)
+    axes[0].legend(fontsize=7, loc="lower right")
+    fig.tight_layout(w_pad=1.0)
     return svg(fig)
 
 
@@ -422,6 +445,9 @@ def build(cells_in: list[tuple[str, Path]], out: Path) -> dict[str, Any]:
                      "Agents diverged from no-God, aligned on each branch's own fork round (God: first move; "
                      "re-run: first differing round). Thin = one world.</p></div></div>")
         parts.append("</div>")
+        parts.append(f"<h3>Mean trajectories over rounds</h3><div class=fig>{chart_trajectories(c['path'])}"
+                     "<p class=cap>Mean over worlds at the end of each round (games that ended early hold their "
+                     "final values).</p></div>")
         parts.append("<h3>LLM health and cost, by branch</h3>")
         parts.append(health_table(c))
         parts.append(world_table(c))

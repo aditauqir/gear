@@ -97,3 +97,14 @@ def test_dashboard_self_contained(synth_run: Path, tmp_path: Path) -> None:
     c = load_cell(synth_run, with_health=False)
     mean = json.loads(json.dumps(summarize(list(deltas(c, "welfare", "god").values()))["mean"]))
     assert f"{mean:+.3f}".replace("-", "−") in page                    # numbers come from the logs
+
+
+def test_cell_round_means(synth_run: Path) -> None:
+    from swarm.viz.metrics import cell_round_means, worlds
+
+    m = cell_round_means(synth_run)
+    assert {"god", "nogod"} <= set(m)
+    ws = worlds(synth_run)
+    finals = [load_branch(b["god"]).welfare(load_branch(b["god"]).R) for b in ws.values()]
+    assert abs(m["god"]["welfare"][-1] - sum(finals) / len(finals)) < 1e-9
+    assert m["god"]["welfare"][0] == 0 and m["god"]["n"] == [float(len(ws))]

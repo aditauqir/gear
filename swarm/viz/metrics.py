@@ -356,6 +356,21 @@ def mean_curve(curves: dict[int, list[float]]) -> list[float]:
     return [statistics.fmean(ys[min(r, len(ys) - 1)] for ys in curves.values()) for r in range(L)]
 
 
+def cell_round_means(run_dir: str | Path, fields: tuple[str, ...] = ("welfare", "winners", "gives", "defects"),
+                     ) -> dict[str, dict[str, list[float]]]:
+    """Mean per-round trajectory over worlds, per branch: {branch: {field: [mean at round 0..R]}}."""
+    acc: dict[str, list[list[dict[str, float]]]] = {}
+    for brs in worlds(run_dir).values():
+        for br, d in brs.items():
+            acc.setdefault(br, []).append(round_series(load_branch(d)))
+    out: dict[str, dict[str, list[float]]] = {}
+    for br, series in acc.items():
+        L = min(len(s) for s in series)
+        out[br] = {f: [statistics.fmean(s[r][f] for s in series) for r in range(L)] for f in fields}
+        out[br]["n"] = [float(len(series))]
+    return out
+
+
 def mde(sd: float, n: int, power_z: float = 0.8416) -> float:
     """Minimum detectable mean paired difference, 80% power, two-sided 5% (t quantile for alpha, z for power)."""
     if n < 2 or sd != sd:
