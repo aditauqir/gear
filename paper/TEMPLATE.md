@@ -74,12 +74,13 @@ The build does the following:
 6. **References.** Paste the numbered reference list as it is. Each entry carries its arXiv id. Keep the bracket numbering [n] used in the body.
 7. **Appendices.** Put Appendix A, "Limitations and Dual-Use / Ethical Considerations", after the references, as the sprint page puts it. Appendix B (configs, prompts, health table) follows it.
 8. **Check the length.** The body, Introduction through Conclusion including figures, must fit in 8 pages.
-   - **Cuts already applied** (preview: 8 main pages, page 8 about 88% full):
+   - **Cuts already applied** (first pass: 8 main pages):
      - the Discussion bullets, the 3.1 action and observation lists, and the 5.1 and 5.4 bullets are now prose;
      - the qualitative traces are in Appendix C;
      - the power table, the grid table (Table E2) and the board table (Table E3) moved to Appendix E, with their key numbers kept in the text;
      - the g02 network figure moved to Appendix C (Figure C1).
-   - **Next cuts if the Google Doc runs over:** move 3.5 (agents and logging) and the health-check and invariant paragraphs of Section 4 to an appendix; move Table 1 to Appendix E; shrink the Figure 2b and Figure 3 widths.
+   - After the behavioural (SOCIAL_DYNAMICS) paragraph was added, 3.5 (agents and logging) and the Section 4 health-check and invariant paragraphs moved to Appendix B (B.1, B.2). The preview is again 8 main pages, with page 8 about 92% full.
+   - **Next cuts if the Google Doc runs over:** move Table 1 to Appendix E; shrink the Figure 2b and Figure 3 widths (`WIDTHS` in `build_preview.py`); trim Related Work.
 9. **Export.** File → Download → PDF document. Open the PDF and check:
    - the abstract is 150 to 250 words;
    - no `[RESULT` or `[CHECK` strings remain;

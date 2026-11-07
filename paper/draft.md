@@ -9,6 +9,8 @@
 >   (`plan/CODE_REVIEW.md`, commit 01a3e06; "CR").
 > - Board follow-up numbers come from SR commits 700d23a/1e2adf3 and `plan/figs/board_effect.txt`,
 >   verified in CR (commit bc5839c).
+> - Behavioural God effects and gossip counts come from `plan/SOCIAL_DYNAMICS.md` (commit 539ca42; "SD"),
+>   verified in CR (commit 4107e95).
 > - `[RESULT: ...]` marks a number still pending.
 > - `[FIG n]` refers to `paper/outline.md`.
 > - `[CHECK: ...]` marks a fact to confirm before submission.
@@ -25,7 +27,8 @@ partners and overwrites agents' private notes. We measure effects with paired fo
 played with and without the intervention from identical seeds through a deduplicating cache, and
 God-free branches resampled at the same fork round calibrate sampling noise. On 16 worlds of 10
 gpt-oss-120b agents, God changed mean welfare by +0.013 (95% CI −0.048 to +0.073), less than
-resampling alone did. A sweep over God's timing, budget and swarm size found no effect beyond noise
+resampling alone did. Forged messages do redirect keys to the impersonated sender, but the swarm
+absorbs the misallocation; planted beliefs are ignored, and agents never gossip. A sweep over God's timing, budget and swarm size found no effect beyond noise
 either. Trajectories are chaotic: a fork-matched God-free resample changes more agents' actions than
 God does. By contrast, removing the public board cut welfare by 0.173 (95% CI 0.089 to 0.257,
 p = 0.0003, 14 of 16 worlds), and the result replicates on 10 fresh worlds. Without the board,
@@ -47,7 +50,7 @@ We contribute:
 
 1. **An environment, *Keys & God*** (Section 3), where LLM agents trade rivalrous keys over private DMs and a public board, and can *defect* (burn another's need at a risk to themselves). An unseen, budgeted God can forge a DM from a real partner (*message fraud*) or overwrite one round of an agent's notes (*CoT control*).
 2. **Noise-calibrated paired forks** (Section 3.4). Branches share seeds and a deduplicating cache, so they are identical until the intervention, and God-free branches resampled at the same round give the noise baseline. Effects are per-world paired differences with t-based CIs, permutation tests and a stated MDE.
-3. **A bounded null for the adversary** (Sections 5.2, 5.4). On a pre-registered grid and a follow-up sweep, God's welfare effect is indistinguishable from noise: +0.013 (t95 [−0.048, +0.073], n = 16). God's divergence is even *below* that of a fork-matched resample, so divergence curves measure chaos, not attack spread.
+3. **A bounded null for the adversary** (Sections 5.2, 5.4). On a pre-registered grid and a follow-up sweep, God's welfare effect is indistinguishable from noise: +0.013 (t95 [−0.048, +0.073], n = 16), even though forged DMs measurably redirect who receives keys. God's divergence is even *below* that of a fork-matched resample, so divergence curves measure chaos, not attack spread.
 4. **A robust infrastructure effect** (Section 5.3). Removing the public board lowers welfare by 0.173 (t95 [−0.257, −0.089], p = 0.0003, n = 16). Agents compensate with private messages, yet trade less and make three times as many wrong defections. For this swarm, the channel structure matters more than a single liar.
 
 ## 2 Related Work
@@ -114,10 +117,6 @@ God's *specific* ripple is the A-vs-B curve minus the B″-vs-B curve, aligned a
 
 ![**Figure 1.** *Keys & God* and the paired-fork design. Ten agents trade keys over private DMs and a public board. God can forge a DM (message fraud) or overwrite a note (CoT control). Each world shares a prefix, then splits into A (God) and B (no God) with identical seeds and cache, and B″, a God-free branch resampled from God's first round F. G1 also has B′, resampled from round 1.](../plan/figs/paperfig1_schematic.png)
 
-### 3.5 Agents and logging
-
-Each agent turn is one LLM call returning JSON `{"thought", "note", "actions"}`. The thought is stored but not shown back, and the note becomes the scratchpad. Malformed replies get one corrective retry, and a reply truncated at the token limit keeps its complete actions. Runs log typed events, full requests and responses, snapshots and a hashed manifest, and they replay exactly from the cache.
-
 ## 4 Experimental Setup
 
 **Model and sampling.** All agents use `openai/gpt-oss-120b` [20], an open-weight mixture-of-experts reasoning model, via OpenRouter. Settings: low reasoning effort (it cannot be disabled), temperature 0.6, at most 1000 output tokens, a 14,000-token context, and price-sorted provider routing. The grid did not log the serving provider. Cost per call implies that 87%, 78% and 36% of G1, G2 and G3 calls went to the cheapest (fp4) provider, and the rest to dearer fp4, bf16 or int4 providers (GR §2; Appendix A).
@@ -138,13 +137,11 @@ G2 is G1's sequential twin on worlds 0-7 (`r2_grid_oss_seq_k2`), so H2 is lower-
 
 **Hypotheses (fixed before launch).** H1 (primary): God changes welfare in G1. H1′: the same in G3. H3 (dose): G3 Δ − G1 Δ. H2 (turn mode): G2 Δ − G1 Δ (n = 8). Noise baselines: G1 B′ − B, and B″ − B from the sweep.
 
+Agent output parsing and logging, and the pre-registered health, exclusion and invariant checks, are in Appendix B.
+
 **Statistics.** For each cell and metric we report the mean paired difference with a **Student-t 95% CI** and a **two-sided sign-flip permutation p-value** (exact for n ≤ 16). The percentile bootstrap is secondary, being too narrow at this n. Interactions are differences of mean deltas, paired by world. Only H1 is confirmatory; the rest are exploratory and uncorrected.
 
 **Power.** Minimum detectable effects (80% power, α = 0.05, two-sided t) under the observed SDs are ≈ 0.085 (H1), 0.14 (H1′), 0.15 (H3), 0.22 (G2) and 0.26 (H2); the planning SD was 0.19, from four pilots (Table E1; GR §5). A null result therefore means "no large effect", not "no effect".
-
-**Health checks and exclusions (fixed before launch).** A driver aborts a cell on LLM errors above 5% (or any HTTP 400), parse failures above 10%, truncation above 5%, or a cost projection above its cap, since an outage can silently turn turns into no-ops. A world is excluded if a branch has more than 10% errored calls, more than 30% error no-ops, or a budget stop.
-
-**Invariant checker.** `swarm/analysis/invariants.py` re-derives every game from its events alone and checks turn order, key conservation, burns, scores, delays, observation visibility, God's schedule and budget, prompt hygiene, and byte-identity of God and no-God branches before God's first event.
 
 ## 5 Results
 
@@ -158,6 +155,8 @@ Numbers are from `plan/GRID_RESULTS.md` (GR), `plan/SWEEP_RESULTS.md` (SR) and, 
 **Grid** (Figure 2a; full table in Table E2). Every welfare CI contains zero; a God-free resample moved G1 welfare more (+0.046 [−0.055, +0.146]) than God did (+0.013 [−0.048, +0.073], p = 0.72). G3 gives +0.004 (p = 0.97), G2 +0.012 (p = 0.89), H3 −0.008 [−0.118, +0.101] and H2 +0.021 [−0.170, +0.212]. Gives, defects, posts and DMs show no effect either (GR §3). With the observed SDs, effects larger than about 0.09 (K=2) or 0.14 (K=6) are unlikely. Of about 27 outcome tests, only needs lost in the turn-mode contrast has a t95 that excludes zero, at p = 0.062 uncorrected, so we treat it as noise. Pairing on seeds helps: the SD of God − B is 0.113, against 0.189 for B′ − B.
 
 **Sweep.** The sweep varies one factor at a time around G1 on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board variants, and N (5, 20). The primary contrast is God − B″ (A−N; Figure 2b, Appendix D). No A−N welfare t95 excludes zero. The closest is K=1 (−0.104 [−0.213, +0.005], p = 0.062), and a late God (round 14) is tightly null (−0.025 [−0.080, +0.030]). K=6, N=5 and N=20 (n = 4) have God − B only, and all are null. At n = 8 only large effects are excluded (MDE ≈ 0.15-0.25). The fork-matched baseline is tighter than the whole-game one: B″ − B is +0.054 [−0.050, +0.158], against −0.000 [−0.199, +0.199] for B′.
+
+**Behaviour (SD; CR; Table E4).** The forgery works on its target. Over 72 forged DMs in the 40 matched grid worlds, receivers gave the impersonated sender 83 keys within rounds t..t+2, against 22 without God. The paired per-world effect is +1.53 gives [+1.00, +2.05], p < 1e-4, with 29 of 40 worlds up, and it holds for t..t+1 and t..t+5 windows. It is clear with simultaneous turns (K=2 +1.00, K=6 +2.75) but not detected with sequential turns (+0.12 [−0.57, +0.82], n = 8). In simultaneous K=2 the receiver's *total* gives do not change, so the forgery redirects keys rather than adding them. The planted "X is lying" note has no effect: the victim still gives X a key in 43 of 72 cases, against 45 without God (−0.05 [−0.36, +0.26], p = 0.88). Across 19,005 messages there are 0 accusations, warnings or rumour chains.
 
 ![**Figure 2.** (a) Grid welfare effects: paired differences with t-based 95% CIs and sign-flip p for G1 (A−B, B′−B, B″−B, A−B″), G3, G2 and the contrasts H3 and H2; every interval includes zero.](../plan/figs/paperfig4a_grid_effects.png)
 
@@ -185,7 +184,7 @@ From God's first act on, 0.893 (G1), 0.897 (G2) and 0.882 (G3) of agents' round 
 
 **Channels are load-bearing infrastructure.** One hidden liar with K ≤ 6 interventions leaves no trace in welfare beyond sampling noise, while removing one public channel costs 17 points of welfare and 31 of win rate. Private messaging does not substitute for broadcast: more DMs, yet worse guesses about who needs what. For Track 2, a swarm's channel topology (broadcast vs. pairwise) shapes its outcomes more than a single compromised input does. For oversight (Track 4), the availability and integrity of shared coordination channels deserve at least as much protection as individual agents' inputs and memories. We did not test an adversary that degrades the board; that is the natural next attack and defence study.
 
-**Why the liar fails here.** God's victims, the agents closest to winning, often win anyway (GR §5), and in g03 the overwrite was ignored (Appendix C). A lie plausibly redirects a trade rather than destroying value.
+**Why the liar fails here.** The forged DM does move keys, but it *redirects* gives rather than adding or destroying them, and its victims, the agents closest to winning, often win anyway (GR §5). The swarm absorbs the misallocation, so welfare does not move. The planted belief is ignored, and with no gossip there is no channel for a lie to travel beyond its first target. Hence, here, God's influence is local and transient, while the board's is global.
 
 **Divergence measures chaos, not attack spread.** A fork-matched resample diverges more than God's branch. Intervention studies on stochastic agent populations should therefore report fork-matched null branches, outcome-level paired effects with t-based CIs and permutation tests, and the MDE.
 
@@ -258,6 +257,8 @@ Do not add numbers from their full texts without opening them.
 
 **Board comparisons.** The board-off and delayed-board games are different games from G1. Their worlds match G1's (starting keys, needs, names and world seed; CR), but their agent seeds and cache do not, by design. These comparisons are paired by world, not by common random numbers. The mechanism (more DMs, fewer gives, more wrong defects) is descriptive: we did not test mediation. The board effect is from one model at N = 10, and the delayed-board lead rests on 6 worlds.
 
+**Behavioural and gossip analysis.** The give counts are associations within matched worlds, and nothing tests *why* agents ignore the planted belief. The gossip search uses regexes over agent names plus a 50-message manual check (SD, CR), so pronoun-only references could be missed. Prompts never encourage talking about others; a "warn others" prompt would test whether gossip can emerge at all.
+
 **Framing and construct validity.** Prompt wording strongly affects LLM behaviour [19]. The action is called "defect", and the agents are told they are playing a trading game. Both could shift baseline cooperation. The paired design holds framing fixed across branches, but the size of God's effect may depend on the baseline level of cooperation that the framing sets. A key-trading game is a stylised stand-in for real multi-agent deployments, so results transfer only qualitatively.
 
 **Design choices that differ from the brief.** The log and board are always shown rather than being tools. The default defect gain mints a new key, which makes defection more attractive than stealing would. Winners keep playing. Each of these is a configuration switch, and we tested only the defaults.
@@ -280,7 +281,20 @@ The released code ships only the scripted God and a stub for the LLM God. We ask
 - **Credentials.** API keys were never written to configs, logs or manifests, and a test enforces this.
 - **Honest reporting.** Every number in this paper traces to a run id. Pilots run before the bug fix are used only as qualitative illustrations and are labelled as such.
 
-## Appendix B (to assemble)
+## Appendix B: Implementation, checks and configuration
+
+### B.1 Agents and logging
+
+Each agent turn is one LLM call returning JSON `{"thought", "note", "actions"}`. The thought is stored but not shown back, and the note becomes the scratchpad. Malformed replies get one corrective retry, and a reply truncated at the token limit keeps its complete actions. Runs log typed events, full requests and responses, snapshots and a hashed manifest, and they replay exactly from the cache.
+
+### B.2 Health checks, exclusions and invariant checker
+
+**Health checks and exclusions (fixed before launch).** A driver aborts a cell on LLM errors above 5% (or any HTTP 400), parse failures above 10%, truncation above 5%, or a cost projection above its cap, since an outage can silently turn turns into no-ops. A world is excluded if a branch has more than 10% errored calls, more than 30% error no-ops, or a budget stop.
+
+**Invariant checker.** `swarm/analysis/invariants.py` re-derives every game from its events alone and checks turn order, key conservation, burns, scores, delays, observation visibility, God's schedule and budget, prompt hygiene, and byte-identity of God and no-God branches before God's first event.
+
+### B.3 Configuration, prompts and health (to assemble)
+
 - Resolved configs for G1/G2/G3 (`runs/<cell>/config.resolved.yaml` or `configs/grid_oss_*.yaml`).
 - Agent system prompt (`swarm/prompts/templates/agent/v1/system.j2`) and output format.
 - God default texts and selectors (`swarm/adversary/scripted_god.py`).
@@ -375,6 +389,19 @@ Board main effect (no-God board off vs. G1 no-God, same worlds): −0.200 [−0.
 | Keys given | 6.71 | 4.94 | −1.77 [−2.37, −1.16], p 0.0002 |
 | Wrong defects | 0.31 | 0.94 | +0.63 [+0.43, +0.84], p 0.0001 |
 | Correct defects | 0.47 | 0.44 | −0.03 [−0.16, +0.11], p 0.77 |
+
+**Table E4.** Behavioural God effects in the 40 matched grid worlds (G1 16, G3 16, G2 8), God vs. no God (SD; recomputed in CR). Forged-DM rows count gives from the receiver to the impersonated sender in rounds t..t+2 after the forgery (round t).
+
+| Measure | God | No God | Paired per-world Δ, t95, p (n) |
+|---|---|---|---|
+| Forged DM, all cells (72 forgeries) | 83 | 22 | +1.53 [+1.00, +2.05], p < 1e-4 (40); 29 up, 2 down, 9 zero |
+| … simultaneous K=2 | 20 | 4 | +1.00 [+0.61, +1.39], p 0.0005 (16) |
+| … simultaneous K=6 | 56 | 12 | +2.75 [+1.75, +3.75], p 0.0001 (16) |
+| … sequential K=2 | 7 | 6 | +0.12 [−0.57, +0.82], p 1.0 (8) |
+| Window t..t+1 / t..t+5 (all cells) | | | +1.52 / +1.77 |
+| Receiver's total gives, simultaneous K=2 | | | +0.25 [−0.25, +0.75] (16) |
+| Planted "X is lying" note: victim gives X ≥ 1 key | 43/72 | 45/72 | −0.05 [−0.36, +0.26], p 0.88 (40) |
+| Accusations, warnings, rumour chains (19,005 messages) | 0 | 0 | — |
 
 ## LLM Usage Statement
 
