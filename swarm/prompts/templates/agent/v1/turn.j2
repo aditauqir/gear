@@ -1,25 +1,32 @@
+{% set labels = {"pinned": "Key facts", "summary": "Summary of earlier rounds", "retrieved": "Recalled", "window": "Earlier", "current": "New since your last turn"} %}
 You are {{ view.agent }}. Round {{ view.round }} of {{ view.pinned.max_rounds }}.
 {% for section in view.sections if section.items %}
 
-[{{ section.name }}]
+[{{ labels[section.name] }}]
 {% for item in section.items %}
 - (r{{ item.round }}) {{ item.text }}
 {% endfor %}
 {% endfor %}
 
-[your state]
+[Your state]
 Needs still open: {{ view.pinned.needs_open | join(", ") or "none" }}
 Needs burned: {{ view.pinned.needs_burned | join(", ") or "none" }}
+{% if view.pinned.needs_lost %}
+Needs lost: {{ view.pinned.needs_lost | join(", ") }}
+{% endif %}
 Your keys: {% for k in view.pinned.holdings %}{info_id: {{ k.info_id }}, key: {{ k.key }}}{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}
 
-Score: {{ "%.2f" | format(view.pinned.score) }}
+Score: {{ "%.2f" | format(view.pinned.score) }}{% if view.pinned.won %} (you have won; you may keep helping others){% endif %}
+
 Players: {{ view.pinned.peers | join(", ") }}
 {% if view.grep %}
 
-[grep "{{ view.grep.pattern }}": {{ view.grep.hits | length }} hits]
+[Log search "{{ view.grep.pattern }}": {{ view.grep.hits | length }} hits{% if view.grep.truncated %}, truncated{% endif %}]
 {% for h in view.grep.hits %}
-- (r{{ h.round }}) {{ h.kind }} {{ h.actor or "an agent" }} {{ h.target or "" }} {{ h.info_id if h.info_id is not none else "" }}
+- (r{{ h.round }}) {{ h.kind }}: {{ h.actor or "an agent" }}{% if h.target %} -> {{ h.target }}{% endif %}{% if h.info_id is not none %} info {{ h.info_id }}{% endif %}{% if h.text %} "{{ h.text }}"{% endif %}{% if h.ok is false %} (failed){% endif %}
+
 {% endfor %}
+Now choose your actions (do not search again this turn).
 {% endif %}
 
 Your turn. Respond with the JSON object.

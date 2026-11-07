@@ -1,1 +1,1 @@
-"""Owned by a later work package (see plan/ARCHITECTURE_v2.md section 2)."""
+"""Viz (WP7): matplotlib PNG figures and a static single-file HTML report (no plotly)."""

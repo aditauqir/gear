@@ -1,1 +1,1 @@
-"""Owned by a later work package (see plan/ARCHITECTURE_v2.md section 2)."""
+"""Runner (WP9): experiment pool, paired forks, and the single wiring point to engine/agents/God/LLM."""
