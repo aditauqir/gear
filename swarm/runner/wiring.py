@@ -258,6 +258,22 @@ def make_decide(agents: dict[str, Any], state: Any, memory: Any, ledgers: Ledger
     return decide
 
 
+def check_schedule(cfg: RunConfig) -> None:
+    """Reject ScriptedGod schedule entries the real engine can never fire (they used to be silently
+    skipped, so a run looked like it had an intervention that never happened). The engine consults
+    God before slot after_turns of the round: only slot 0 in simultaneous mode, slots 0..n-1 in
+    sequential mode. (round < start_round entries are documented as never firing and stay allowed.)"""
+    if cfg.god.kind != "scripted":
+        return
+    n = cfg.game.n_agents
+    for i, sp in enumerate(cfg.god.schedule):
+        if cfg.game.turn_mode == "simultaneous" and sp.after_turns > 0:
+            raise ValueError(f"god.schedule[{i}].after_turns={sp.after_turns}: simultaneous mode wakes God only "
+                             "at the start of a round (after_turns must be 0)")
+        if sp.after_turns >= n:
+            raise ValueError(f"god.schedule[{i}].after_turns={sp.after_turns} >= game.n_agents={n}: never fires")
+
+
 async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outcome:
     """World + MemoryStore + LLMAgents + (ScriptedGod via GodRunner) + GameEngine, all events through
     LeakOracle-observing and ledger-keeping sink wrappers; every agent request leak-checked."""
@@ -270,6 +286,7 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
     from swarm.memory import MemoryStore
 
     cfg = spec.cfg
+    check_schedule(cfg)
     state = generate_world(cfg.game, spec.world_seed, spec.game_id)
     memory = MemoryStore(cfg.reasoning)
     oracle = LeakOracle(enabled=not cfg.game.view_log.reveal_provenance)
@@ -287,16 +304,10 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
         hook = make_god_hook(runner, slot)
     engine_ref: list[Any] = []
     decide = make_decide(agents, state, memory, ledger_sink, cfg, spec.game_id, engine_ref)
-    eng = GameEngine(cfg, state, decide, god_hook=hook, sink=ledger_sink, seed=spec.world_seed, memory=memory)
+    # on_snapshot writes the round-0 snapshot (engine.start) and every end-of-round deep copy.
+    eng = GameEngine(cfg, state, decide, god_hook=hook, sink=ledger_sink, seed=spec.world_seed, memory=memory,
+                     on_snapshot=sink.snapshot)
     engine_ref.append(eng)
-    _orig_round = eng.run_round
-
-    async def run_round_snap() -> None:
-        await _orig_round()
-        sink.snapshot(eng.snapshots[-1])
-
-    eng.run_round = run_round_snap  # type: ignore[method-assign]
-    sink.snapshot(state.model_copy(deep=True))
     outcome = await eng.run()
     sink.write_meta(leak_checked=oracle.n_checked, leak_hits=len(oracle.hits))
     return outcome
