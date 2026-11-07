@@ -1,8 +1,19 @@
-# GRID_PLAN: openai/gpt-oss-120b experiment grid (proposal, NOT run)
+# GRID_PLAN: openai/gpt-oss-120b experiment grid
 
-Status: configs are written and pass a FakeLLM dry run (2 seeds × 9 rounds per cell). **Nothing
-paid has run; launching needs the lead's go.** Projected cost is $1.71 (central estimate) to $2.22
-(×1.3 margin). The hard caps add up to $2.40. Ledger before the grid: $3.07 of $6.00.
+**Status (2026-11-07 01:56): LAUNCHED** by `infra/grid_driver.py`, under the lead's pre-approval
+("go" if smoke passes, projection ≤ $2.40, hard caps ≤ $2.50, abort conditions wired,
+simultaneous mode, concurrency ≤ 16).
+
+What is running (§2a) differs from the first proposal (§2b):
+- sim only, so the seq cell G2 was dropped;
+- 16 seeds instead of 12;
+- OpenRouter concurrency 16, with cells run one after another;
+- `reasoning.salvage_truncated` on.
+
+Cost:
+- Projected $1.62 (central) to $2.11 (×1.3 margin).
+- Hard caps: G1 $1.35 + G3 $0.95 = $2.30.
+- The ledger was $3.07 before the grid, so it can reach at most $5.37. The driver stops at $5.70.
 
 ## 1. What the smoke measured (`runs/or_oss_10x10_sim`, current code post-8ebbee7 + 98cb469)
 
@@ -54,7 +65,61 @@ Sampled agent outputs (God branch, `content` only; the native reasoning is logge
   turn became a parse-failure noop, so a provider outage would silently produce junk games. This
   is why abort check A1 below exists.
 
-## 2. Grid design
+## 2a. The grid as launched (sim only)
+
+| cell | config | God | branches per seed | seeds | branches | projected (central / ×1.3) | hard cap |
+|---|---|---|---|---|---|---|---|
+| G1 | `configs/grid_oss_sim_k2.yaml` | K=2: fraud r3, cot r5 | god, nogod, noise B′ | 16 | 48 | $0.97 / $1.27 | $1.35 |
+| G3 | `configs/grid_oss_sim_k6.yaml` | K=6: fraud r3/r5/r7, cot r4/r6/r8 | god, nogod | 16 | 32 | $0.65 / $0.84 | $0.95 |
+| **total** | | | | **16 worlds** | **80** | **$1.62 / $2.11** | **$2.30** |
+
+Settings shared by both cells:
+- N=10, 20 rounds, simultaneous turns, run.seed 1, game_idx 0-15.
+- OpenRouter concurrency 16. `max_concurrency_games` is 12 for G1 and 8 for G3.
+- `reasoning.salvage_truncated: true`.
+
+Hypotheses as launched:
+- **H1:** G1 god − nogod.
+- **H0:** the G1 noise floor (B′ − nogod).
+- **H1′:** G3 god − nogod.
+- **H3 (dose):** G3 Δ − G1 Δ, paired by world.
+- H2 (sim vs seq) is **not tested**. `configs/grid_oss_seq_k2.yaml` exists for later.
+
+Power at n=16 (planning SD of the paired Δ is 0.19):
+- H1 and H1′: SE ≈ 0.048, MDE ≈ **0.14 welfare**.
+- H3: SD ≈ 0.27, SE ≈ 0.067, MDE ≈ **0.20**.
+
+Wall time: about 15k calls at 16 in flight and about 7-8 s mean latency gives ≈ 2-2.5 h, so
+G1 then G3 should finish around 04:15.
+
+**Launch command (as run):**
+```bash
+cd ~/projects/swarm_hackathon
+OPENROUTER_API_KEY="$(cat "/home/iraj/projects/swarm_data?/.planAdemoenv")" PYTHONNOUSERSITE=1 \
+  setsid nohup conda run -n swarm --no-capture-output python infra/grid_driver.py \
+  --cell grid_oss_sim_k2:1.35:3 --cell grid_oss_sim_k6:0.95:2 --seeds 16 --rounds 20 \
+  > runs/grid_driver.out 2>&1 < /dev/null &
+```
+
+**The driver's abort checks** (every 10 s; on abort it kills the cell's process group and starts
+no further cells):
+- MemAvailable < 15 GB;
+- more than 20 rg processes;
+- ledger ≥ $5.70;
+- live projected cell cost > the cell cap, after 150 paid calls. The projection is spent × W_total
+  / W_done, using the smoke's per-call cost model weighted by round;
+- LLM errors > 5%, or any HTTP 400;
+- parse failures > 10% of turns;
+- finish=length > 5% of responses.
+
+Status lines go to `runs/grid_driver.log`.
+
+**Analysis:**
+```bash
+PYTHONNOUSERSITE=1 conda run -n swarm python -m swarm.analysis.grid_stats runs/grid_oss_sim_k2 runs/grid_oss_sim_k6
+```
+
+## 2b. First proposal (before the sim-only constraint; kept for reference)
 
 ARCHITECTURE_v2 §15 (58 games: N=20, sequential, K ∈ {1,3,10} × timing × power) is cut down to what
 $2.40 buys at N=10. The trims:
@@ -127,7 +192,7 @@ Victim-level outcomes (the targeted agent's final score and round of winning) co
   affordable at a useful n.
 - **Late God start** (`start_round` 15) and the LLM God: dropped for budget.
 
-## 3. Run commands
+## 3. Run commands (first proposal; the launched command is in §2a)
 
 Run from `~/projects/swarm_hackathon`. The key is exported only inside the command and never echoed.
 
