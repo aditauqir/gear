@@ -14,6 +14,11 @@ llm.budget_usd). Abort conditions, checked every 10 s (incremental reads of the 
   errors     > 5% of LLM calls with an error (after >= 100 calls); any HTTP 400 at once
   parse      > 10% of turns parse_ok=false (after >= 100 turns)
   trunc      > 5% of responses finish_reason=length (after >= 200 responses)
+  branch     any single branch (game dir) with > 10% of its LLM calls errored (after >= 30 calls), or
+             > 30% of its turns noop because of an error (llm_error or failed parse; after >= 20 turns):
+             the "all calls error -> noop turns -> status done" failure
+--attach: do not launch; watch already-running cells (found by `--run-id <name>` in /proc cmdlines,
+waiting for each to appear) with the same checks, and kill their process group on abort.
 On abort: SIGTERM to the cell's process group, SIGKILL after 20 s, no further cells; exit code 3.
 Writes runs/grid_driver.log (status every 60 s). Never prints the environment.
 """
@@ -110,7 +115,8 @@ class Cell:
         self.w_total = seeds * (branches * per_branch - (branches - 1) * shared)
         self.tails: dict[Path, Tail] = {}
         self.ledger = Tail(LEDGER)
-        self.ledger.pos = LEDGER.stat().st_size if LEDGER.exists() else 0
+        self.ledger.pos = 0                      # run ids are unique: count the cell's whole spend
+        self.per_game: dict[str, list[int]] = {}  # game dir -> [calls, errors, turns, noop_by_error]
         self.spent = self.w_done = 0.0
         self.calls = self.errors = self.http400 = self.paid = 0
         self.resp = self.length = self.turns = self.parse_fail = 0
@@ -127,12 +133,20 @@ class Cell:
                 p = g / fn
                 if p not in self.tails:
                     self.tails[p] = Tail(p)
+                pg = self.per_game.setdefault(g.name, [0, 0, 0, 0])
                 for d in self.tails[p].new():
                     if fn == "llm_calls.jsonl":
                         self._call(d)
+                        pg[0] += 1
+                        pg[1] += bool(d.get("error"))
                     elif d.get("type") == "turn":
+                        td = d["data"]
                         self.turns += 1
-                        self.parse_fail += not d["data"].get("parse_ok", True)
+                        self.parse_fail += not td.get("parse_ok", True)
+                        pg[2] += 1
+                        errored = (not td.get("parse_ok", True)
+                                   or any(str(e).startswith("llm_error") for e in td.get("errors") or []))
+                        pg[3] += errored and all((a or {}).get("kind") == "noop" for a in td.get("actions") or [{}])
 
     def _call(self, d: dict) -> None:
         self.calls += 1
@@ -164,6 +178,11 @@ class Cell:
             return f"ledger: total ${t:.3f} >= ${ledger_stop:.2f}"
         if self.paid >= 150 and self.projected() > self.cap:
             return f"projection: ${self.projected():.3f} > cap ${self.cap:.2f}"
+        for gname, (c, e, t, ne) in sorted(self.per_game.items()):
+            if c >= 30 and e / c > 0.10:
+                return f"branch: {gname} {e}/{c} LLM calls errored"
+            if t >= 20 and ne / t > 0.30:
+                return f"branch: {gname} {ne}/{t} turns noop because of errors"
         if self.http400:
             return f"errors: {self.http400} HTTP 400"
         if self.calls >= 100 and self.errors / self.calls > 0.05:
@@ -185,6 +204,56 @@ def kill_group(proc: subprocess.Popen) -> None:
         pass
 
 
+def find_cell_pid(run_id: str) -> int | None:
+    for p in Path("/proc").iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            argv = (p / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if b"swarm.run" in argv and b"--run-id" in argv and run_id.encode() in argv:
+            return int(p.name)
+    return None
+
+
+def attach(cells: list[Cell], ledger_stop: float) -> int:
+    for cell in cells:
+        pid = None
+        while pid is None:
+            pid = find_cell_pid(cell.name)
+            if pid is None:
+                if (cell.run_dir / "manifest.json").exists() and "ended_utc\": \"" in (cell.run_dir / "manifest.json").read_text():
+                    break                                # finished before we looked
+                time.sleep(10)
+        if pid is None:
+            cell.update()
+            log(f"ATTACH {cell.name}: already finished; {cell.status()}")
+            continue
+        pgid = os.getpgid(pid)
+        log(f"ATTACH {cell.name} pid {pid} pgid {pgid}")
+        last = 0.0
+        while Path(f"/proc/{pid}").exists():
+            time.sleep(10)
+            cell.update()
+            reason = cell.abort_reason(ledger_stop)
+            if reason:
+                log(f"ABORT {cell.name} (attach): {reason}; {cell.status()}")
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
+                    time.sleep(20)
+                    os.killpg(pgid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                return 3
+            if time.time() - last >= 300:
+                log(f"(attach) {cell.status()}")
+                last = time.time()
+        cell.update()
+        log(f"DETACH {cell.name} ended; {cell.status()}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cell", action="append", required=True)
@@ -193,7 +262,18 @@ def main() -> int:
     ap.add_argument("--ledger-stop", type=float, default=5.70)
     ap.add_argument("--set", dest="sets", action="append", default=[], help="override passed to every cell")
     ap.add_argument("--run-prefix", default="", help="run id prefix (dry runs)")
+    ap.add_argument("--attach", action="store_true", help="watch running cells instead of launching")
+    ap.add_argument("--log", type=Path, default=None, help="log file (default runs/grid_driver.log)")
     args = ap.parse_args()
+    global LOG
+    if args.log is not None:
+        LOG = args.log if args.log.is_absolute() else REPO / args.log
+    if args.attach:
+        cells = []
+        for spec in args.cell:
+            name, cap, branches = spec.split(":")
+            cells.append(Cell(args.run_prefix + name, float(cap), int(branches), args.seeds, args.rounds))
+        return attach(cells, args.ledger_stop)
     fake = any(s.startswith("roles.agent.backend=fake") for s in args.sets)
     if not fake and not os.environ.get("OPENROUTER_API_KEY"):
         log("OPENROUTER_API_KEY not set")
