@@ -1,8 +1,10 @@
 # NETWORK_PLAN: first real runs with the social network (N=40, 30 rounds, gpt-oss-120b)
 
-**Status (2026-11-07 12:45 EST): LAUNCHED at N=40 × 30 rounds × 6 worlds, conditions A, B and C.**
+**Status (2026-11-07 12:49 EST): RUNNING at N=40 × 30 rounds × 6 worlds, conditions A, B and C.**
 
-Two `infra/grid_driver.py` watchdogs run at 6 in flight each (12 total), with hard caps:
+Two `infra/grid_driver.py` watchdogs run at **4 in flight each (8 total)**, with hard caps. A first
+start at 6 each (12:45) was stopped at 12:48 under the >15% fallback rule (§6), and both cells
+replay from the cache.
 - **driver A:** `net40_complete_sim`.
 - **driver BC:** `net40_er3_contacts_sim`, then `net40_er3_known_sim`.
 
@@ -161,23 +163,34 @@ input part.
 - **Ledger:** $7.913 at launch, so its worst case is **$13.70**, below $14.80. The drivers stop at
   **$14.69** ($7.692 + $7.00).
 
-## 6. Launch (as run, 12:45:17 EST)
+## 6. Launch (12:45:17 at 6 + 6 in flight; relaunched 12:49:07 at 4 + 4)
 
-Two drivers run at `max_concurrency` 6 each, 12 in flight in total, the same setting for every
-condition. Earlier tonight, 12 in flight sent about 4% of calls to the fallback provider.
+**The 12-in-flight attempt was stopped under the fallback rule:**
+- It was supposed to be the same setting for every condition, at 6 per driver.
+- Earlier tonight, 12 in flight sent only about 4% of calls to the fallback provider.
+- **This time it sent 38%.** Round-1 calls went 287 to PrimeIntellect, 155 to Near AI and 24 to
+  Venice. Near AI costs about 1.6× per call.
+
+**It was stopped at 12:48 (rule: fallback > 15%) and relaunched at 4 per driver.**
+- The relaunch replays the 480 completed calls from the cache. The 12-in-flight partial dirs are
+  `runs/partial_net40_*_1248`, and their $0.019 is sunk.
+- **Fresh calls at 8 in flight** (first 4 min): A has 244 PrimeIntellect / 15 Near AI (6%); B has 322
+  PrimeIntellect / 27 Near AI / 8 Venice (10%).
+- **The final setting is 4 in flight for every condition** (`max_concurrency: 4` in the configs).
 - **Driver A:** `net40_complete_sim`, the slowest cell (full-context prompts).
 - **Driver BC:** B, then C.
 
-Wall-time estimate: 7,200 calls per cell. A takes about 3.5 h; B and C take about 2 h each.
-**ETA ≈ 16:45-17:15 EST.** If the fallback share goes above 15%, or the projection jumps, the
-drivers drop back to 4 in flight (a restart that replays from the cache).
+Wall-time estimate at 4 in flight: 7,200 calls per cell.
+- A takes about 4-5 h (full-context prompts are slower).
+- B and C take about 1.5-2 h each.
+- **ETA ≈ 17:00-18:00 EST.**
 
 ```bash
 cd ~/projects/swarm_hackathon
 OPENROUTER_API_KEY="$(cat "/home/iraj/projects/swarm_data?/.planAdemoenv")" PYTHONNOUSERSITE=1 \
   setsid nohup conda run -n swarm --no-capture-output python infra/grid_driver.py \
   --cell net40_complete_sim:2.97:1:n=40,g=1900,pcap=16500 --seeds 6 --rounds 30 \
-  --set llm.openrouter.max_concurrency=6 --cap-override --ledger-stop 14.69 \
+  --set llm.openrouter.max_concurrency=4 --cap-override --ledger-stop 14.69 \
   --log runs/network40_driver_A.log > runs/network40_driver_A.out 2>&1 < /dev/null &
 # driver BC: --cell net40_er3_contacts_sim:1.30:1:n=40,g=265,pcap=16500 \
 #            --cell net40_er3_known_sim:1.52:1:n=40,g=350,pcap=16500   (same flags, log _BC)

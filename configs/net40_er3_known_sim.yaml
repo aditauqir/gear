@@ -38,5 +38,5 @@ roles:
 llm:
   budget_usd: 1.0
   cache: {mode: read_write}
-  openrouter: {enabled: true, model: openai/gpt-oss-120b, max_concurrency: 6, global_cap_usd: 20.0, price_in_per_mtok: 0.03,
+  openrouter: {enabled: true, model: openai/gpt-oss-120b, max_concurrency: 4, global_cap_usd: 20.0, price_in_per_mtok: 0.03,
     price_out_per_mtok: 0.15, reasoning_effort: low, provider_sort: price}
