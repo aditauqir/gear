@@ -31,11 +31,15 @@ narrow at this n.
    - B′ (forks at r1): N−B = −0.000, t95 [−0.199, +0.199];
    - B″ (forks at r3): N−B = +0.054, t95 [−0.050, +0.158].
    - The B″ CI is half as wide, because the shared prefix removes early noise.
-4. **Turning the board off is a big game-design effect, independent of God.**
-   - With no God, welfare drops by **−0.200, t95 [−0.333, −0.067], sign-flip p=0.031, n=6 (low n)**,
-     against G1's noGod on the same worlds.
-   - All 6 worlds are negative. The board carries 4-9 posts per agent per game in G1.
-   - In those worlds God's effect stays null: A−N +0.056 [−0.170, +0.281].
+4. **Turning the board off is a big game-design effect, independent of God. It was CONFIRMED on 16
+   worlds** (see "Board-off main effect" below).
+   - With no God, welfare drops by **−0.173, t95 [−0.257, −0.089], sign-flip p=0.0003, n=16**
+     (14/16 worlds negative), against G1's noGod on the same worlds.
+   - The original 6 worlds gave −0.200 [−0.333, −0.067], p=0.031. The 10 new worlds replicate it
+     at −0.157 [−0.283, −0.030], p=0.016.
+   - Mechanism: without the board, agents send about 1.8× the DMs but give fewer keys and make
+     about 3× the wrong defects.
+   - In the 6 worlds with a God arm, God's effect stays null: A−N +0.056 [−0.170, +0.281].
 5. **Late God is tightly null.** God first acting at r14 gives A−N −0.025, t95 [−0.080, +0.030]. By
    r14 most agents have already won or are locked in.
 
@@ -126,6 +130,37 @@ Notes on the tables:
   none were made.
 - `base` uses G1's worlds 0-7 only. G1's full 16-world numbers are in plan/GRID_RESULTS.md and are
   not re-computed here.
+
+### Board-off main effect, no God (follow-up, 05:25-05:46; `infra/sweep/board_effect.py`, output `plan/figs/board_effect.txt`)
+
+Each world compares board-off noGod against G1 noGod. The world seed is the same, but the agent
+seeds differ because the game differs.
+- The board-off noGod games are `runs/c16_sweep_board_off`, a noGod-only run on G1's worlds 0-15.
+  Worlds 0-5 replay the original `sweep_board_off` control from the cache. Worlds 6-15 are new and
+  cost $0.134; providers were PrimeIntellect 1,962, Near AI 105 and Venice 1 calls.
+- G1 noGod is `runs/grid_oss_sim_k2`.
+- Per-agent counts are per game. Health: all 32 games are healthy.
+
+| metric | board off | board on (G1) | diff, n=16 (t95, sign-flip p) | worlds < 0 | original 6 (diff, p) | new 10 (diff, p) |
+|---|---|---|---|---|---|---|
+| **welfare** | 0.267 | 0.440 | **−0.173 [−0.257, −0.089], p=0.0003** | 14/16 | −0.200, p=0.031 | −0.157, p=0.016 |
+| win rate | 0.525 | 0.831 | −0.306 [−0.406, −0.206], p=0.0001 | 15/16 | −0.350, p=0.031 | −0.280, p=0.004 |
+| gives / agent | 4.94 | 6.71 | −1.77 [−2.37, −1.16], p=0.0002 | 15/16 | −2.02 | −1.62 |
+| DMs / agent | 25.5 | 14.0 | +11.5 [+9.3, +13.6], p<0.0001 | 0/16 | +12.4 | +10.9 |
+| board posts / agent | 0 | 6.86 | −6.86 | 16/16 | | |
+| defects / agent | 1.39 | 0.78 | +0.61 [+0.38, +0.84], p=0.0001 | 1/16 | +0.62 | +0.60 |
+| of which correct | 0.44 | 0.47 | −0.03 [−0.16, +0.11], p=0.77 | | | |
+| of which wrong (penalised) | 0.94 | 0.31 | +0.63 [+0.43, +0.84], p=0.0001 | 0/16 | +0.65 | +0.62 |
+| rounds played | 20.0 | 19.2 | +0.8 [−0.2, +1.8], p=0.25 | | | |
+
+- **Mechanism:** without the public board, agents compensate with about 1.8× the private messages.
+  But they complete fewer trades (−26% gives) and make 3× as many *wrong* defects (correct
+  defects are unchanged).
+- Read: the board is how agents learn who holds and who needs what. Without it they guess, and
+  wrong guesses at defecting cost them their own needs (the lose_need penalty). Win rate falls
+  from 83% to 53%.
+- The 6+10 split replicates within itself, so this is the sweep's one robust effect. It is about
+  the game, not about God.
 
 ### Figures (plan/figs/)
 
