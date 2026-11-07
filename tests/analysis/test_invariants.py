@@ -168,3 +168,10 @@ def test_control_replay_check(sim_run: Path, tmp_path: Path) -> None:
     _rewrite(base / "games" / "g00-nogod" / "llm_calls.jsonl", empty_r2_response)
     vs, info = control_replay_checks(cell, base)
     assert vs == [] and any("base break r2" in ln for ln in info)
+
+
+@pytest.mark.parametrize("board", ["game.board.visible_delay_rounds=1", "game.board.enabled=false"])
+def test_board_sweep_knobs_hold_invariants(board: str, tmp_path: Path) -> None:
+    run = _run(tmp_path, "inv_board", [*SIM, board])
+    vs = check_run(run)
+    assert vs == [], vs[:5]

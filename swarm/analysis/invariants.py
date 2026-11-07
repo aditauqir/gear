@@ -17,7 +17,8 @@ engine or observe) and asserts, per game:
   scores     round_end scores, win events, won_round and the outcome match the replay
   delays     no turn while delayed_until_round >= round (wrong-defect delay, board post skip)
   obs        pinned facts equal the replayed state at observation time; inbox/board are exactly the
-             messages stamped prev <= s < t; view_log lines are exactly the gives/board posts of the
+             messages stamped prev <= s < t (board posts at s + visible_delay_rounds * N; none at all
+             when game.board.enabled=false); view_log lines are exactly the gives/board posts of the
              window and the defects released in (prev, t] (victim excluded under victim_then_delayed)
   god        God events only in the god branch; ok powers == scheduled entries, <= K, budget_left
              bookkeeping; forged messages == ok frauds; memory_overwrites == ok cot_controls
@@ -147,6 +148,11 @@ class GameChecker:
         if self._count[check] <= self.max_per_check:
             self.out.append(Violation(self.name, check, detail))
 
+    def _shown(self, m: dict[str, Any]) -> int:
+        """Slot from which agents may see message m (game.board.visible_delay_rounds delays board posts)."""
+        k = getattr(self.g.board, "visible_delay_rounds", 0)
+        return m["turn_index"] + k * self.g.n_agents if (m["channel"] == "board" and k) else m["turn_index"]
+
     def _order(self, r: int, start_order: list[str]) -> list[str]:
         if self.g.turn_order != "reshuffle":
             return list(start_order)
@@ -233,6 +239,8 @@ class GameChecker:
             elif typ == "message":
                 m = d["message"]
                 msgs.append(m)
+                if m["channel"] == "board" and not getattr(self.g.board, "enabled", True):
+                    self.bad("obs", f"board post {m['msg_id']} although game.board.enabled=false")
                 if m.get("forged"):
                     forged += 1
                     if not self.god_branch:
@@ -376,7 +384,7 @@ class GameChecker:
         if want_in != got_in:
             self.bad("obs", f"r{r} {a} inbox {got_in} != expected {want_in}")
         want_bd = sorted(m["msg_id"] for m in msgs
-                         if m["channel"] == "board" and m["sender_shown"] != a and prev <= m["turn_index"] < t_obs)
+                         if m["channel"] == "board" and m["sender_shown"] != a and prev <= self._shown(m) < t_obs)
         got_bd = sorted(m["msg_id"] for m in obs["board"])
         if want_bd != got_bd:
             self.bad("obs", f"r{r} {a} board {got_bd} != expected {want_bd}")
@@ -404,7 +412,7 @@ class GameChecker:
             if t - w <= s < t:
                 want.append(("give", rr, None if hid else src, dst, info, None))
         for m in msgs:
-            if t - w <= m["turn_index"] < t:
+            if t - w <= self._shown(m) < t:
                 sender = None if hid else m["sender_shown"]
                 if m["channel"] == "board":
                     want.append(("board_post", m["round"], None if self.g.board.anonymous else sender, None, None, None))
