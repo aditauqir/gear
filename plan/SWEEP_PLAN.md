@@ -1,11 +1,29 @@
 # SWEEP_PLAN: one-factor-at-a-time sweeps around G1 (gpt-oss-120b, 2026-11-07)
 
-**Status (04:00 EST): running.** Three drivers are up:
-- stage 1, driver A: start1 → start8 → start14 → k1 → k4;
-- stage 1, driver B: n20 → n5;
-- the B″ add-on, driver NF: base@r3 → start8@r8 → start14@r14.
+**Status (04:50 EST): running repairs and board_off.** Results go in `plan/SWEEP_RESULTS.md`. The
+tomorrow list (§5) is the full plan, ranked, with costs.
 
-Results go in `plan/SWEEP_RESULTS.md`. The tomorrow list (§5) is the full plan, ranked, with costs.
+**Incidents (all handled; the affected worlds were re-run or excluded):**
+1. **False `budget_exceeded` (b2_sweep_start8: 4 worlds; b2_sweep_start14: 8; sweep_start14: 3 God branches).**
+   - Cause: RunBudget reserves a worst-case estimate for **every pending call**, before the
+     concurrency semaphore. The estimate was prompt × $0.1/M + 1000 × $0.5/M.
+   - With 8-12 games of 10 agents in rounds 15-20 that reservation reaches about $0.15, so cells
+     whose caps were tight stopped although they had really spent only $0.05-0.13.
+   - Fix (5a4a7fc): pre-call estimates of $0.03/$0.15 per M (operational, hashed fixed) and caps
+     at 1.25 × projection + $0.06.
+   - k4, n5 and board_off were stopped at 04:47 before reaching that point and re-run.
+   - Every re-run (`r3_*`, `r3b2_*`) replays all completed calls from the cache and finishes the
+     games. Partial dirs: `runs/partial_*_0447`.
+2. **N=20: 3 games crashed (g04-nogod, g05-god, g05-nogod; `status error`).**
+   - Cause: the `sweep_n20` process started at 03:28 with the old `llm_agent` code but loads
+     templates per game. The new system.j2 (board knobs, committed 03:52) needs
+     `game.board_enabled`, so games started after that failed.
+   - No other running process was affected (all other cells started after the commit, or had
+     loaded their games earlier).
+   - N=20 is analyzed on its 4 healthy worlds (low n). Re-running seeds 4-5 would cost about $0.2.
+3. **Two false starts of `sweep_start1` (03:26, 03:28).**
+   - They led to the driver fix: a cell counts only the spend since its launch.
+   - The partial dirs are `runs/aborted_sweep_start1_*`, about $0.012 in the sweep total.
 
 ## 1. Design
 
