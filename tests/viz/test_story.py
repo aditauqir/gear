@@ -93,17 +93,28 @@ def test_animate_writes_h264(fake_run: Path, tmp_path: Path) -> None:
 
 def test_paper_figs_render_and_match_grid_stats(synth_run: Path, tmp_path: Path) -> None:
     from swarm.analysis.grid_stats import deltas, load_run
-    from swarm.viz.paper_figs import cell_deltas, fig_delta_welfare, fig_divergence, summarize
+    from swarm.viz.paper_figs import cell_deltas, fig3_divergence, fig4_welfare, paired_diff, summarize
 
     d = cell_deltas(synth_run)
     ref = deltas(load_run(synth_run), "welfare")
     assert d.keys() == ref.keys() and all(abs(d[i] - ref[i]) < 1e-9 for i in d)
     s = summarize([0.1, -0.1, 0.2, 0.0], n_boot=500)
-    assert s["n"] == 4 and s["lo"] <= s["mean"] <= s["hi"]
-    cells = [("synth", synth_run)]
-    for p in fig_divergence(cells, tmp_path) + fig_delta_welfare(cells, tmp_path, n_boot=200)[0]:
+    assert s["n"] == 4 and s["lo"] <= s["mean"] <= s["hi"] and s["tlo"] < s["mean"] < s["thi"]
+    assert paired_diff({0: 0.1, 1: 0.2, 2: 0.0}, {1: 0.5, 2: -0.1, 3: 9.0}) == {1: 0.3, 2: -0.1}
+    cells = [("synth A", synth_run), ("synth B", synth_run)]
+    paths, stats = fig4_welfare(cells, tmp_path)
+    for p in fig3_divergence(cells, tmp_path) + paths:
         assert p.stat().st_size > 2000
-    assert (tmp_path / "fig_divergence.pdf").read_bytes()[:4] == b"%PDF"
+    assert (tmp_path / "fig3_divergence.pdf").read_bytes()[:4] == b"%PDF"
+    assert any("(paired)" in lab for lab, _ in stats)        # interaction row: same worlds -> all-zero diff
+    assert all(st["mean"] == 0 for lab, st in stats if "(paired)" in lab)
+
+
+def test_median_world_rule() -> None:
+    from swarm.viz.story import median_world
+
+    w, why = median_world({0: 0.2, 1: 0.0, 2: 0.067, 3: 0.1, 4: 0.067})
+    assert w == 2 and "median 0.067" in why
 
 
 def test_reel_minus_sign_and_build(synth_run: Path, tmp_path: Path) -> None:

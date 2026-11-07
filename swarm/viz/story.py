@@ -230,5 +230,14 @@ def pick_worlds(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def median_world(abs_delta: dict[int, float]) -> tuple[int, str]:
+    """The paper's Figure 2 rule: the world whose |delta welfare| is closest to the median |delta| (ties: lowest index)."""
+    import statistics
+
+    med = statistics.median(abs_delta.values())
+    w = min(abs_delta, key=lambda i: (abs(abs_delta[i] - med), i))
+    return w, f"|Δwelfare| {abs_delta[w]:.3f}, median {med:.3f}, n={len(abs_delta)}"
+
+
 def edge_counts(edges: list[tuple[str, str]]) -> Counter[tuple[str, str]]:
     return Counter(edges)
