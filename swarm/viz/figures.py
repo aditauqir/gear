@@ -36,6 +36,10 @@ def _rounds(g: GameTrace) -> int:
 
 # ------------------------------------------------------------------ timeline
 def timeline_png(g: GameTrace, title: str | None = None) -> bytes:
+    return fig_to_png(timeline_fig(g, title))
+
+
+def timeline_fig(g: GameTrace, title: str | None = None) -> plt.Figure:
     scores = final_scores(g)
     agents = sorted(g.agents, key=lambda a: (-scores.get(a, 0.0), a))
     row = {a: i for i, a in enumerate(agents)}
@@ -98,7 +102,7 @@ def timeline_png(g: GameTrace, title: str | None = None) -> bytes:
                Patch(color=C["fraud"], alpha=0.35, label="God: message fraud"),
                Patch(facecolor=C["cot"], alpha=0.35, hatch="//", edgecolor=C["cot"], label="God: scratchpad overwrite")]
     ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=8)
-    return fig_to_png(fig)
+    return fig
 
 
 # ------------------------------------------------------------------ network

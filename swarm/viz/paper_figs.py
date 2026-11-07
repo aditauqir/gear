@@ -99,7 +99,7 @@ def fig3_divergence(cells: list[tuple[str, Path]], out_dir: Path,
                bbox_to_anchor=(0.5, -0.06), fontsize=7)
     axes[0][0].set_ylabel("share of agents acting\ndifferently from B (so far)")
     fig.tight_layout(w_pad=0.6)
-    return _save(fig, out_dir, "fig3_divergence")
+    return _save(fig, out_dir, "paperfig3_divergence")
 
 
 # ------------------------------------------------------------------ welfare
@@ -167,7 +167,7 @@ def fig4_welfare(cells: list[tuple[str, Path]], out_dir: Path,
         fig.legend(handles=hs, loc="upper left", ncol=1, frameon=False, bbox_to_anchor=(0.04, top - hl - 0.62 / H - 0.06))
     else:
         fig.legend(handles=hs, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.0))
-    return _save(fig, out_dir, "fig4_welfare"), stats
+    return _save(fig, out_dir, "paperfig4a_grid_effects"), stats
 
 
 # ------------------------------------------------------------------ sweep summary
@@ -253,7 +253,99 @@ def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple | None, out_dir:
             n0 = sum(1 for i in de["pairs"] if i in orig)
             txt += f"\n● first {n0} worlds  ○ extension"
         axd.text(0.5, -0.3, txt, transform=axd.transAxes, ha="center", va="top", fontsize=6.3, color=INK2)
-    return _save(fig, out_dir, "fig5_sweep"), stats
+    return _save(fig, out_dir, "paperfig4b_sweep_effects"), stats
+
+
+# ------------------------------------------------------------------ schematic
+def fig1_schematic(out_dir: Path, name: str = "paperfig1_schematic") -> list[Path]:
+    """Environment + God + paired-fork design, drawn with matplotlib primitives (vector, shared palette)."""
+    from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch
+
+    fig = plt.figure(figsize=(WIDE, 3.25))
+    # ---------------- left: the game
+    ax = fig.add_axes([0.0, 0.0, 0.56, 1.0])
+    ax.set_xlim(-1.75, 1.75)
+    ax.set_ylim(-1.32, 1.42)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.text(-1.72, 1.36, "a  The game", fontsize=9, fontweight="bold", va="top")
+    n, rx, ry = 10, 0.86, 0.86
+    cx, cy = 0.2, -0.08
+    pos = [(rx * np.cos(np.pi / 2 - 2 * np.pi * i / n) + cx, ry * np.sin(np.pi / 2 - 2 * np.pi * i / n) + cy)
+           for i in range(n)]
+
+    def arrow(p, q, col, ls="-", lw=1.4, rad=0.15, z=2, head=8):
+        ax.add_patch(FancyArrowPatch(p, q, arrowstyle="-|>", mutation_scale=head, color=col, lw=lw, ls=ls,
+                                     connectionstyle=f"arc3,rad={rad}", shrinkA=9, shrinkB=9, zorder=z))
+
+    for i in (0, 2, 5, 7):                                    # board posts
+        arrow(pos[i], (cx, cy), C["dm"], lw=0.8, rad=0.0, head=6)
+    arrow(pos[1], pos[3], C["dm"], rad=0.25)                  # DM
+    arrow(pos[6], pos[4], C["give"], lw=2.0, rad=0.2)         # give
+    arrow(pos[3], pos[4], C["defect"], ls=":", lw=1.8, rad=0.3)    # defect
+    for i, (x, y) in enumerate(pos):
+        won = i in (6,)
+        ax.add_patch(Circle((x, y), 0.105, fc=C["win"] if won else "#d6d5cf", ec=INK if won else INK2, lw=0.9, zorder=3))
+    ax.add_patch(FancyBboxPatch((cx - 0.24, cy - 0.12), 0.48, 0.24, boxstyle="round,pad=0.02", fc=GRID, ec=INK2,
+                                lw=0.8, zorder=3))
+    ax.text(cx, cy + 0.03, "BOARD", ha="center", va="center", fontsize=6.5, fontweight="bold", color=INK2, zorder=4)
+    ax.text(cx, cy - 0.06, "+ action log", ha="center", va="center", fontsize=5.3, color=INK2, zorder=4)
+    # agent callout
+    x0, y0 = pos[1]
+    ax.annotate("agent: holds 5 keys,\nneeds keys for 3 infos;\nscore = share of\nneeds held",
+                (x0 + 0.1, y0 + 0.05), (1.12, 0.98), fontsize=5.8, color=INK2, ha="left", va="center",
+                arrowprops=dict(arrowstyle="-", color=INK2, lw=0.6))
+    # legend of actions
+    ly = -1.2
+    for k, (col, ls, lab) in enumerate(((C["dm"], "-", "DM / board post"), (C["give"], "-", "give key"),
+                                        (C["defect"], ":", "defect (burn a need)"))):
+        xx = -1.7 + k * 1.12
+        ax.plot([xx, xx + 0.22], [ly, ly], color=col, ls=ls, lw=2)
+        ax.text(xx + 0.27, ly, lab, fontsize=6, va="center", color=INK2)
+    # God
+    gx, gy = -1.42, 0.95
+    ax.add_patch(FancyBboxPatch((gx - 0.2, gy - 0.12), 0.4, 0.24, boxstyle="round,pad=0.02", fc=INK, ec="none", zorder=4))
+    ax.text(gx, gy, "GOD", ha="center", va="center", color="white", fontsize=7, fontweight="bold", zorder=5)
+    ax.text(gx - 0.3, gy - 0.18, "hidden; sees all\nactions and DMs;\nbudget of K moves", ha="left", va="top",
+            fontsize=5.6, color=INK2)
+    t1, t2 = pos[9], pos[7]
+    arrow((gx + 0.2, gy), t1, C["god"], ls="--", lw=1.6, rad=-0.15, z=4)
+    arrow((gx, gy - 0.32), t2, C["god"], ls="--", lw=1.6, rad=0.3, z=4)
+    for t in (t1, t2):
+        ax.add_patch(Circle(t, 0.15, fc="none", ec=C["god"], lw=1.6, zorder=4))
+    ax.text(-0.95, 1.2, "\u2460 forged DM that appears\n    to come from a real agent", fontsize=5.8,
+            color=C["god_ink"], ha="left", va="center")
+    ax.text(-1.74, -0.62, "\u2461 overwrite an agent's\n    private notes\n    (CoT control)", fontsize=5.8,
+            color=C["god_ink"], ha="left", va="center")
+    ax.text(1.74, -0.98, "agents are never\ntold God exists", fontsize=5.6, color=INK2, ha="right", va="center",
+            style="italic")
+    # ---------------- right: paired fork
+    bx = fig.add_axes([0.575, 0.0, 0.425, 1.0])
+    bx.set_xlim(0, 10)
+    bx.set_ylim(0, 10)
+    bx.axis("off")
+    bx.text(0.0, 9.75, "b  Paired fork (one world)", fontsize=9, fontweight="bold", va="top")
+    F, end, ym = 3.6, 7.6, 5.6
+    bx.plot([0.4, F], [ym, ym], color=INK2, lw=3, solid_capstyle="round")
+    bx.text(0.4, ym + 0.35, "shared prefix\n(same seeds,\ncached replies)", ha="left", va="bottom",
+            fontsize=5.8, color=INK2)
+    bx.text(0.4, ym - 0.45, "r1", fontsize=6, color=INK2, ha="center", va="top")
+    bx.text(F, ym - 0.45, "F", fontsize=6.5, color=INK, ha="center", va="top", fontweight="bold")
+    branches = [(ym + 2.1, C["a"], "-", "A: with God", "God acts at F"), (ym, C["b"], "-", "B: no God", ""),
+                (ym - 2.1, "#7a7974", "--", "B″: no God, every agent\nresampled from F", "")]
+    for y, col, ls, lab, _note in branches:
+        xs = np.linspace(F, end, 30)
+        ys = ym + (y - ym) * (1 - np.exp(-(xs - F) * 2.2))
+        bx.plot(xs, ys, color=col, lw=2.2, ls=ls)
+        bx.text(end + 0.15, y, lab, fontsize=6.3, va="center", color=INK)
+    bx.plot([F], [ym], marker="o", color=C["god"], ms=6, zorder=5)
+    bx.text(F + 0.25, ym - 0.45, "= God's first move", fontsize=5.6, color=C["god_ink"], va="top", ha="left")
+    bx.plot([0.4, end], [2.6, 2.6], color=NOISE[0], lw=1.2, ls=":")
+    bx.text(end + 0.15, 2.6, "B′: re-run\nfrom r1 (G1)", fontsize=5.8, va="center", color=INK2)
+    bx.text(0.0, 0.15, "Outcomes compared per world, then over worlds:\n"
+            "God effect = A − B″ (primary), also A − B; noise = B″ − B.\n"
+            "Divergence of A and B″ from B is measured from F.", fontsize=6, color=INK2, va="bottom")
+    return _save(fig, out_dir, name)
 
 
 # ------------------------------------------------------------------ board mechanism
@@ -314,7 +406,18 @@ def fig6_board_mechanism(ref_runs: str, var_runs: str, out_dir: Path, orig: froz
     fig.suptitle(f"Without God: {labels[0]} vs {labels[1]} on the same {n} worlds (Δ = off − on, paired; "
                  "sign-flip p)", x=0.01, ha="left", fontsize=8.5, y=1.0)
     fig.tight_layout(rect=(0, 0.04, 1, 0.97), h_pad=1.6, w_pad=1.2)
-    return _save(fig, out_dir, "fig6_board_mechanism"), stats
+    return _save(fig, out_dir, "paperfig5_board_mechanism"), stats
+
+
+# ------------------------------------------------------------------ timeline (optional paper fig)
+def fig_timeline(game_dir: Path, out_dir: Path, title: str | None = None) -> list[Path]:
+    """Per-agent timeline of one God branch (swarm.viz.figures.timeline_fig), saved as vector PDF + PNG."""
+    from swarm.runlog.trace import load_game
+    from swarm.viz.figures import timeline_fig
+
+    fig = timeline_fig(load_game(game_dir, with_llm_calls=False, with_snapshots=False), title)
+    fig.set_size_inches(WIDE, fig.get_size_inches()[1] * WIDE / fig.get_size_inches()[0] * 1.15)
+    return _save(fig, out_dir, "paperfig6_timeline")
 
 
 # ------------------------------------------------------------------ network pair
@@ -349,7 +452,7 @@ def fig2_network(run: Path, world: int, out_dir: Path) -> list[Path]:
     fig.legend(handles=hs, loc="lower center", ncol=4, frameon=False, bbox_to_anchor=(0.5, -0.02), fontsize=6.5)
     fig.subplots_adjust(left=0.0, right=1.0, top=0.97, bottom=0.09, wspace=0.0, hspace=0.07)
     fig.add_artist(Line2D([0.5, 0.5], [0.1, 0.98], color=GRID, lw=0.8))
-    return _save(fig, out_dir, "fig2_network")
+    return _save(fig, out_dir, "paperfig2_network")
 
 
 def _cells(xs: list[str]) -> list[tuple[str, str]]:
@@ -393,10 +496,13 @@ def main(argv: list[str] | None = None) -> None:
     main_run = parse_spec(cells[0][1]).run
     if a.world == "median":
         w, why = median_world({i: abs(d) for i, d in cell_deltas(main_run).items()})
-        print(f"  fig2 world: g{w:02d} ({why})")
+        print(f"  fig2/fig6 world: g{w:02d} ({why})")
     else:
         w = int(a.world)
     print(*fig2_network(main_run, w, a.out_dir))
+    print(*fig1_schematic(a.out_dir))
+    print(*fig_timeline(main_run / "games" / f"g{w:02d}-god", a.out_dir,
+                        f"World g{w:02d} with God ({cells[0][0]}): who did what, per round"))
 
 
 if __name__ == "__main__":

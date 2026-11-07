@@ -105,7 +105,7 @@ def test_paper_figs_render_and_match_grid_stats(synth_run: Path, tmp_path: Path)
     paths, stats = fig4_welfare(cells, tmp_path)
     for p in fig3_divergence(cells, tmp_path) + paths:
         assert p.stat().st_size > 2000
-    assert (tmp_path / "fig3_divergence.pdf").read_bytes()[:4] == b"%PDF"
+    assert (tmp_path / "paperfig3_divergence.pdf").read_bytes()[:4] == b"%PDF"
     assert any("(paired)" in lab for lab, _ in stats)        # interaction row: same worlds -> all-zero diff
     assert all(st["mean"] == 0 for lab, st in stats if "(paired)" in lab)
 
