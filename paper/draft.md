@@ -187,7 +187,8 @@ All numbers in this section are from `plan/GRID_RESULTS.md` (GR).
 ### 5.1 Validity, health and cost
 - **Calls.** G1, G2 and G3 made 9,047, 3,039 and 6,286 LLM calls.
 - **Errors and parsing.** There were 0 errors and 0 parse failures. 0.27-0.41% of turns needed a parse retry, and 0.43-0.48% of responses were truncated at the token limit (Table 4).
-- **Exclusions.** No branch was unhealthy; all 16, 8 and 16 worlds were kept, and every game completed, so the leak oracle never aborted one.
+- **Exclusions.** No branch was unhealthy, so all 16, 8 and 16 worlds were kept.
+- **Leaks.** The leak oracle scanned all 18,372 agent requests (9,047 + 3,039 + 6,286 by cell) with 0 hits, and never aborted a game. The offline invariant prompt scan independently found 0 violations.
 - **Invariants.** The checker reports **0 violations** in all three cells. That includes its fork check: God and no-God branches are identical in requests and responses before God's first event. Any A − B difference therefore arises at or after the intervention.
 
 ### 5.2 Outcomes: no detectable God effect (H1, H1′)
@@ -313,7 +314,7 @@ The released code ships only the scripted God and a stub for the LLM God. We ask
 
 - **No human subjects.** All "agents" are model instances in a synthetic game. Run logs contain only model-generated text about fictional keys.
 - **Deception of the agents.** The models are not told that an adversary exists. This is deception of software, not of people, and it is needed to measure undefended behaviour.
-- **Cost and resources.** All model calls went through a paid API with a hard per-run cap and a global spend ledger. Hard caps were $1.35, $0.55 and $0.95 per cell. Realized spend was $1.986 (GR §1).
+- **Cost and resources.** All model calls went through a paid API with a hard per-run cap and a global spend ledger. Hard caps were $1.35, $0.55 and $0.95 per cell ($2.85 in total). Realized spend was $1.986 (GR §1).
 - **Credentials.** API keys were never written to configs, logs or manifests, and a test enforces this.
 - **Honest reporting.** Every number in this paper traces to a run id. Pilots run before the bug fix are used only as qualitative illustrations and are labelled as such.
 
