@@ -64,8 +64,8 @@ hr { display: none; }
 FONT_LINK = ('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Old+Standard+TT:'
              'ital,wght@0,400;0,700;1,400&display=block">')
 # Per-figure print widths (share of the 6.5 in text width); unlisted figures use 100%.
-WIDTHS = {"paperfig1_schematic": 80, "paperfig4a_grid_effects": 85, "paperfig4b_sweep_effects": 80,
-          "paperfig5_board_mechanism": 70, "paperfig3_divergence": 95, "paperfig2_network": 75}
+WIDTHS = {"paperfig1_schematic": 80, "paperfig4a_grid_effects": 85, "paperfig4b_sweep_effects": 65,
+          "paperfig5_board_mechanism": 58, "paperfig3_divergence": 95, "paperfig2_network": 75}
 
 
 def clean_markdown(md: str) -> str:

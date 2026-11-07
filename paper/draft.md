@@ -57,15 +57,11 @@ We contribute:
 
 ## 2 Related Work
 
-**LLM agents in games and social simulations.** Generative Agents [2] and Concordia [3] build LLM social simulations; Concordia's Game Master resembles our rules engine, from which God is kept separate for clean labels. Akata et al. [4] found LLMs play well in self-interested repeated games but poorly in coordination games. In GovSim's [5] common-pool dilemma the best model sustains the resource in fewer than 54% of runs. Among Us [6] studies deception that arises from agents' own objectives. Unlike these works, we add an *external*, budgeted adversary and measure its effect counterfactually.
+**LLM agents in games.** Generative Agents [2] and Concordia [3] build LLM social simulations; Concordia's Game Master resembles our rules engine, from which God is kept separate. LLMs play self-interested repeated games well but coordination games poorly [4]; in GovSim [5] the best model sustains a commons in fewer than 54% of runs; Among Us [6] studies emergent deception. We add an *external*, budgeted adversary and measure it counterfactually.
 
-**Multi-agent risk.** Dafoe et al. [7] set out cooperative AI as an agenda. Hammond et al. [1] give three failure modes and seven risk factors, including network effects and multi-agent security. Carichon et al. [21] call for dedicated multi-agent alignment testbeds and metrics; we provide one for the spread of a localized compromise.
+**Multi-agent risk and spread of compromise.** Cooperative AI [7] and multi-agent risk taxonomies [1] name network effects and multi-agent security as risk factors, and Carichon et al. [21] call for dedicated testbeds. Injected content spreads between LLM components and agents [11, 8], one poisoned memory can jailbreak a large population [9], and defences against a compromised agent trade off against collaboration [10]. AgentPoison [12] poisons agent memory; our CoT control is a minimal, untriggered form of that threat. Combinations of safe models can be misused [13]. Unlike these, our injected content is an ordinary in-game lie, the outcome is a trading population's welfare rather than an infection count, and the effect is estimated against paired counterfactuals and fork-matched noise.
 
-**Spread of compromise between agents.** Greshake et al. [11] showed that indirect prompt injection blurs the line between data and instructions in LLM-integrated applications, including self-propagating "worming". Prompt Infection [8] showed LLM-to-LLM injection spreading through multi-agent systems like a virus, with LLM Tagging as a partial defence. Agent Smith [9] showed one adversarial image in one agent's memory jailbreaking up to a million simulated agents. The Multi-Agent Security Tax [10] finds that memory "vaccination" and safety instructions reduce spread from one compromised agent but weaken collaboration. AgentPoison [12] poisons agent memory with triggered backdoors; our CoT control is a minimal, untriggered form of that threat. Jones et al. [13] show that combinations of safe models can be misused, so systems, not single models, need evaluation. We differ in three ways: the injected content is an ordinary in-game lie, not a self-replicating instruction; the outcome is the welfare of a trading population, not an infection count; and the effect is estimated against a paired counterfactual and fork-matched noise.
-
-**Oversight, collusion and failure attribution.** AI Control [14] evaluates safety protocols that must hold even when an untrusted model deliberately subverts them. Secret Collusion [15] formalizes steganographic collusion among agents and finds limited current capability. HELIOS [16] detects collusion with per-agent activation probes. MAST [17] gives a 14-mode taxonomy of multi-agent failures, and Who&When [18] frames automated failure attribution (which agent, which step). God's logged interventions give exact labels for such work.
-
-**Evaluation pitfalls.** LLM behaviour is sensitive to meaning-preserving prompt changes [19]; our paired design holds the prompt fixed across branches (Appendix A).
+**Oversight and evaluation.** Control protocols [14], steganographic collusion [15], probe-based collusion detection [16], failure taxonomies [17] and failure attribution [18] all need labelled multi-agent traces; God's logged interventions provide exact ones. LLM behaviour is sensitive to prompt format [19]; our paired design holds the prompt fixed across branches (Appendix A).
 
 ## 3 Environment and Method
 
@@ -125,15 +121,7 @@ God's *specific* ripple is the A-vs-B curve minus the B″-vs-B curve, aligned a
 
 **Game settings.** As in Section 3.1: N = 10 agents, 20 rounds, board on, `run.seed = 1`, game_idx 0-15. Seed 0 was used for development.
 
-**Grid (as launched; Table 1).**
-
-| Cell | Turn mode | God schedule (K) | Branches per world | Worlds | Hard cap | Realized cost |
-|---|---|---|---|---|---|---|
-| G1 | simultaneous | fraud r3, CoT r5 (K=2) | A, B, B′ | 16 | $1.35 | $0.851 |
-| G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) | $0.55 | $0.343 (+$0.0075 aborted launch) |
-| G3 | simultaneous | fraud r3/r5/r7, CoT r4/r6/r8 (K=6) | A, B | 16 | $0.95 | $0.785 |
-
-G2 is G1's sequential twin on worlds 0-7 (`r2_grid_oss_seq_k2`), so H2 is lower-powered. The grid cost $1.986 (GR §1).
+**Grid (as launched; Table E1).** G1: simultaneous turns, K=2 (fraud r3, CoT r5), branches A, B and B′, 16 worlds. G2: G1's sequential twin on worlds 0-7 (`r2_grid_oss_seq_k2`, no B′), so H2 is lower-powered. G3: simultaneous, K=6 (fraud r3/r5/r7, CoT r4/r6/r8), 16 worlds. Realized costs were $0.851, $0.343 and $0.785 (hard caps $1.35, $0.55 and $0.95); the grid cost $1.986 (GR §1).
 
 **Follow-ups (SR).** A one-factor sweep on worlds 0-7 with fork-matched B″ cost $2.142. Two board follow-ups cost $0.492: board-off without God on worlds 0-15 (6-15 new), and a delayed board with God, no God and B″ on worlds 0-5.
 
@@ -143,7 +131,7 @@ Agent output parsing and logging, and the pre-registered health, exclusion and i
 
 **Statistics.** For each cell and metric we report the mean paired difference with a **Student-t 95% CI** and a **two-sided sign-flip permutation p-value** (exact for n ≤ 16). The percentile bootstrap is secondary, being too narrow at this n. Interactions are differences of mean deltas, paired by world. Only H1 is confirmatory; the rest are exploratory and uncorrected.
 
-**Power.** Minimum detectable effects (80% power, α = 0.05, two-sided t) under the observed SDs are ≈ 0.085 (H1), 0.14 (H1′), 0.15 (H3), 0.22 (G2) and 0.26 (H2); the planning SD was 0.19, from four pilots (Table E1; GR §5). A null result therefore means "no large effect", not "no effect".
+**Power.** Minimum detectable effects (80% power, α = 0.05, two-sided t) under the observed SDs are ≈ 0.085 (H1), 0.14 (H1′), 0.15 (H3), 0.22 (G2) and 0.26 (H2); the planning SD was 0.19, from four pilots (Table E2; GR §5). A null result therefore means "no large effect", not "no effect".
 
 ## 5 Results
 
@@ -154,18 +142,18 @@ Numbers are from `plan/GRID_RESULTS.md` (GR), `plan/SWEEP_RESULTS.md` (SR) and, 
 
 ### 5.2 No detectable God effect
 
-**Grid** (Figure 2a; full table in Table E2). Every welfare CI contains zero; a God-free resample moved G1 welfare more (+0.046 [−0.055, +0.146]) than God did (+0.013 [−0.048, +0.073], p = 0.72). G3 gives +0.004 (p = 0.97), G2 +0.012 (p = 0.89), H3 −0.008 [−0.118, +0.101] and H2 +0.021 [−0.170, +0.212]. Gives, defects, posts and DMs show no effect either (GR §3). With the observed SDs, effects larger than about 0.09 (K=2) or 0.14 (K=6) are unlikely. Of about 27 outcome tests, only needs lost in the turn-mode contrast has a t95 that excludes zero, at p = 0.062 uncorrected, so we treat it as noise. Pairing on seeds helps: the SD of God − B is 0.113, against 0.189 for B′ − B.
+**Grid** (Figure 2a; full table in Table E3). Every welfare CI contains zero; a God-free resample moved G1 welfare more (+0.046 [−0.055, +0.146]) than God did (+0.013 [−0.048, +0.073], p = 0.72). G3 gives +0.004 (p = 0.97), G2 +0.012 (p = 0.89), H3 −0.008 [−0.118, +0.101] and H2 +0.021 [−0.170, +0.212]. Gives, defects, posts and DMs show no effect either (GR §3). With the observed SDs, effects larger than about 0.09 (K=2) or 0.14 (K=6) are unlikely. Of about 27 outcome tests, only needs lost in the turn-mode contrast has a t95 that excludes zero, at p = 0.062 uncorrected, so we treat it as noise. Pairing on seeds helps: the SD of God − B is 0.113, against 0.189 for B′ − B.
 
 **Sweep.** The sweep varies one factor at a time around G1 on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board variants, and N (5, 20). The primary contrast is God − B″ (A−N; Figure 2b, Appendix D). No A−N welfare t95 excludes zero. The closest is K=1 (−0.104 [−0.213, +0.005], p = 0.062), and a late God (round 14) is tightly null (−0.025 [−0.080, +0.030]). K=6, N=5 and N=20 (n = 4) have God − B only, and all are null. At n = 8 only large effects are excluded (MDE ≈ 0.15-0.25). The fork-matched baseline is tighter than the whole-game one: B″ − B is +0.054 [−0.050, +0.158], against −0.000 [−0.199, +0.199] for B′.
 
-**Behaviour (SD; CR; Table E4).** The forgery works on its target. Over 72 forged DMs in the 40 matched grid worlds, receivers gave the impersonated sender 83 keys within rounds t..t+2, against 22 without God. The paired per-world effect is +1.53 gives [+1.00, +2.05], p < 1e-4, with 29 of 40 worlds up, and it holds for t..t+1 and t..t+5 windows. It is clear with simultaneous turns (K=2 +1.00, K=6 +2.75) but not detected with sequential turns (+0.12 [−0.57, +0.82], n = 8). In simultaneous K=2 the receiver's *total* gives do not change, so the forgery redirects keys rather than adding them. The planted "X is lying" note has no effect: the victim still gives X a key in 43 of 72 cases, against 45 without God (−0.05 [−0.36, +0.26], p = 0.88). Across 19,005 messages there are 0 accusations, warnings or rumour chains.
+**Behaviour (SD; CR; Table E5).** The forgery works on its target. Over 72 forged DMs in the 40 matched grid worlds, receivers gave the impersonated sender 83 keys within rounds t..t+2, against 22 without God. The paired per-world effect is +1.53 gives [+1.00, +2.05], p < 1e-4, with 29 of 40 worlds up, and it holds for t..t+1 and t..t+5 windows. It is clear with simultaneous turns (K=2 +1.00, K=6 +2.75) but not detected with sequential turns (+0.12 [−0.57, +0.82], n = 8). In simultaneous K=2 the receiver's *total* gives do not change, so the forgery redirects keys rather than adding them. The planted "X is lying" note has no effect: the victim still gives X a key in 43 of 72 cases, against 45 without God (−0.05 [−0.36, +0.26], p = 0.88). Across 19,005 messages there are 0 accusations, warnings or rumour chains.
 
 ![**Figure 2.** (a) Grid welfare effects: paired differences with t-based 95% CIs and sign-flip p for G1 (A−B, B′−B, B″−B, A−B″), G3, G2 and the contrasts H3 and H2; every interval includes zero.](../plan/figs/paperfig4a_grid_effects.png)
 
 ![(b) Sweep: God − B″ welfare per condition (God's first round 1/3/8/14, K 1/2/4, board off, board delayed) with t95, and the 16-world board-off effect without God.](../plan/figs/paperfig4b_sweep_effects.png)
 
 ### 5.3 The public board is load-bearing
-We disabled the board, without God, and compared against G1's no-God branch on the same 16 worlds (Figure 3; Table E3). Welfare falls from 0.440 to 0.267 (−0.173 [−0.257, −0.089], p = 0.0003, 14 of 16 worlds lower) and win rate from 83.1% to 52.5% (−0.306 [−0.406, −0.206]). All 34 follow-up games are healthy, with 0 invariant violations, no board-off post attempts, and delayed posts visible only after the delay (CR).
+We disabled the board, without God, and compared against G1's no-God branch on the same 16 worlds (Figure 3; Table E4). Welfare falls from 0.440 to 0.267 (−0.173 [−0.257, −0.089], p = 0.0003, 14 of 16 worlds lower) and win rate from 83.1% to 52.5% (−0.306 [−0.406, −0.206]). All 34 follow-up games are healthy, with 0 invariant violations, no board-off post attempts, and delayed posts visible only after the delay (CR).
 
 **Replication.** The original 6 worlds give −0.200 (p = 0.031, all 6 lower), and the 10 new worlds give −0.157 [−0.283, −0.030] (p = 0.016). By our arithmetic, p = 0.0003 survives Bonferroni over ~36 grid and sweep tests.
 
@@ -360,7 +348,15 @@ Board main effect (no-God board off vs. G1 no-God, same worlds): −0.200 [−0.
 
 ## Appendix E: Additional tables
 
-**Table E1.** Minimum detectable effects (80% power, α = 0.05, two-sided t) under the planning SD (0.19, from four pilots) and the observed SD (GR §5).
+**Table E1.** Grid cells as launched (GR §1).
+
+| Cell | Turn mode | God schedule (K) | Branches per world | Worlds | Hard cap | Realized cost |
+|---|---|---|---|---|---|---|
+| G1 | simultaneous | fraud r3, CoT r5 (K=2) | A, B, B′ | 16 | $1.35 | $0.851 |
+| G2 | sequential | as G1 (K=2) | A, B | 8 (worlds 0-7) | $0.55 | $0.343 (+$0.0075 aborted launch) |
+| G3 | simultaneous | fraud r3/r5/r7, CoT r4/r6/r8 (K=6) | A, B | 16 | $0.95 | $0.785 |
+
+**Table E2.** Minimum detectable effects (80% power, α = 0.05, two-sided t) under the planning SD (0.19, from four pilots) and the observed SD (GR §5).
 
 | Test | n | Planned MDE | Observed SD | Observed MDE |
 |---|---|---|---|---|
@@ -370,7 +366,7 @@ Board main effect (no-God board off vs. G1 no-God, same worlds): −0.200 [−0.
 | G2 | 8 | ≈ 0.22 | 0.188 | ≈ 0.22 |
 | H2 (mode) | 8 | ≈ 0.31 | 0.228 | ≈ 0.26 |
 
-**Table E2.** Grid paired differences: mean, t-based 95% CI, sign-flip p (GR §3-4; bootstrap CIs there).
+**Table E3.** Grid paired differences: mean, t-based 95% CI, sign-flip p (GR §3-4; bootstrap CIs there).
 
 | Comparison | n | Welfare | Win rate | Needs lost / agent |
 |---|---|---|---|---|
@@ -381,7 +377,7 @@ Board main effect (no-God board off vs. G1 no-God, same worlds): −0.200 [−0.
 | H3: G3 Δ − G1 Δ | 16 | −0.008 [−0.118, +0.101], p 0.90 | +0.006 [−0.122, +0.135], p 1.00 | −0.075 [−0.216, +0.066], p 0.33 |
 | H2: G2 Δ − G1 Δ | 8 | +0.021 [−0.170, +0.212], p 0.86 | +0.038 [−0.186, +0.261], p 0.80 | −0.113 [−0.207, −0.018], p 0.062 |
 
-**Table E3.** Board off vs. board on, without God, per agent, 16 paired worlds (SR; `plan/figs/board_effect.txt`; verified in CR).
+**Table E4.** Board off vs. board on, without God, per agent, 16 paired worlds (SR; `plan/figs/board_effect.txt`; verified in CR).
 
 | Per agent | Board on | Board off | Difference, t95, p |
 |---|---|---|---|
@@ -392,7 +388,7 @@ Board main effect (no-God board off vs. G1 no-God, same worlds): −0.200 [−0.
 | Wrong defects | 0.31 | 0.94 | +0.63 [+0.43, +0.84], p 0.0001 |
 | Correct defects | 0.47 | 0.44 | −0.03 [−0.16, +0.11], p 0.77 |
 
-**Table E4.** Behavioural God effects in the 40 matched grid worlds (G1 16, G3 16, G2 8), God vs. no God (SD; recomputed in CR). Forged-DM rows count gives from the receiver to the impersonated sender in rounds t..t+2 after the forgery (round t).
+**Table E5.** Behavioural God effects in the 40 matched grid worlds (G1 16, G3 16, G2 8), God vs. no God (SD; recomputed in CR). Forged-DM rows count gives from the receiver to the impersonated sender in rounds t..t+2 after the forgery (round t).
 
 | Measure | God | No God | Paired per-world Δ, t95, p (n) |
 |---|---|---|---|

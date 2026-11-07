@@ -76,10 +76,12 @@ All figures: vector PDF + PNG, 7.0 in wide, in `plan/figs/`. Every plotted numbe
 | Fig 4 | Divergence, God vs. fork-matched B″ aligned at F (G1 r3, start r8, r14, board off; G1 also B′). Supersedes `sweep_*_divergence.png` | `plan/figs/paperfig3_divergence.{pdf,png}` | DONE |
 | Fig 5 | Network of world g02 (median-|Δwelfare| world of G1), A vs. B at r3 and r20 | `plan/figs/paperfig2_network.{pdf,png}` | DONE |
 | Fig 6 (optional) | Timeline of g02's God branch | `plan/figs/paperfig6_timeline.{pdf,png}` | DONE |
-| Table 1 | Game and model settings (N, rounds, keys/needs/copies, actions per turn, defect rules, visibility, context budget, model, sampling, reasoning effort) | `configs/grid_oss_sim_k2.yaml`, `configs/base.yaml`, run manifests | can fill now (settings, not results) |
-| Table 2 | Grid cells: config, turn mode, God schedule, branches, seeds, cost caps | `plan/GRID_PLAN.md` §2a, `configs/grid_oss_*.yaml` | can fill now (as planned) |
-| Table 3 | Main results: per cell, per metric, mean Δ, t95 CI, sign-flip p, bootstrap CI (secondary), noise baselines, n healthy seeds | `grid_stats` output | after grid |
-| Table 4 (appendix) | Health: per cell, LLM error rate, parse failures, truncation (finish=length), excluded seeds, realized cost | `python -m swarm.analysis.call_metrics runs/<cell>`, `runs/grid_driver*.log`, `runs/openrouter_ledger.jsonl` | after grid |
+| Table E1 (appendix) | Grid cells as launched (turn mode, God schedule, branches, worlds, caps, realized cost) | GR §1 | DONE |
+| Table E2 (appendix) | Planned vs. observed MDE | GR §5 | DONE |
+| Table E3 (appendix) | Grid paired differences (welfare, win rate, needs lost) | GR §3-4 | DONE |
+| Table E4 (appendix) | Board off vs. on, no God, 16 worlds | SR, `plan/figs/board_effect.txt` | DONE |
+| Table E5 (appendix) | Behavioural God effects and gossip counts | SD, CR | DONE |
+| Table B1 (appendix) | Per-cell health | GR §2 | DONE |
 
 ## Open items for the lead
 

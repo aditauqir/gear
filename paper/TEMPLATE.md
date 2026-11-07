@@ -80,7 +80,12 @@ The build does the following:
      - the power table, the grid table (Table E2) and the board table (Table E3) moved to Appendix E, with their key numbers kept in the text;
      - the g02 network figure moved to Appendix C (Figure C1).
    - After the behavioural (SOCIAL_DYNAMICS) paragraph was added, 3.5 (agents and logging) and the Section 4 health-check and invariant paragraphs moved to Appendix B (B.1, B.2). The preview is again 8 main pages, with page 8 about 92% full.
-   - **Next cuts if the Google Doc runs over:** move Table 1 to Appendix E; shrink the Figure 2b and Figure 3 widths (`WIDTHS` in `build_preview.py`); trim Related Work.
+   - The coordination-game wording then pushed page 8 to 97%. To make room for the network results and the author block, these moved too:
+     - Table 1 (grid cells) went to Appendix E as Table E1, and the other appendix tables were renumbered E2-E5;
+     - Figure 2b was shrunk to 65% width and Figure 3 to 58%;
+     - Related Work was condensed, with every citation kept.
+   - Result: page 8 is about 44% full.
+   - **Next cuts if needed:** move Figure 4 (divergence) or Figure 1 to an appendix; turn the Section 4 Power paragraph into an appendix pointer; shorten Section 3.2 God.
 9. **Export.** File → Download → PDF document. Open the PDF and check:
    - the abstract is 150 to 250 words;
    - no `[RESULT` or `[CHECK` strings remain;
