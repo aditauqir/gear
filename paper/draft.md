@@ -207,7 +207,7 @@ Against fork-matched noise, God's divergence is *lower*: 0.90 vs. 0.95 for B″ 
 Neither tripling the budget (H3) nor sequential turns (H2) changes God's effect (Table 3). Across about 27 outcome tests, the one interval that excludes zero is needs lost in the turn-mode contrast: −0.113 [−0.207, −0.018]. Its sign-flip p is 0.062 at n = 8, uncorrected, so we treat it as noise.
 
 ### 5.5 Follow-up sweep (exploratory)
-One factor at a time around G1, on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board off, N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR). Validity checks (CR):
+One factor at a time around G1, on worlds 0-7 (cost $2.142): God's first round (1, 3, 8, 14), K (1, 2, 4), board off, N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR). Validity checks (CR):
 - God fired at exactly the scheduled rounds and K.
 - B″ forks exactly at the fork round in 30 of 30 worlds, and 0 of 290 fork-round responses match the control.
 - All 147 analysed games completed; 0 invariant violations.
@@ -218,7 +218,6 @@ One factor at a time around G1, on worlds 0-7: God's first round (1, 3, 8, 14), 
 - **Late God.** Acting first at round 14 is tightly null: −0.025 [−0.080, +0.030]. Otherwise n = 8 excludes only large effects (MDE ≈ 0.15-0.25).
 - **No noise arm.** K=6, N=5 and N=20 (n = 4) have God − B only; all are null.
 - **Board off.** Turning the message board off lowers no-God welfare *by itself*: −0.200 [−0.333, −0.067], p = 0.031, n = 6, with all 6 worlds negative. God stays null there (A−N +0.056 [−0.170, +0.281]). Given low n, many tests and differently seeded controls, it is exploratory.
-- **Cost:** $2.142.
 
 ## 6 Discussion
 
