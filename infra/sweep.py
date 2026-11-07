@@ -39,7 +39,7 @@ REPO = Path(__file__).resolve().parent.parent
 CONF_DIR = REPO / "configs" / "sweep"
 KEY_FILE = Path("/home/iraj/projects/swarm_data?/.planAdemoenv")
 PY = [sys.executable]
-LEDGER_STOP = 7.80                 # hard: the ledger must never reach this
+LEDGER_STOP = 14.80                # hard: the ledger must never reach this (raised from 7.80 for E1, lead 2026-11-07)
 # Sweep-total guard: the ledger was $5.0575 when the main grid ended (before any sweep spend), and the
 # whole sweep may spend $2.30, so new drivers stop at 5.0575 + 2.30 (other agents' spend counts too).
 SWEEP_LEDGER_STOP = 7.35
@@ -122,6 +122,11 @@ CONDS: dict[str, Cond] = {
     "k1": Cond("k", 3, "K=1 (fraud r3)", {"budget": {"k": 1, "scope": "game"}, "schedule": sched((3, FRAUD))}),
     "k4": Cond("k", 3, "K=4 (fraud r3/r5, cot r4/r6)",
                {"budget": {"k": 4, "scope": "game"}, "schedule": sched((3, FRAUD), (4, COT), (5, FRAUD), (6, COT))}),
+    # E1 (plan/COHERENCE_REVIEW.md section 5): the original PDF's per-round budget, K=1 per round, message
+    # fraud every round r3-r20 (18 acts), G1's templates/targeting; all 16 G1 worlds
+    "e1": Cond("k", 3, "E1: K=1 per round, message fraud every round r3-r20 (18 acts)",
+               {"budget": {"k": 1, "scope": "round"}, "schedule": sched(*((r, FRAUD) for r in range(3, 21)))},
+               seeds=16),
     # factor 4: number of agents
     "n5": Cond("n", 4, "N=5", {}, {"n_agents": 5}, conc_games=18),
     "n20": Cond("n", 4, "N=20", {}, {"n_agents": 20}, conc_games=9),
@@ -188,7 +193,7 @@ def config_dict(name: str, c: Cond, conc: int = 4) -> dict[str, Any]:
                   for r in ("agent", "god", "judge", "summarizer")},
         "llm": {"budget_usd": c.cap, "cache": {"mode": "read_write"},
                 "openrouter": {"enabled": True, "model": "openai/gpt-oss-120b", "max_concurrency": conc,
-                               "global_cap_usd": 8.0, "price_in_per_mtok": 0.03, "price_out_per_mtok": 0.15,
+                               "global_cap_usd": 20.0, "price_in_per_mtok": 0.03, "price_out_per_mtok": 0.15,
                                "reasoning_effort": "low", "provider_sort": "price"}},
     }
 
@@ -367,7 +372,8 @@ def _board_checks(name: str, cfg: Any, ev: list[dict], i: int) -> list[str]:
 # ------------------------------------------------------------------ launch
 def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only: list[str] | None,
            conc: int, price: float, dry_run: bool, cap_usd: float | None = None,
-           paid_seeds: int | None = None, ledger_stop: float | None = None) -> int:
+           paid_seeds: int | None = None, ledger_stop: float | None = None, max_fallback: float | None = None,
+           driver_log: str = "runs/sweep_driver.log") -> int:
     write_configs(names)
     cells, caps, total = [], [], 0.0
     for name in names:
@@ -392,8 +398,8 @@ def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only:
     if only:
         sets += [f"runner.fork.only_branches={json.dumps(only)}", "runner.report=false"]
     cmd = PY + [str(REPO / "infra" / "grid_driver.py"), "--seeds", str(seeds or 8), "--rounds", "20",
-                "--ledger-stop", str(min(LEDGER_STOP, ledger_stop or SWEEP_LEDGER_STOP)), "--log", "runs/sweep_driver.log", "--run-prefix", run_prefix,
-                "--cap-override"]
+                "--ledger-stop", str(min(LEDGER_STOP, ledger_stop or SWEEP_LEDGER_STOP)), "--log", driver_log, "--run-prefix", run_prefix,
+                "--cap-override"] + (["--max-fallback", str(max_fallback)] if max_fallback is not None else [])
     for cell in cells:
         cmd += ["--cell", cell]
     for s_ in sets:
@@ -405,7 +411,7 @@ def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only:
     out = open(REPO / "runs" / f"sweep_driver_{tag}.out", "a")
     p = subprocess.Popen(cmd, cwd=REPO, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          start_new_session=True)
-    print(f"driver {tag} pid/pgid {p.pid} (log runs/sweep_driver.log, out runs/sweep_driver_{tag}.out)")
+    print(f"driver {tag} pid/pgid {p.pid} (log {driver_log}, out runs/sweep_driver_{tag}.out)")
     return 0
 
 
@@ -431,6 +437,9 @@ def main() -> int:
     la.add_argument("--paid-seeds", type=int, default=None, help="seeds not yet cached (projection only)")
     la.add_argument("--ledger-stop", type=float, default=None,
                     help=f"driver ledger stop (default {SWEEP_LEDGER_STOP}; never above {LEDGER_STOP})")
+    la.add_argument("--max-fallback", type=float, default=None,
+                    help="driver aborts when this share of fresh calls is not from the primary provider")
+    la.add_argument("--driver-log", default="runs/sweep_driver.log")
     st = sub.add_parser("stats")
     st.add_argument("conds", nargs="*")
     a = ap.parse_args()
@@ -454,7 +463,7 @@ def main() -> int:
         return 0 if dry(names, a.rounds, a.seeds) else 1
     if a.cmd == "launch":
         return launch(names, a.tag, a.run_prefix, a.seeds, a.only_branches, a.conc, a.price, a.dry_run, a.cap,
-                      a.paid_seeds, a.ledger_stop)
+                      a.paid_seeds, a.ledger_stop, a.max_fallback, a.driver_log)
     if a.cmd == "stats":
         runs = [str(REPO / "runs" / f"sweep_{n}") for n in names if (REPO / "runs" / f"sweep_{n}").exists()]
         return conda_py(["-m", "swarm.analysis.sweep_stats", *runs])
