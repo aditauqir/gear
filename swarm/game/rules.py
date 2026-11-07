@@ -2,7 +2,9 @@
 
 No I/O, no LLM, no randomness. The state is mutated IN PLACE (deep copies happen only at round
 boundaries, in the engine) unless `copy=True`. `apply` never raises on agent input: an invalid action
-returns a single `action_result` event with ok=False and leaves the state unchanged.
+returns a single `action_result` event with ok=False and leaves the state unchanged. An INTERNAL error
+(a KeyError/ValueError/IndexError inside a rule) is logged at ERROR with its traceback and becomes a
+failed action "error:<Type>"; with SWARM_STRICT_RULES=1 (the test suite) it is re-raised.
 
 Timing convention: every record created here is stamped with `state.turn_index` (the slot of the
 acting agent). A record is visible to observations with index STRICTLY greater than its stamp
@@ -23,6 +25,9 @@ Rules (ARCHITECTURE_v2 §1, D1-D4, D12, D13):
 """
 
 from __future__ import annotations
+
+import logging
+import os
 
 from swarm.config import GameCfg
 from swarm.rng import make_msg_id
@@ -54,6 +59,7 @@ from swarm.schema import (
 )
 
 Events = list[EventBody]
+log = logging.getLogger(__name__)
 
 
 # ------------------------------------------------------------------ scoring helpers
@@ -175,6 +181,11 @@ def apply(state: GameState, actor: AgentId, action: Action, cfg: GameCfg, *,
         if isinstance(action, GrepLog):
             return state, _fail(state, actor, action, "grep_handled_by_engine")
     except (KeyError, ValueError, IndexError) as e:  # defensive: rule closure
+        # Not agent input (that is validated above): an internal bug, and the state may already be
+        # partly mutated. Log it loudly; SWARM_STRICT_RULES=1 (set by the test suite) re-raises.
+        log.error("rules.apply internal error on %s by %s: %r", action.kind, actor, e, exc_info=True)
+        if os.environ.get("SWARM_STRICT_RULES") == "1":
+            raise
         return state, _fail(state, actor, action, f"error:{type(e).__name__}")
     return state, _fail(state, actor, action, "unknown_action")
 

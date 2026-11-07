@@ -14,6 +14,10 @@ from swarm.llm.base import FakeLLM
 from swarm.schema import GameState
 from tests.fixtures.fixed_state import make_fixed_state
 
+# Internal rule errors must surface in tests instead of becoming silent failed actions (rules.apply
+# reads this at call time).
+os.environ.setdefault("SWARM_STRICT_RULES", "1")
+
 settings.register_profile("ci", max_examples=50, deadline=None)
 settings.register_profile("deep", max_examples=500, deadline=None)
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "ci"))

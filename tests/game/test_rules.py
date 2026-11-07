@@ -176,3 +176,21 @@ def test_fuzz_rule_closure_and_conservation():
                 assert initial <= set(now)                             # initial copies never vanish
                 for s in st.agents.values():                           # monotone: burned/lost only grow
                     assert set(s.burned) <= set(s.needs) and set(s.lost) <= set(s.needs)
+
+
+def test_internal_rule_error_is_loud(monkeypatch, caplog):
+    """Review #12: an internal KeyError inside a rule is logged at ERROR and re-raised under
+    SWARM_STRICT_RULES=1 (the test default); without it the action fails as error:KeyError."""
+    from swarm.game import rules
+
+    def boom(*a, **k):
+        raise KeyError("bug")
+    monkeypatch.setattr(rules, "_give", boom)
+    st = mk_state(FOUR)
+    cfg = run_cfg().game
+    with pytest.raises(KeyError):
+        apply(st, "ann", GiveKey(to="bob", info_id=1), cfg)
+    monkeypatch.setenv("SWARM_STRICT_RULES", "0")
+    with caplog.at_level("ERROR", logger="swarm.game.rules"):
+        _, evs = apply(st, "ann", GiveKey(to="bob", info_id=1), cfg)
+    assert evs[0].data.reason == "error:KeyError" and "internal error" in caplog.text
