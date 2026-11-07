@@ -12,6 +12,12 @@
 - Not run (no money): board delay/anon/skip3, keys, rounds, and B″ for the N cells. They are
   ranked in §5.
 
+**Follow-ups (lead, 05:25-06:15, from the $7.80 headroom; ≤ 8 in flight):**
+- `c16_sweep_board_off`: board-off noGod only on worlds 0-15, $0.134. It confirms the board-off
+  main effect at n=16.
+- `sweep_board_delay2`: God + noGod + B″@r3, 6 worlds, $0.358.
+- Sweep total is now $2.634 and the ledger $7.69. Results are in SWEEP_RESULTS.
+
 **Incidents (all handled; the affected worlds were re-run or excluded):**
 1. **False `budget_exceeded` (b2_sweep_start8: 4 worlds; b2_sweep_start14: 8; sweep_start14: 3 God branches).**
    - Cause: RunBudget reserves a worst-case estimate for **every pending call**, before the

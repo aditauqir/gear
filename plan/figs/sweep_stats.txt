@@ -58,32 +58,42 @@
   div_god                +0.884 t95 [+0.858, +0.910] p=0.031 boot [+0.866, +0.902] n=6
   div_noise              +0.944 t95 [+0.917, +0.970] p=0.031 boot [+0.926, +0.964] n=6
   div_gap                -0.059 t95 [-0.095, -0.023] p=0.062 boot [-0.080, -0.031] n=6
+== board_delay2: sweep_board_delay2 + noise sweep_board_delay2@noisefork (n=6 worlds)
+  welfare:god-nogod      +0.072 t95 [-0.157, +0.302] p=0.500 boot [-0.089, +0.222] n=6
+  welfare:noise-nogod    -0.050 t95 [-0.240, +0.140] p=0.594 boot [-0.183, +0.078] n=6
+  welfare:god-noise      +0.122 t95 [-0.024, +0.268] p=0.031 boot [+0.050, +0.239] n=6
+  win_rate:god-noise     +0.133 t95 [-0.062, +0.329] p=0.125 boot [+0.033, +0.283] n=6
+  defects:god-noise      -0.233 t95 [-0.733, +0.266] p=0.344 boot [-0.583, +0.100] n=6
+  board_posts:god-noise  -0.017 t95 [-0.789, +0.756] p=1.000 boot [-0.533, +0.567] n=6
+  div_god                +0.892 t95 [+0.854, +0.930] p=0.031 boot [+0.866, +0.917] n=6
+  div_noise              +0.931 t95 [+0.886, +0.976] p=0.031 boot [+0.895, +0.956] n=6
+  div_gap                -0.039 t95 [-0.084, +0.005] p=0.031 boot [-0.072, -0.013] n=6
 == k1: sweep_k1 + noise b2_sweep_base@noisefork (n=8 worlds)
-  welfare:god-nogod      -0.058 t95 [-0.126, +0.010] p=0.125 boot [-0.113, -0.008] n=8
-  welfare:noise-nogod    +0.046 t95 [-0.059, +0.151] p=0.500 boot [-0.021, +0.133] n=8
-  welfare:god-noise      -0.104 t95 [-0.213, +0.005] p=0.062 boot [-0.192, -0.025] n=8
+  welfare:god-nogod      -0.058 t95 [-0.126, +0.010] p=0.125 boot [-0.112, -0.008] n=8
+  welfare:noise-nogod    +0.046 t95 [-0.059, +0.151] p=0.500 boot [-0.021, +0.137] n=8
+  welfare:god-noise      -0.104 t95 [-0.213, +0.005] p=0.062 boot [-0.196, -0.025] n=8
   win_rate:god-noise     -0.075 t95 [-0.215, +0.065] p=0.375 boot [-0.188, +0.025] n=8
   defects:god-noise      +0.100 t95 [-0.123, +0.323] p=0.367 boot [-0.075, +0.263] n=8
-  board_posts:god-noise  +1.100 t95 [-0.318, +2.518] p=0.141 boot [+0.063, +2.237] n=8
+  board_posts:god-noise  +1.100 t95 [-0.318, +2.518] p=0.141 boot [+0.050, +2.237] n=8
   div_god                +0.886 t95 [+0.869, +0.904] p=0.008 boot [+0.872, +0.899] n=8
   div_noise              +0.946 t95 [+0.930, +0.962] p=0.008 boot [+0.934, +0.958] n=8
   div_gap                -0.060 t95 [-0.087, -0.033] p=0.008 boot [-0.083, -0.041] n=8
 == k4: r3_sweep_k4 + noise b2_sweep_base@noisefork (n=8 worlds)
-  welfare:god-nogod      -0.004 t95 [-0.100, +0.092] p=1.000 boot [-0.083, +0.062] n=8
-  welfare:noise-nogod    +0.046 t95 [-0.059, +0.151] p=0.500 boot [-0.021, +0.137] n=8
+  welfare:god-nogod      -0.004 t95 [-0.100, +0.092] p=1.000 boot [-0.083, +0.063] n=8
+  welfare:noise-nogod    +0.046 t95 [-0.059, +0.151] p=0.500 boot [-0.021, +0.133] n=8
   welfare:god-noise      -0.050 t95 [-0.178, +0.078] p=0.453 boot [-0.154, +0.038] n=8
   win_rate:god-noise     +0.000 t95 [-0.100, +0.100] p=1.000 boot [-0.075, +0.075] n=8
   defects:god-noise      +0.125 t95 [-0.123, +0.373] p=0.312 boot [-0.075, +0.312] n=8
-  board_posts:god-noise  -0.425 t95 [-1.919, +1.069] p=0.539 boot [-1.562, +0.750] n=8
+  board_posts:god-noise  -0.425 t95 [-1.919, +1.069] p=0.539 boot [-1.563, +0.750] n=8
   div_god                +0.892 t95 [+0.868, +0.917] p=0.008 boot [+0.872, +0.911] n=8
   div_noise              +0.946 t95 [+0.930, +0.962] p=0.008 boot [+0.934, +0.958] n=8
-  div_gap                -0.054 t95 [-0.087, -0.021] p=0.008 boot [-0.083, -0.033] n=8
+  div_gap                -0.054 t95 [-0.087, -0.021] p=0.008 boot [-0.082, -0.033] n=8
 == k6: grid_oss_sim_k6 + noise none (n=8 worlds)
-  welfare:god-nogod      +0.054 t95 [-0.110, +0.218] p=0.469 boot [-0.071, +0.179] n=8
+  welfare:god-nogod      +0.054 t95 [-0.110, +0.218] p=0.469 boot [-0.075, +0.179] n=8
   div_god                +0.879 t95 [+0.854, +0.905] p=0.008 boot [+0.858, +0.897] n=8
 == n5: r3_sweep_n5 + noise none (n=8 worlds)
   welfare:god-nogod      -0.025 t95 [-0.199, +0.149] p=0.828 boot [-0.158, +0.117] n=8
-  div_god                +0.896 t95 [+0.845, +0.947] p=0.008 boot [+0.851, +0.928] n=8
+  div_god                +0.896 t95 [+0.845, +0.947] p=0.008 boot [+0.850, +0.928] n=8
 == n20: sweep_n20 + noise none (n=4 worlds)
   UNHEALTHY games/g04-nogod: status error -> world excluded
   UNHEALTHY games/g05-god: status error -> world excluded

@@ -13,9 +13,12 @@ narrow at this n.
 ## TL;DR
 
 1. **No condition shows a God effect on welfare distinguishable from fork-matched sampling noise.**
-   - Every A−N (God − B″) t95 contains 0. This holds for start round 1/3/8/14, K 1/2/4, and board off.
+   - Every A−N (God − B″) t95 contains 0. This holds for start round 1/3/8/14, K 1/2/4, board off and
+     delayed board.
    - The smallest p is **K=1: −0.104, t95 [−0.213, +0.005], p=0.062, n=8**.
-   - About 8 primary tests were run with no multiple-comparison correction, so this is not
+   - The delayed board (+0.122, sign-flip p=0.031 with all 6 worlds positive, but the t95 includes
+     0) is the other near-miss; see point 5.
+   - About 9 primary tests were run with no multiple-comparison correction, so neither is
      evidence.
    - At n=8 the A−N MDE is about 0.15-0.25 welfare. Only large effects are excluded.
 2. **Divergence is not a God signal.**
@@ -40,7 +43,16 @@ narrow at this n.
    - Mechanism: without the board, agents send about 1.8× the DMs but give fewer keys and make
      about 3× the wrong defects.
    - In the 6 worlds with a God arm, God's effect stays null: A−N +0.056 [−0.170, +0.281].
-5. **Late God is tightly null.** God first acting at r14 gives A−N −0.025, t95 [−0.080, +0.030]. By
+5. **Delayed board (k=2) is the one cell where God beats the noise baseline in every world, but
+   it is not robust.**
+   - A−N = **+0.122, t95 [−0.024, +0.268], sign-flip p=0.031, n=6.** God's branch ends with higher
+     welfare than B″ in all 6 worlds, which is exactly the smallest p possible at n=6.
+   - The t95 includes 0, and this is about the 9th test of the night, so it is a lead to
+     replicate, not a finding.
+   - The direction (God *helps*) matches nothing else in the sweep.
+   - The delayed board itself, with no God, changes welfare little against G1: −0.028
+     [−0.242, +0.186], n=6. Win rate falls (−0.150, p=0.06) and gives fall (−1.68 per agent).
+6. **Late God is tightly null.** God first acting at r14 gives A−N −0.025, t95 [−0.080, +0.030]. By
    r14 most agents have already won or are locked in.
 
 ## Cells (all healthy: 0 LLM errors and 0 parse failures)
@@ -55,6 +67,8 @@ narrow at this n.
 | K=4 | fraud r3/r5, cot r4/r6 | `r3_sweep_k4` | `b2_sweep_base` | 0-7 | $0.134 |
 | K=6 (= G3) | fraud r3/5/7, cot r4/6/8 | `grid_oss_sim_k6` (existing) | none | 0-7 | (grid) |
 | board_off | G1's | `sweep_board_off` | `b2_sweep_board_off` (B″@r3) | 0-5 | $0.164 + $0.079 |
+| board_off, noGod only (follow-up) | none | `c16_sweep_board_off` (worlds 0-5 replayed, 6-15 new) | none | 0-15 | $0.134 |
+| board_delay2 (follow-up) | G1's | `sweep_board_delay2` | same run (B″@r3) | 0-5 | $0.358 |
 | N=5 | G1's | `r3_sweep_n5` | none (budget) | 0-7 | $0.085 + $0.015 smoke |
 | N=20 | G1's | `sweep_n20` | none (budget) | 0-3 (low n; worlds 4-5 crashed, see the plan's incidents) | $0.577 + $0.147 smoke |
 
@@ -72,9 +86,14 @@ prefix is identical (cache), and after F the responses are fresh (seed tag `0@rF
 responses identical in `b2_sweep_base` g00).
 
 **Spend:**
-- **Sweep total $2.142** (≤ $2.30), including $0.192 of smokes and about $0.11 of stopped or
-  partial runs (re-run from the cache).
-- The ledger went from $5.06 to $7.20 (< $7.80).
+- **Sweep total $2.634.**
+  - The planned sweep was $2.142 (≤ $2.30), including $0.192 of smokes and about $0.11 of
+    stopped or partial runs (re-run from the cache).
+  - The lead's follow-ups, funded from the remaining headroom, cost $0.492: board_off noGod on 16
+    worlds $0.134, delayed board $0.358.
+- The ledger went from $5.06 to **$7.69** (< $7.80; drivers stopped at $7.75/$7.78).
+- Providers on the follow-ups: PrimeIntellect 5,088 calls, Near AI 221, Venice 1; at most 8 calls
+  in flight.
 - Per run id: `python3 -c` over `runs/openrouter_ledger.jsonl` (in SWEEP_PLAN §4).
 
 ## Results by factor
@@ -104,6 +123,7 @@ reference (K=2, start r3, board on, N=10).
 |---|---|---|---|---|---|---|---|---|---|
 | base | 8 | 0.450 / 0.458 / 0.512 | -0.062 [-0.207, +0.082] p=0.36 | -0.008 [-0.126, +0.110] p=0.94 | +0.054 [-0.050, +0.158] p=0.34 | -0.075 [-0.199, +0.049] p=0.28 | +0.100 [-0.119, +0.319] p=0.37 | +0.29 [-1.61, +2.19] p=0.78 | 0.90 / 0.95 (-0.04 [-0.07, -0.01] p=0.01) |
 | board_off | 6 (low n) | 0.294 / 0.272 / 0.239 | +0.056 [-0.170, +0.281] p=0.69 | +0.022 [-0.162, +0.207] p=0.88 | -0.033 [-0.164, +0.098] p=0.69 | +0.183 [-0.009, +0.376] p=0.12 | -0.167 [-1.031, +0.698] p=0.81 | +0.00 [+0.00, +0.00] p=1.00 | 0.88 / 0.94 (-0.06 [-0.10, -0.02] p=0.06) |
+| board_delay2 | 6 (low n) | 0.517 / 0.444 / 0.394 | +0.122 [-0.024, +0.268] p=0.03 | +0.072 [-0.157, +0.302] p=0.50 | -0.050 [-0.240, +0.140] p=0.59 | +0.133 [-0.062, +0.329] p=0.12 | -0.233 [-0.733, +0.266] p=0.34 | -0.02 [-0.79, +0.76] p=1.00 | 0.89 / 0.93 (-0.04 [-0.08, +0.00] p=0.03) |
 
 ### God budget K (interventions per game)
 
