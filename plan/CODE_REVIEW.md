@@ -19,23 +19,23 @@ All of them are byte-identical, with one exception: fix #1 (8ebbee7) was approve
 | 2 | bug-high | context/leak_oracle.py:169 | `original_text` canary matched the bare note text; a repeated note or a DM aborted the game with TruthLeak | **fixed** d5b7eb5 |
 | 3 | bug-high | game/engine.py:120 (was `asyncio.gather`) | Simultaneous mode: when one act() raised (BudgetExceeded), the other LLM calls kept running and spending after game_end, and logged into a closed GameWriter | **fixed** 43bf2f2 |
 | 4 | bug-low | runner/wiring.py:261 | ScriptedGod `after_turns>0` in simultaneous mode (and `after_turns>=n_agents`) never fired, silently | **fixed** c2f4a3d (fail fast) |
-| 5 | bug-low | game/engine.py:324 + runner/wiring.py:225 | Real runs log `turn.prompt_hash/prompt_set_hash = null` and emit no `context_built` events | open (changes events.jsonl) |
-| 6 | bug-low (design) | config.py:313 `config_hash` | Hash covers operational knobs (cache path, out_dir, global_cap_usd, concurrency, retry, n_games, name). The uncommitted cap default 2→6 changes demo.yaml's hash, so its game ids, seeds and cache keys change too | open (recommendation) |
-| 7 | bug-low | game/engine.py:174 vs 288 | Two God stamping conventions: GodLike stamps the wake slot, HookGod (the real path) stamps slot-1. In simultaneous mode a forged DM therefore shows the same round in real runs and the next round with `god=` | open (doc/contract) |
-| 8 | bug-low | llm/openai_compat.py:207-226, 277 | One budget reservation covers all retries; a timed-out POST may still be billed but records 0 | open (llm/ is off-limits now) |
-| 9 | bug-low | runner/wiring.py:62-67 | `RunBudget` and `GlobalLedger` are built per client: an agent model and a god model give two per-run caps; reservations are per process | open (latent: LLMGod is a stub) |
-| 10 | bug-low | llm/openrouter.py:71-123 | GlobalLedger reservations are in-memory only, so concurrent processes (e.g. sim60 plus another run) can overshoot the global cap by their in-flight estimates | open |
-| 11 | bug-low | game/engine.py:491, runner/run.py:59,117 | BudgetExceeded is caught inside the engine, so the game and the run report `status=done`. The `budget_exceeded` run status is dead code, and a partial round gets no round_end or snapshot | open |
-| 12 | bug-low | game/rules.py:170 | `apply` turns KeyError/ValueError/IndexError into a failed action. An engine bug becomes silent, and the state may be partially mutated, which contradicts "state unchanged" | open |
-| 13 | bug-low | adversary/powers.py:142 | cot_control uses `action.mode` without checking `god.powers.cot_control.mode` (an LLM God could append when the config says replace) | open (latent) |
+| 5 | bug-low | game/engine.py:324 + runner/wiring.py:225 | Real runs log `turn.prompt_hash/prompt_set_hash = null` and emit no `context_built` events | **fixed** c671219 behind `run.log_prompt_trace` (default off, never hashed) |
+| 6 | bug-low (design) | config.py:313 `config_hash` | Hash covers operational knobs (cache path, out_dir, global_cap_usd, concurrency, retry, n_games, name). The uncommitted cap default 2→6 changes demo.yaml's hash, so its game ids, seeds and cache keys change too | **fixed** 98cb469 (operational knobs hashed as fixed values) |
+| 7 | bug-low | game/engine.py:174 vs 288 | Two God stamping conventions: GodLike stamps the wake slot, HookGod (the real path) stamps slot-1. In simultaneous mode a forged DM therefore shows the same round in real runs and the next round with `god=` | **fixed** d9b9883: GodRunner owns one convention (decide at S, deliver stamped S−1), CONTRACTS §2 clarified |
+| 8 | bug-low | llm/openai_compat.py:207-226, 277 | One budget reservation covers all retries; a timed-out POST may still be billed but records 0 | **documented** fa9d36a (bound in llm/budget.py) |
+| 9 | bug-low | runner/wiring.py:62-67 | `RunBudget` and `GlobalLedger` are built per client: an agent model and a god model give two per-run caps; reservations are per process | **fixed** 6bc7591 (one RunBudget + GlobalLedger per run) |
+| 10 | bug-low | llm/openrouter.py:71-123 | GlobalLedger reservations are in-memory only, so concurrent processes (e.g. sim60 plus another run) can overshoot the global cap by their in-flight estimates | **documented** fa9d36a (overshoot ≤ Σ other processes' max_concurrency × max estimate) |
+| 11 | bug-low | game/engine.py:491, runner/run.py:59,117 | BudgetExceeded is caught inside the engine, so the game and the run report `status=done`. The `budget_exceeded` run status is dead code, and a partial round gets no round_end or snapshot | **fixed** 0872924 (status budget_exceeded; the cut-short round gets round_end + snapshot) |
+| 12 | bug-low | game/rules.py:170 | `apply` turns KeyError/ValueError/IndexError into a failed action. An engine bug becomes silent, and the state may be partially mutated, which contradicts "state unchanged" | **fixed** ff56738 (logged at ERROR; re-raised under SWARM_STRICT_RULES=1, set by the test suite) |
+| 13 | bug-low | adversary/powers.py:142 | cot_control uses `action.mode` without checking `god.powers.cot_control.mode` (an LLM God could append when the config says replace) | **fixed** 5d71830 (`mode_disabled`) |
 | 14 | bug-low | llm/openai_compat.py:250 | Single-flight: which fork branch "leads" is a race, so `cache_hit` and latency in llm_calls.jsonl are not reproducible. events.jsonl is unaffected | informational |
 | 15 | cleanup | runner/wiring.py | `run_round` monkeypatch for snapshots replaced by `GameEngine(on_snapshot=sink.snapshot)` | **done** c2f4a3d |
 | 16 | cleanup | runlog/llmlog.py | Duplicate `cache_key` recipe; now re-exported from llm/cache.py | **done** 93ea9b3 |
 | 17 | cleanup | adversary/scripted_god.py:50 | `open_needs` shadowed `rules.open_needs` with different semantics (it excludes held keys); renamed `missing_needs` | **done** 93ea9b3 |
 | 18 | cleanup | game/rules.py:117 | `deliver_message` doc claimed God's fraud uses it; it does not (and adds no ActionRecord) | **done** 93ea9b3 |
 | 19 | cleanup | game/engine.py | `run_round` split into `_play_sequential` / `_play_simultaneous`; `ledgers or {}` replaced by fill-in-place (a caller's empty dict was dropped) | **done** 43bf2f2 |
-| 20 | cleanup | engine ledgers vs wiring.LedgerSink | Two ledger builders. The engine's is unused in the real path (DecideAgent ignores it). The memory views are duplicated too (`make_decide` uses `obs.round-1` for cot, the engine `st.round`) | open |
-| 21 | cleanup | runner/synth.py | A second, independent implementation of the game rules, so it can drift from game/rules.py | open |
+| 20 | cleanup | engine ledgers vs wiring.LedgerSink | Two ledger builders. The engine's is unused in the real path (DecideAgent ignores it). The memory views are duplicated too (`make_decide` uses `obs.round-1` for cot, the engine `st.round`) | **done** c671219 (R5: the engine is the one ledger, memory and grep builder) |
+| 21 | cleanup | runner/synth.py | A second, independent implementation of the game rules, so it can drift from game/rules.py | **done** 2fc501e (R7: synth resolves actions with game.rules) |
 | 22 | cleanup | small | `engine.py:482` `max_rounds or` (0 becomes the default); `BOARD_WHOLE_TURN` defined after use; `ProgressSink._lines` class-level state shared across runs; `rules._key_value` returns 0 when no copy exists (unreachable); `LLMAgent` seeds use game_id, not game_idx as CONTRACTS §4 says (intentional for forks; doc drift) | open |
 
 ## Bugs in detail
@@ -165,8 +165,8 @@ Mutation tests are in `tests/analysis/test_invariants.py`: each tampered copy of
 | # | Severity | Where | Finding | Status |
 |---|---|---|---|---|
 | 23 | bug-low (analysis) | analysis/grid_stats.py `boot_ci` | At n=8-16 the percentile bootstrap is too narrow. r2_grid_oss_seq_k2 `lost` gives [-0.125, -0.000] but p=0.25 and t95 [-0.151, +0.026]. `rounds` gives [+0.000, +0.750] from a single non-zero seed of 8. The paper plans to report percentile bootstrap CIs | **mitigated** c544fb0: `t95` is printed next to the bootstrap. Recommendation: report sign-flip p and t95 (or BCa), and never claim significance from the percentile CI alone |
-| 24 | bug-low | infra/grid_driver.py `Cell.w_total` | The projection subtracts the shared pre-fork rounds once per extra branch. The noise replica B′ has its own seeds and pays for them, so the projection is about 1% low for 3-branch cells. The uncommitted `free=1` mode by another agent counts only the God branch, so it would under-project by about half if a cell also has a noise replica | open. Another agent has uncommitted edits in this file, so I did not touch it. Fix: subtract `min(branches-1, 1) * shared` |
-| 25 | bug-low (latent) | infra/grid_driver.py `attach` | `killpg(getpgid(pid))` without checking that the cell leads its own group. If a cell were started from a shell or wrapper without setsid, the abort would kill the whole group: possibly another cell or the watchdog itself. Today every cell is a group leader (`start_new_session`), confirmed with `ps`, so nothing is wrong now | open. Fix: if `pgid != pid`, `os.kill(pid)` only. Also `kill_group` should `proc.wait()` after SIGKILL |
+| 24 | bug-low | infra/grid_driver.py `Cell.w_total` | The projection subtracts the shared pre-fork rounds once per extra branch. The noise replica B′ has its own seeds and pays for them, so the projection is about 1% low for 3-branch cells. The uncommitted `free=1` mode by another agent counts only the God branch, so it would under-project by about half if a cell also has a noise replica | **fixed** 6d014a0 |
+| 25 | bug-low (latent) | infra/grid_driver.py `attach` | `killpg(getpgid(pid))` without checking that the cell leads its own group. If a cell were started from a shell or wrapper without setsid, the abort would kill the whole group: possibly another cell or the watchdog itself. Today every cell is a group leader (`start_new_session`), confirmed with `ps`, so nothing is wrong now | **fixed** 6d014a0 |
 | 26 | info | config_hash (98cb469) | `run.name` and `n_games` are no longer hashed. Two cells with the same game semantics now share game ids, seeds and cache keys: r2_grid_oss_seq_k2 shares all game ids with the aborted grid_oss_seq_k2. That is intended for resume and control reuse, but a "replicate" must change `run.seed` or `run.replica`; renaming the run does not make it independent | documented |
 | 27 | ok | board options | post_costs_turn, anonymous and post_skip_rounds are correct in both turn modes. Skip and wrong-defect delay share `delayed_until_round` via `max`; the resume notice is delivered once. The invariant checker covers skips (delays) and anonymous rendering (obs) | no action |
 | 28 | ok | salvage_truncated | Salvage runs only when no complete JSON object decodes. It keeps only complete action objects after `"actions"` (string-aware), and a cut-off last action is dropped. In grid_oss_sim_k2 it fired 8 times in 8,920 turns | no action |
@@ -213,3 +213,24 @@ All of these equal SWEEP_RESULTS.md.
 
   All match `plan/figs/board_*_effect.txt` and SWEEP_RESULTS.
 - **Caveat on the delayed board:** with n=6, the smallest possible sign-flip p is 2/64 = 0.031, which is what "all 6 worlds > 0" gives. The t95 includes 0, and the test is uncorrected among about 10. Report it as suggestive, not significant.
+
+
+# Branch `refactor-modular` (2026-11-07, Iraj-approved): open bugs and R4-R7
+Fixes:
+- #5, #7, #9, #11, #12 and #13 are fixed (statuses above).
+- #8 and #10 are documented bounds.
+- #24 and #25 are the grid_driver fixes.
+- Sweep incident (false budget_exceeded): the budget is now reserved INSIDE the concurrency semaphore, so queued calls reserve nothing (6bc7591). The regression test fails on the old ordering.
+
+Refactors:
+- R4: swarm/llm/budget.py.
+- R5: the engine is the one ledger builder. The real runner passes a RunnerAgent; make_decide, DecideAgent and LedgerSink are no longer in the real path, and LedgerSink stays for rebuilding ledgers from events offline.
+- R6: swarm/config_hash.py.
+- R7: synth on game.rules.
+- swarm/analysis/invariants/ is now a package.
+- Not split: swarm/viz/dashboard.py, which is planA-viz's and was edited at 06:28 (merge-conflict risk). Splitting config.py further (models vs loading) gives little beyond R6.
+
+Determinism check after every commit, branch vs master:
+- FakeLLM dry runs: sim + B′, seq, board options, noise fork B″, plus cot-replay, log-none, msg-meta and a grep-heavy policy (sim and seq). All files are byte-identical.
+- All 28 config hashes and game ids are unchanged.
+- invariants: 0 violations.

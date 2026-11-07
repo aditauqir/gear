@@ -63,7 +63,20 @@ Today it is 895 lines in one file. The new modules, one concern each:
 | `runner/god_adapter.py` | _SlotGod, make_god_hook, check_schedule (the HookGod timing adapter) |
 | `wiring.py` | client building, make_decide, _play_real, plus re-exports of everything above |
 
-## Proposed but NOT applied (behaviour change, or files owned by others)
+## R4-R7: applied on branch `refactor-modular` (2026-11-07; not merged, the lead merges)
+| Step | Commit | Note |
+|---|---|---|
+| R4 | fa9d36a, 6bc7591 | swarm/llm/budget.py; one RunBudget + GlobalLedger per run; reservation inside the semaphore |
+| R5 | c671219 | engine = one ledger/memory/grep builder; RunnerAgent replaces make_decide + DecideAgent + LedgerSink; `run.log_prompt_trace` (#5) |
+| R6 | 4ccc5e1 | swarm/config_hash.py |
+| R7 | 2fc501e | synth resolves actions with game.rules |
+| split | 2dfe273 | swarm/analysis/invariants/ package |
+
+Every commit was checked against master: byte-identical FakeLLM dry runs (sim + B′, seq, board options,
+noise fork B″; plus cot-replay, log-none, msg-meta and grep-heavy runs for R5); all 28 config
+hashes and game ids unchanged; invariants: 0 violations; the full suite green.
+
+## Originally proposed (kept for the record)
 - **R4. LLM budget layer.** Move RunBudget, GlobalLedger and estimate_cost into `swarm/llm/budget.py` (re-exported from openrouter.py). Build ONE RunBudget and GlobalLedger per run in `build_clients` (fixes CODE_REVIEW #9), and record failed-attempt estimates (#8). Blocked: `openrouter.py` has uncommitted edits by planA-sweep, and #8/#9 change spend accounting.
 - **R5. One ledger builder.** The engine's `ledgers` and `wiring.LedgerSink` duplicate each other (#20). Pass LLMAgents to the engine as a TurnAgent mapping and delete `make_decide`/DecideAgent from the real path. This also emits `prompt_hash` and `context_built` (#5). It changes events.jsonl, so it needs a lead decision.
 - **R6. Config hashing.** Move `config_hash` and the HASH_OPERATIONAL table out of `config.py` into `swarm/config_hash.py`. Blocked: `config.py` has uncommitted edits by others.
