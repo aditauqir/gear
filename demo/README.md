@@ -205,3 +205,40 @@ $PY -m swarm.viz.dashboard plan/figs/grid_dashboard.html \
 
 Every number in the videos, figures and dashboard comes from one module, `swarm/viz/metrics.py`.
 Its outcome definitions match `swarm.analysis.grid_results` and `swarm.analysis.sweep_stats`.
+
+## Social network runs (`game.network`)
+
+The visuals switch to a network-aware mode automatically when a run has `game.network`. Runs without
+it render exactly as before: the frames are pixel-identical.
+
+- **Video:**
+  - The layout follows the graph (classical MDS of hop distances, with nodes pushed apart so labels fit).
+  - The contact graph is drawn as faint static edges under the activity.
+  - The number in each node is its degree; hubs get a thick outline.
+  - In `known_ids` mode, a ring around each node shows the share of the other players' names that
+    agent knows, and the right strip becomes "share of names known" over rounds.
+  - Dry-run example: `demo/network_er3_known_dryrun.mp4`, with a frame in `demo/network_frame_dryrun.png`.
+- **Figure** `plan/figs/network_overview.{pdf,png}`:
+  - The contact graph of world 0 for Erdős–Rényi, Watts–Strogatz and Barabási–Albert.
+  - The degree distribution over each run's worlds.
+  - The name-diffusion S-curve.
+  - It is labelled **FakeLLM dry run (placeholder until real runs)**.
+- **Dashboard:** a "Network" section appears for network cells only, built from `swarm.analysis.network`:
+  - graph stats per world;
+  - the diffusion curve per branch;
+  - gives by hop distance;
+  - score by degree, with Spearman correlations;
+  - God's victims by centrality.
+
+Dry runs, with no API calls; they write to /tmp, not runs/:
+
+```bash
+for c in er3_known er3_contacts ws_known ba_known; do env -u OPENROUTER_API_KEY $PY -m swarm.run \
+  --config configs/network_${c}_sim.yaml --out /tmp/claude-1000/netviz --run-id net_${c} --no-report \
+  roles.agent.backend=fake roles.god.backend=fake roles.judge.backend=fake roles.summarizer.backend=fake \
+  llm.openrouter.enabled=false "llm.cache.mode='off'" game.max_rounds=6 run.n_games=4; done
+$PY -m swarm.viz.paper_figs plan/figs --only-network --network "Erdős–Rényi, d=3=/tmp/claude-1000/netviz/net_er3_known" \
+  --network "Watts–Strogatz, k=4=/tmp/claude-1000/netviz/net_ws_known" \
+  --network "Barabási–Albert, m=2=/tmp/claude-1000/netviz/net_ba_known" \
+  --network-note "FakeLLM dry run (placeholder until real runs): 4 worlds x 6 rounds, no LLM"
+```
