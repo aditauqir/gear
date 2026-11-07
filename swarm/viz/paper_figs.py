@@ -19,11 +19,8 @@ with an unhealthy branch (swarm.analysis.grid_stats.game_health) are dropped, as
 from __future__ import annotations
 
 import argparse
-import json
-import random
 import statistics
 from pathlib import Path
-from typing import Any
 
 import matplotlib
 
@@ -32,8 +29,17 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
-from swarm.analysis.grid_stats import boot_ci, game_health, signflip_p, t_ci  # noqa: E402
-from swarm.viz.story import divergence, is_done, load_branch, median_world  # noqa: E402
+from swarm.viz.metrics import (  # noqa: E402,F401  (cell_deltas, summarize, ... re-exported for older imports)
+    cell_deltas,
+    cum_curves,
+    divergence,
+    load_branch,
+    paired_diff,
+    summarize,
+    welfare,
+    worlds,
+)
+from swarm.viz.story import median_world  # noqa: E402
 from swarm.viz.style import GRID, INK, INK2, C  # noqa: E402
 
 WIDE = 7.0   # in, two-column figure width
@@ -52,57 +58,8 @@ def _save(fig, out_dir: Path, name: str) -> list[Path]:
     return paths
 
 
-def worlds(run_dir: str | Path) -> dict[int, dict[str, Path]]:
-    """game_idx -> branch -> dir, finished and healthy branches only; seeds with an unhealthy branch dropped."""
-    run_dir = Path(run_dir)
-    out: dict[int, dict[str, Path]] = {}
-    bad: set[int] = set()
-    for d in sorted((run_dir / "games").iterdir()):
-        idx, _, br = d.name.partition("-")
-        i = int(idx[1:])
-        if not is_done(d):
-            continue
-        if game_health(d)["reasons"]:
-            bad.add(i)
-            continue
-        out.setdefault(i, {})[br] = d
-    return {i: b for i, b in out.items() if i not in bad and "god" in b and "nogod" in b}
-
-
-def welfare(game_dir: Path) -> float:
-    pa = json.loads((game_dir / "outcome.json").read_text())["per_agent"].values()
-    return sum(a["score"] for a in pa) / max(1, len(pa))
-
-
-def cell_deltas(run_dir: str | Path, a: str = "god", b: str = "nogod") -> dict[int, float]:
-    return {i: welfare(br[a]) - welfare(br[b]) for i, br in worlds(run_dir).items() if a in br and b in br}
-
-
-def summarize(xs: list[float], n_boot: int = 10000, seed: int = 0) -> dict[str, Any]:
-    rng = random.Random(seed)
-    lo, hi = boot_ci(xs, n_boot, rng)
-    tlo, thi = t_ci(xs)
-    return {"n": len(xs), "mean": statistics.fmean(xs) if xs else float("nan"), "lo": lo, "hi": hi,
-            "tlo": tlo, "thi": thi, "p": signflip_p(xs, rng)}
-
-
-def paired_diff(da: dict[int, float], db: dict[int, float]) -> dict[int, float]:
-    """db - da over the worlds both cells share (same run.seed => same world per index)."""
-    return {i: db[i] - da[i] for i in sorted(set(da) & set(db))}
-
-
 # ------------------------------------------------------------------ divergence
 XMAX = 10   # every curve has saturated well before this round; the x axis stops here (stated on the plot)
-
-def cum_curves(run_dir: str | Path, a: str = "god", b: str = "nogod") -> dict[int, list[float]]:
-    out = {}
-    for i, br in worlds(run_dir).items():
-        if a in br and b in br:
-            _, ever = divergence(br[a], br[b])
-            n = len(load_branch(br[a]).agents)
-            out[i] = [len(ever[r]) / n for r in sorted(ever)]
-    return out
-
 
 def _mean_curve(curves: dict[int, list[float]]) -> list[float]:
     L = max(len(ys) for ys in curves.values())

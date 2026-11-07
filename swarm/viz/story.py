@@ -1,7 +1,6 @@
-"""Data helpers for the demo video and paper figures (no drawing here, so they are unit-testable).
+"""Narrative helpers for the demo video (no drawing here, so they are unit-testable). Numbers come from
+swarm.viz.metrics (load_branch, divergence, ... are re-exported here for older imports).
 
-    load_branch(game_dir)            -> Branch: per-round edges, scores, welfare, God powers, gives
-    divergence(god_dir, nogod_dir)   -> per-round sets of agents whose actions differ (ripple metric)
     captions(god, nogod, div)        -> {round: [(kind, text), ...]} running caption lines
     pacing(R, captions)              -> [(round, seconds)]: 1 s per round, longer on God events
     world_table(run_dir)             -> per-world deltas (god - nogod, noise - nogod) and ripple speed
@@ -11,111 +10,19 @@ Only finished branches (meta.json status "done") are used.
 
 from __future__ import annotations
 
-import json
-from collections import Counter
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-KINDS = ("dm", "give", "defect", "board", "fraud", "cot")
-
-
-@dataclass
-class Power:
-    round: int
-    power: str              # message_fraud | cot_control
-    target: str             # the agent God acts on (DM receiver / notes owner)
-    spoofed: str | None     # message_fraud: the real agent the forged DM claims to come from
-    text: str
-
-
-@dataclass
-class Branch:
-    label: str
-    agents: list[str]
-    R: int
-    rounds_played: int
-    end_reason: str
-    edges: dict[int, dict[str, list[tuple[str, str]]]]       # round -> kind -> [(src, dst)]
-    scores: dict[int, dict[str, float]]                       # round -> agent -> score (round 0 = all 0)
-    wins: dict[int, list[str]]
-    powers: list[Power] = field(default_factory=list)
-    gives: list[tuple[int, str, str, int]] = field(default_factory=list)       # (round, from, to, info_id)
-    defects: list[tuple[int, str, str, bool]] = field(default_factory=list)    # (round, actor, target, correct)
-
-    def welfare(self, r: int) -> float:
-        s = self.score_at(r)
-        return sum(s.values()) / max(1, len(self.agents))
-
-    def score_at(self, r: int) -> dict[str, float]:
-        ks = [k for k in self.scores if k <= r]
-        return self.scores[max(ks)] if ks else {a: 0.0 for a in self.agents}
-
-    def won_by(self, r: int) -> set[str]:
-        return {a for rr, ws in self.wins.items() if rr <= r for a in ws}
-
-
-def is_done(game_dir: Path) -> bool:
-    try:
-        return json.loads((Path(game_dir) / "meta.json").read_text()).get("status") == "done"
-    except (OSError, ValueError):
-        return False
-
-
-def load_branch(game_dir: str | Path) -> Branch:
-    game_dir = Path(game_dir)
-    ev = [json.loads(ln) for ln in open(game_dir / "events.jsonl", encoding="utf-8")]
-    start = next(e for e in ev if e["type"] == "game_start")["data"]
-    agents, R = list(start["order"]), int(start["max_rounds"])
-    edges: dict[int, dict[str, list[tuple[str, str]]]] = {r: {k: [] for k in KINDS} for r in range(R + 1)}
-    scores: dict[int, dict[str, float]] = {0: {a: 0.0 for a in agents}}
-    wins: dict[int, list[str]] = {}
-    b = Branch(game_dir.name, agents, R, R, "", edges, scores, wins)
-    for e in ev:
-        r, t, d = e["round"], e["type"], e["data"]
-        if r not in edges:
-            continue
-        if t == "message":
-            m = d["message"]
-            if m["channel"] == "dm" and m["receiver"] and not m["forged"]:
-                edges[r]["dm"].append((m["sender_shown"], m["receiver"]))
-        elif t == "action_result" and d["action"]["kind"] == "post_board" and d.get("ok"):
-            edges[r]["board"].append((e["actor"], "BOARD"))
-        elif t == "key_transfer" and d["cause"] == "give" and d["from_agent"]:
-            edges[r]["give"].append((d["from_agent"], d["to_agent"]))
-            b.gives.append((r, d["from_agent"], d["to_agent"], int(d["info_id"])))
-        elif t == "burn":
-            edges[r]["defect"].append((d["actor"], d["target"]))
-            b.defects.append((r, d["actor"], d["target"], bool(d["correct"])))
-        elif t == "god_power" and d["ok"]:
-            a = d["action"]
-            if d["power"] == "message_fraud":
-                edges[r]["fraud"].append(("GOD", a["receiver"]))
-                b.powers.append(Power(r, "message_fraud", a["receiver"], a.get("sender"), a.get("text", "")))
-            else:
-                edges[r]["cot"].append(("GOD", a["agent"]))
-                b.powers.append(Power(r, "cot_control", a["agent"], None, a.get("text", "")))
-        elif t == "win":
-            wins.setdefault(r, []).append(d["agent"])
-        elif t == "round_end":
-            scores[r] = dict(d["scores"])
-        elif t == "game_end":
-            o = d["outcome"]
-            b.rounds_played, b.end_reason = int(o["rounds_played"]), str(o.get("end_reason", ""))
-    return b
-
-
-def divergence(god_dir: str | Path, nogod_dir: str | Path) -> tuple[dict[int, set[str]], dict[int, set[str]]]:
-    """(now, ever): agents whose round-r actions differ between branches / have differed at any round <= r.
-    Same coarse action signature as swarm.analysis.ripple (message wording ignored)."""
-    from swarm.analysis.ripple import ripple
-    from swarm.runlog.trace import load_game
-
-    res = ripple(load_game(god_dir, with_llm_calls=False, with_snapshots=False),
-                 load_game(nogod_dir, with_llm_calls=False, with_snapshots=False))
-    now = {r: {a for a in res.agents if res.div[a][i]} for i, r in enumerate(res.rounds)}
-    ever = {r: {a for a in res.agents if res.first_div[a] is not None and res.first_div[a] <= r} for r in res.rounds}
-    return now, ever
+from swarm.viz.metrics import (  # noqa: F401  (re-exported: extraction lives in the shared metrics module)
+    KINDS,
+    Branch,
+    Power,
+    divergence,
+    edge_counts,
+    is_done,
+    load_branch,
+    welfare,
+)
 
 
 def _short(text: str, n: int = 78) -> str:
@@ -175,12 +82,6 @@ def pacing(R: int, caps: dict[int, list[tuple[str, str]]], base: float = 1.0, go
     return out
 
 
-def _welfare(game_dir: Path) -> float:
-    o = json.loads((game_dir / "outcome.json").read_text())
-    pa = o["per_agent"].values()
-    return sum(a["score"] for a in pa) / max(1, len(pa))
-
-
 def world_table(run_dir: str | Path, with_ripple: bool = True) -> list[dict[str, Any]]:
     """One row per world with finished god+nogod: welfare per branch, deltas, victim deltas, ripple speed."""
     run_dir = Path(run_dir)
@@ -194,9 +95,9 @@ def world_table(run_dir: str | Path, with_ripple: bool = True) -> list[dict[str,
     for i, brs in sorted(by.items()):
         if "god" not in brs or "nogod" not in brs:
             continue
-        wg, wn = _welfare(brs["god"]), _welfare(brs["nogod"])
+        wg, wn = welfare(brs["god"]), welfare(brs["nogod"])
         row: dict[str, Any] = {"world": i, "god": wg, "nogod": wn, "delta": wg - wn,
-                               "noise_delta": (_welfare(brs["noise"]) - wn) if "noise" in brs else None}
+                               "noise_delta": (welfare(brs["noise"]) - wn) if "noise" in brs else None}
         if with_ripple:
             g, n = load_branch(brs["god"]), load_branch(brs["nogod"])
             _, ever = divergence(brs["god"], brs["nogod"])
@@ -237,7 +138,3 @@ def median_world(abs_delta: dict[int, float]) -> tuple[int, str]:
     med = statistics.median(abs_delta.values())
     w = min(abs_delta, key=lambda i: (abs(abs_delta[i] - med), i))
     return w, f"|Δwelfare| {abs_delta[w]:.3f}, median {med:.3f}, n={len(abs_delta)}"
-
-
-def edge_counts(edges: list[tuple[str, str]]) -> Counter[tuple[str, str]]:
-    return Counter(edges)
