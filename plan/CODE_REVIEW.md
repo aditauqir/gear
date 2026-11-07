@@ -121,3 +121,54 @@ Both conventions are indistinguishable to agents. However, CONTRACTS §2 ("stamp
 - **Simultaneous resolution.** Priority order is `st.order` (reshuffled by seed). Conflicts fail with a notice, and winners become untargetable mid-resolution.
 - **Determinism.** Every RNG is derived (`make_rng` or `derive_seed`); there is no hash(), wall clock or launch order in logged content. Repeated dry runs are byte-identical.
 - **Fork runner.** CURRENT_GAME is per task. The single-flight leader's failure falls back to the follower's own call. Fork A and B share game_id, so they share seeds and cache keys by design.
+
+# Second pass (overnight, 2026-11-07): new code and data-level invariants
+
+**Scope.** This pass covers code added after 28c79f8:
+- board options: post_costs_turn, anonymous, post_skip_rounds;
+- reasoning.salvage_truncated;
+- OpenRouter reasoning_effort and provider_sort;
+- the config_hash change (98cb469);
+- infra/grid_driver.py;
+- swarm/analysis/grid_stats.py.
+
+It also adds a new checker, `swarm/analysis/invariants.py`, which I ran on every finished grid cell and on the older runs.
+
+## Invariant checker (`python -m swarm.analysis.invariants runs/<run>`)
+It replays each game from the events alone and asserts the following.
+- **order:** seq is contiguous; slots follow the reshuffled order; each agent has one turn per round; every active agent plays.
+- **keys:** keys are conserved. Copies move only by give or steal, and appear only by a mint paired with a correct burn. Every give moves a copy the giver held. Snapshots match the replay.
+- **defects:** burn correctness, the lose_need target and the release turn are right, and no agent who has won is burned.
+- **scores:** round_end scores, win events and the outcome match the replay.
+- **delays:** no agent plays while delayed or skipped.
+- **obs:** pinned facts, inbox and board each equal an independent re-derivation. So do the view_log lines: the window, released defects and the victim exclusion.
+- **god:** God events appear only in the God branch. Powers match the schedule, K and the budget bookkeeping. Forged messages and overwrites match the ok powers.
+- **prompts:** no truth field or intervention id appears, and no banned word in the system prompt. "Your keys" equals the pinned holdings. No system-rendered line shows a key value the agent never held. Every "Your note (round r)" is the agent's own current entry. A replaced original is never re-shown. Each own-action line appears at most as often as the action was done.
+- **fork:** the God and no-God branches have identical events, prompts and **responses** before God's first event, so the common random numbers hold. The noise branch has no God events.
+
+Mutation tests are in `tests/analysis/test_invariants.py`: each tampered copy of a FakeLLM run is caught by its check.
+
+**Results**
+
+| Run | Violations |
+|---|---|
+| grid_oss_sim_k2 (48 games) | **0** |
+| grid_oss_sim_k6 (partial, while running) | **0** |
+| r2_grid_oss_seq_k2 (16 games) | **0** |
+| or_oss_10x10_sim, or_concurrent_fork, smoke_sweep_*, fake_sweep_* | 0 |
+| or_10x30_sim, or_10x30_seq, or_60x20_sim | 102 each, all `prompts`: an own action shown twice. This is the known pre-8ebbee7 ledger bug (#1); the checker would have caught it |
+
+**Interpretation.** The grid cells are internally consistent. There are no rule violations and no hidden-information leaks. The pre-fork prefixes are byte-identical, including the provider responses, so every god-nogod difference starts at God's first act.
+
+## Findings
+
+| # | Severity | Where | Finding | Status |
+|---|---|---|---|---|
+| 23 | bug-low (analysis) | analysis/grid_stats.py `boot_ci` | At n=8-16 the percentile bootstrap is too narrow. r2_grid_oss_seq_k2 `lost` gives [-0.125, -0.000] but p=0.25 and t95 [-0.151, +0.026]. `rounds` gives [+0.000, +0.750] from a single non-zero seed of 8. The paper plans to report percentile bootstrap CIs | **mitigated** c544fb0: `t95` is printed next to the bootstrap. Recommendation: report sign-flip p and t95 (or BCa), and never claim significance from the percentile CI alone |
+| 24 | bug-low | infra/grid_driver.py `Cell.w_total` | The projection subtracts the shared pre-fork rounds once per extra branch. The noise replica B′ has its own seeds and pays for them, so the projection is about 1% low for 3-branch cells. The uncommitted `free=1` mode by another agent counts only the God branch, so it would under-project by about half if a cell also has a noise replica | open. Another agent has uncommitted edits in this file, so I did not touch it. Fix: subtract `min(branches-1, 1) * shared` |
+| 25 | bug-low (latent) | infra/grid_driver.py `attach` | `killpg(getpgid(pid))` without checking that the cell leads its own group. If a cell were started from a shell or wrapper without setsid, the abort would kill the whole group: possibly another cell or the watchdog itself. Today every cell is a group leader (`start_new_session`), confirmed with `ps`, so nothing is wrong now | open. Fix: if `pgid != pid`, `os.kill(pid)` only. Also `kill_group` should `proc.wait()` after SIGKILL |
+| 26 | info | config_hash (98cb469) | `run.name` and `n_games` are no longer hashed. Two cells with the same game semantics now share game ids, seeds and cache keys: r2_grid_oss_seq_k2 shares all game ids with the aborted grid_oss_seq_k2. That is intended for resume and control reuse, but a "replicate" must change `run.seed` or `run.replica`; renaming the run does not make it independent | documented |
+| 27 | ok | board options | post_costs_turn, anonymous and post_skip_rounds are correct in both turn modes. Skip and wrong-defect delay share `delayed_until_round` via `max`; the resume notice is delivered once. The invariant checker covers skips (delays) and anonymous rendering (obs) | no action |
+| 28 | ok | salvage_truncated | Salvage runs only when no complete JSON object decodes. It keeps only complete action objects after `"actions"` (string-aware), and a cut-off last action is dropped. In grid_oss_sim_k2 it fired 8 times in 3,200 turns | no action |
+| 29 | ok | grid_stats deltas / health | Δ = god − nogod per seed. The exact sign-flip p includes the identity. Seeds pair across cells by world (`world_seed` depends only on run.seed and game_idx). The unhealthy drop is per seed across all branches. Caveat: health is a post-treatment variable, so report the dropped seeds per branch (k2 and r2 seq: none dropped) | no action |
+| 30 | ok | reasoning_effort / provider_sort | They are hashed only when set, which re-keys gpt-oss cells as intended. The cache key itself does not include them; it is safe because they enter game_id via config_hash | no action |
