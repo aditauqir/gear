@@ -24,7 +24,7 @@ from swarm.schema import ChatRequest
 _YOU = re.compile(r"You are ([a-z]+_[a-z]+)\.")
 _PLAYERS = re.compile(r"Players: (.+)")
 _KEYS = re.compile(r"\{info_id: (\d+), key: (\d+)\}")
-_NEEDS = re.compile(r"Needs still open: ([0-9, ]+)")
+_NEEDS = re.compile(r"Needs still open(?: \(info ids\))?: ([0-9, ]+)")
 _DM = re.compile(r"DM from ([a-z]+_[a-z]+): (.+)")
 _DISTRUST = re.compile(r"([a-z]+_[a-z]+) is lying to me and cannot be trusted")
 

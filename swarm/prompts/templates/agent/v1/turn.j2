@@ -9,10 +9,10 @@ You are {{ view.agent }}. Round {{ view.round }} of {{ view.pinned.max_rounds }}
 {% endfor %}
 
 [Your state]
-Needs still open: {{ view.pinned.needs_open | join(", ") or "none" }}
-Needs burned: {{ view.pinned.needs_burned | join(", ") or "none" }}
+Needs still open (info ids): {{ view.pinned.needs_open | join(", ") or "none" }}
+Needs burned (info ids): {{ view.pinned.needs_burned | join(", ") or "none" }}
 {% if view.pinned.needs_lost %}
-Needs lost: {{ view.pinned.needs_lost | join(", ") }}
+Needs lost (info ids): {{ view.pinned.needs_lost | join(", ") }}
 {% endif %}
 Your keys: {% for k in view.pinned.holdings %}{info_id: {{ k.info_id }}, key: {{ k.key }}}{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}
 
