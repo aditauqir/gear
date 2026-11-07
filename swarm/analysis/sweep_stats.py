@@ -5,7 +5,7 @@
 
 Each cell is LABEL=RUN: the run dir holding the `god` and `nogod` branches. The noise baseline is the
 branch `noisefork` (B'', resampled from God's first round) of NOISE_RUN (default RUN), or BRANCH
-(e.g. `noise` = G1's B', resampled from round 1). Per world (game_idx) present and healthy in both:
+(e.g. `noise` = G1's B', resampled from round 1); LABEL=RUN,none = no noise baseline (A - B only). Per world (game_idx) present and healthy in both:
   A - B      God - noGod (outcome delta)
   N - B      noise - noGod (what resampling alone does)
   A - N      = (A - B) - (N - B): the God effect against the fork-matched noise baseline (primary)
@@ -48,17 +48,21 @@ def _dirs(run_dir: Path) -> dict[tuple[int, str], Path]:
     return {(int(g["game_idx"]), g["branch"]): run_dir / g["dir"] for g in man["games"]}
 
 
-def parse_cell(spec: str) -> tuple[str, Path, Path, str]:
+def parse_cell(spec: str) -> tuple[str, Path, Path | None, str]:
     label, _, rest = spec.partition("=")
     if not rest:
         rest, label = label, Path(label).name
     run, _, noise = rest.partition(",")
+    if noise == "none":
+        return label, Path(run), None, "none"
     noise_run, _, branch = noise.partition("@")
     return label, Path(run), Path(noise_run or run), branch or "noisefork"
 
 
-def cell_rows(run_dir: Path, noise_dir: Path, noise_branch: str, seeds: set[int] | None) -> dict[str, Any]:
+def cell_rows(run_dir: Path, noise_dir: Path | None, noise_branch: str, seeds: set[int] | None) -> dict[str, Any]:
     main = load_run(run_dir)
+    if noise_dir is None:                                   # no noise baseline: A - B only
+        noise_dir, noise_branch = run_dir, "nogod"
     noise = load_run(noise_dir) if noise_dir != run_dir else main
     dm, dn = _dirs(run_dir), _dirs(noise_dir)
     rows: dict[int, dict[str, float]] = {}
@@ -131,12 +135,13 @@ def main(argv: list[str] | None = None) -> None:
     for spec in args.cells:
         label, run, noise_run, branch = parse_cell(spec)
         c = cell_rows(run, noise_run, branch, seeds)
-        res: dict[str, Any] = {"run": str(run), "noise": f"{noise_run}@{branch}", "unhealthy": c["unhealthy"],
-                               "seeds": sorted(c["rows"])}
-        print(f"== {label}: {run.name} + noise {noise_run.name}@{branch} (n={len(c['rows'])} worlds)")
+        nz = f"{noise_run.name}@{branch}" if noise_run is not None else "none"
+        res: dict[str, Any] = {"run": str(run), "noise": nz, "unhealthy": c["unhealthy"], "seeds": sorted(c["rows"])}
+        print(f"== {label}: {run.name} + noise {nz} (n={len(c['rows'])} worlds)")
         for u in c["unhealthy"]:
             print(f"  UNHEALTHY {u} -> world excluded")
-        keys = sorted({k for r in c["rows"].values() for k in r})
+        keys = sorted({k for r in c["rows"].values() for k in r
+                       if noise_run is not None or ("noise" not in k and k != "div_gap")})
         for k in keys:
             res[k] = summarize([r[k] for r in c["rows"].values() if k in r], args.boot, rng)
         for k in ("welfare:god-nogod", "welfare:noise-nogod", "welfare:god-noise", "win_rate:god-noise",
