@@ -10,7 +10,8 @@
   `provider_sort` adds `provider: {sort: <value>}` (e.g. "price": cheapest provider first, with
   OpenRouter's normal fallbacks). `provider_order` / `allow_fallbacks` add `provider: {order: [...],
   allow_fallbacks: <bool>}` (pin providers). The serving provider is recorded in ChatResponse.provider.
-- Spend caps, both checked BEFORE each call against a worst-case estimate:
+- Spend caps (swarm/llm/budget.py, re-exported here), both checked just before each call is sent
+  against a worst-case estimate:
     global  `GlobalLedger` over runs/openrouter_ledger.jsonl (append-only, fcntl.flock), default $8
     run     `RunBudget` (llm.budget_usd), shared by every client of one run
   Exceeding either raises BudgetExceeded. Actual cost (provider-reported, else the price table)
@@ -21,9 +22,6 @@ Imports: config, llm.base, llm.cache, llm.openai_compat, llm.secrets (key loadin
 
 from __future__ import annotations
 
-import fcntl
-import json
-import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -33,100 +31,24 @@ from pydantic import SecretStr
 
 from swarm.config import DEFAULT_OPENROUTER_MODEL, REPO_ROOT, OpenRouterCfg, RetryCfg
 from swarm.llm.base import BudgetExceeded, ChatRequest, ChatResponse, LLMError, Usage
+from swarm.llm.budget import (  # noqa: F401  (re-exported: the old home of the budget layer)
+    DEFAULT_LEDGER,
+    GLOBAL_CAP_USD,
+    GlobalLedger,
+    RunBudget,
+    estimate_cost,
+)
 from swarm.llm.cache import ResponseCache
 from swarm.llm.openai_compat import OpenAICompatClient, Recorder
 from swarm.llm.secrets import DEFAULT_OPENROUTER_KEY_FILE, OPENROUTER_ENV, load_openrouter_key
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_LEDGER = REPO_ROOT / "runs" / "openrouter_ledger.jsonl"
-GLOBAL_CAP_USD = 6.0
 
 
 def load_key(key_file: str | Path | None = DEFAULT_OPENROUTER_KEY_FILE, *,
              env: Mapping[str, str] | None = None) -> SecretStr | None:
     """Env OPENROUTER_API_KEY first, else the raw-key file. Returns a masked SecretStr or None."""
     return load_openrouter_key(key_file, env=env, env_var=OPENROUTER_ENV)
-
-
-def estimate_cost(req: ChatRequest, price_in_per_mtok: float, price_out_per_mtok: float) -> float:
-    """Worst case: prompt_chars/3.5 tokens in, max_tokens out."""
-    chars = sum(len(m.content) for m in req.messages)
-    return (chars / 3.5) * price_in_per_mtok / 1e6 + req.max_tokens * price_out_per_mtok / 1e6
-
-
-class RunBudget:
-    """Per-run paid-spend cap (llm.budget_usd). In-process only; share one instance per run."""
-
-    def __init__(self, cap_usd: float) -> None:
-        self.cap = cap_usd
-        self.spent = 0.0
-        self.reserved = 0.0
-
-    def reserve(self, estimate: float) -> None:
-        """Raise BudgetExceeded("run") if spent + reserved + estimate > cap, else reserve it."""
-        if self.spent + self.reserved + estimate > self.cap:
-            raise BudgetExceeded("run", self.spent + self.reserved, estimate, self.cap)
-        self.reserved += estimate
-
-    def settle(self, estimate: float, actual: float) -> None:
-        """Release the reservation and add the actual cost."""
-        self.reserved = max(0.0, self.reserved - estimate)
-        self.spent += actual
-
-
-class GlobalLedger:
-    """Append-only JSONL ledger of paid calls across runs and processes: {ts, run_id, call_id, model,
-    cost_usd}. total() sums it under a shared flock; record() appends under an exclusive flock."""
-
-    def __init__(self, path: str | Path = DEFAULT_LEDGER, cap_usd: float = GLOBAL_CAP_USD) -> None:
-        self.path = Path(path)
-        self.cap = cap_usd
-        self.reserved = 0.0
-
-    def total(self) -> float:
-        """Sum of cost_usd over the ledger file (0 if missing)."""
-        if not self.path.is_file():
-            return 0.0
-        tot = 0.0
-        with open(self.path, encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_SH)
-            try:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        tot += float(json.loads(line).get("cost_usd") or 0.0)
-                    except (ValueError, AttributeError):
-                        continue
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-        return tot
-
-    def reserve(self, estimate: float) -> None:
-        """Raise BudgetExceeded("global") if ledger total + reserved + estimate > cap, else reserve it."""
-        spent = self.total() + self.reserved
-        if spent + estimate > self.cap:
-            raise BudgetExceeded("global", spent, estimate, self.cap)
-        self.reserved += estimate
-
-    def record(self, *, run_id: str, call_id: str, model: str, cost_usd: float, estimate: float) -> None:
-        """Append one paid call and release its reservation."""
-        self.reserved = max(0.0, self.reserved - estimate)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps({"ts": time.time(), "run_id": run_id, "call_id": call_id, "model": model,
-                           "cost_usd": cost_usd}) + "\n"
-        with open(self.path, "a", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                f.write(line)
-                f.flush()
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-
-    def release(self, estimate: float) -> None:
-        """Drop a reservation for a call that failed (nothing recorded)."""
-        self.reserved = max(0.0, self.reserved - estimate)
 
 
 class OpenRouterClient(OpenAICompatClient):
