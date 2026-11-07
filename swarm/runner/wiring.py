@@ -64,7 +64,8 @@ def _build_client(cfg: RunConfig, role: str, run: RunWriter, cache: Any) -> Any:
                                 price_out_per_mtok=o.price_out_per_mtok,
                                 ledger=GlobalLedger(_abs(o.ledger_path), o.global_cap_usd),
                                 run_budget=RunBudget(cfg.llm.budget_usd), retry=cfg.llm.retry, cache=cache,
-                                recorder=run.log_llm_call, run_id=run.run_id)
+                                recorder=run.log_llm_call, run_id=run.run_id,
+                                reasoning_effort=o.reasoning_effort, provider_sort=o.provider_sort)
     raise ValueError(f"unknown backend {backend!r}")
 
 

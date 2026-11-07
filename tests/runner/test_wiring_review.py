@@ -60,3 +60,18 @@ def test_ledger_sink_numbers_own_actions_per_turn() -> None:
     user = agent.build_messages(bundle)[1].content
     assert user.count("You posted on the board: looking for info 6") == 2      # once per round
     assert user.count("You gave bob your key for info 1") == 2
+
+
+def test_runner_openrouter_client_gets_reasoning_effort_and_provider_sort(tmp_path, monkeypatch) -> None:
+    """The runner builds OpenRouter clients itself (not via registry.from_cfg): it must pass
+    reasoning_effort/provider_sort, or gpt-oss gets reasoning.enabled=false -> HTTP 400 on every call."""
+    from swarm.runlog.writer import RunWriter
+    from swarm.runner.wiring import _build_client
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test0000000000000000000000000000")
+    cfg = from_dict({"roles": {"agent": {"backend": "openrouter", "model": "openai/gpt-oss-120b"}},
+                     "llm": {"cache": {"mode": "read_only"},
+                             "openrouter": {"enabled": True, "ledger_path": str(tmp_path / "l.jsonl"),
+                                            "reasoning_effort": "low", "provider_sort": "price"}}})
+    c = _build_client(cfg, "agent", RunWriter(tmp_path / "run", "r"), None)
+    assert (c.reasoning_effort, c.provider_sort) == ("low", "price")
