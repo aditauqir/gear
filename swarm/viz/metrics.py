@@ -40,6 +40,8 @@ GAME_METRICS: dict[str, tuple[str, str]] = {
     "defects_ok": ("defects", "successful defect actions per agent"),
     "board_posts": ("board posts", "successful board posts per agent"),
     "dms": ("DMs", "successful DMs per agent"),
+    "defects_correct": ("correct defects", "defects that burned a real need, per agent"),
+    "defects_wrong": ("wrong defects", "defects that hit no need (penalised), per agent"),
     "rounds": ("rounds", "rounds played"),
 }
 PAIR_METRICS: dict[str, tuple[str, str]] = {
@@ -180,14 +182,18 @@ def game_metrics(game_dir: str | Path) -> dict[str, float]:
          "lost": sum(len(a.get("lost") or []) for a in pa) / n,
          "rounds": float(out["rounds_played"])}
     counts = dict.fromkeys(ACTION_KINDS, 0)
+    burns = {"defects_correct": 0, "defects_wrong": 0}
     with open(game_dir / "events.jsonl", encoding="utf-8") as f:
         for ln in f:
-            if '"type":"action_result"' in ln:
+            if '"type":"burn"' in ln:
+                burns["defects_correct" if json.loads(ln)["data"].get("correct") else "defects_wrong"] += 1
+            elif '"type":"action_result"' in ln:
                 d = json.loads(ln)["data"]
                 if d.get("ok"):
                     for k, kind in ACTION_KINDS.items():
                         counts[k] += d["action"]["kind"] == kind
     m.update({k: c / n for k, c in counts.items()})
+    m.update({k: c / n for k, c in burns.items()})
     return m
 
 

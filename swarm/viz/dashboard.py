@@ -428,16 +428,26 @@ def design_runs_section(designs: list[tuple[str, str, str, Any]]) -> str:
     var − ref welfare per world, paired on identical worlds, with a per-world chart."""
     if not designs:
         return ""
-    rows = ["<tr><th>setting (no God)</th><th>reference runs</th><th>variant runs</th><th>Δ welfare [95% t-CI] p</th>"
-            "<th>n (paired)</th></tr>"]
+    rows = ["<tr><th>setting (no God)</th><th>metric</th><th>reference</th><th>variant</th>"
+            "<th>Δ variant − reference [95% t-CI] p</th><th>n (paired)</th></tr>"]
     figs = []
     for lab, ref, var, orig in designs:
         de = design_effect(ref, var)
-        s = de["stats"]
-        rows.append(f"<tr><td><b>{html.escape(lab)}</b></td><td class=dim>{html.escape(ref)}</td>"
-                    f"<td class=dim>{html.escape(var)}</td>"
-                    + (f"<td><b>{num(s['mean'])}</b> {ci(s['tlo'], s['thi'])} <span class='{pcls(s['p'])}'>"
-                       f"p={s['p']:.3f}</span></td><td>{s['n']}</td>" if s else "<td>–</td><td>–</td>") + "</tr>")
+        for m in ("welfare", "win_rate", "gives", "dms", "board_posts", "defects_ok", "defects_wrong",
+                  "defects_correct", "rounds"):
+            dm = design_effect(ref, var, m)
+            s = dm["stats"]
+            if not s:
+                continue
+            ra = statistics.fmean(v[0] for v in dm["pairs"].values())
+            va = statistics.fmean(v[1] for v in dm["pairs"].values())
+            pt = "p<0.001" if s["p"] < 0.001 else f"p={s['p']:.3f}"
+            rows.append(f"<tr><td><b>{html.escape(lab)}</b></td><td>{GAME_METRICS[m][0]}</td>"
+                        f"<td>{num(ra, 3, False)}</td><td>{num(va, 3, False)}</td>"
+                        f"<td><b>{num(s['mean'])}</b> {ci(s['tlo'], s['thi'])} <span class='{pcls(s['p'])}'>{html.escape(pt)}"
+                        f"</span></td><td>{s['n']}</td></tr>")
+        rows.append(f"<tr><td colspan=6 class=dim>reference runs: {html.escape(ref)} · variant runs: "
+                    f"{html.escape(var)}</td></tr>")
         if de["pairs"]:
             fig, ax = plt.subplots(figsize=(3.2, 2.4))
             for i, (a_, b_) in de["pairs"].items():

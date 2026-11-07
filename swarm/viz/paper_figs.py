@@ -186,9 +186,9 @@ def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple | None, out_dir:
     for g in groups:
         slots.append(("hdr", g))
         slots += [("row", r) for r in rows if r[0] == g]
-    H = 0.24 * len(slots) + 0.8
+    H = 0.24 * len(slots) + 0.95
     fig = plt.figure(figsize=(WIDE, H))
-    bot, top = 0.48 / H, 1 - 0.3 / H
+    bot, top = 0.62 / H, 1 - 0.3 / H
     ax = fig.add_axes([0.2, bot, 0.32, top - bot])
     rng = np.random.default_rng(0)
     stats, yt, yl = [], [], []
@@ -246,13 +246,75 @@ def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple | None, out_dir:
         axd.tick_params(labelsize=6.5)
         axd.grid(axis="x", visible=False)
         axd.set_title(f"Without God: {dlab}\n(welfare per world)", loc="left", fontsize=7.2, x=-0.45)
-        txt = ((f"Δ {sd['mean']:+.3f} [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]\np={sd['p']:.3f}, "
+        ptxt = ("p<0.001" if sd["p"] < 0.001 else f"p={sd['p']:.3f}") if sd else ""
+        txt = ((f"Δ {sd['mean']:+.3f} [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]\n{ptxt}, "
                 f"n={sd['n']} ({kind})").replace("-", "\u2212") if sd else "fewer than 2 shared worlds")
         if orig is not None and sd:
             n0 = sum(1 for i in de["pairs"] if i in orig)
             txt += f"\n● first {n0} worlds  ○ extension"
         axd.text(0.5, -0.3, txt, transform=axd.transAxes, ha="center", va="top", fontsize=6.3, color=INK2)
     return _save(fig, out_dir, "fig5_sweep"), stats
+
+
+# ------------------------------------------------------------------ board mechanism
+BOARD_METRICS = [("welfare", "welfare (mean score)", "{:.2f}"), ("win_rate", "win rate", "{:.0%}"),
+                 ("gives", "keys given / agent", "{:.2f}"), ("dms", "DMs / agent", "{:.1f}"),
+                 ("defects_wrong", "wrong defects / agent", "{:.2f}"),
+                 ("defects_correct", "correct defects / agent", "{:.2f}")]
+
+
+def fig6_board_mechanism(ref_runs: str, var_runs: str, out_dir: Path, orig: frozenset[int] | None = None,
+                         labels: tuple[str, str] = ("board on", "board off")) -> tuple[list[Path], list]:
+    """No-God games on identical worlds with and without the public board: one small multiple per metric with
+    per-world paired lines (filled = original worlds, hollow = extension), condition means with Student-t 95%
+    CIs, and the paired Δ (off − on) with its t95 and exact sign-flip p."""
+    from swarm.analysis.grid_stats import t_ci
+    from swarm.viz.metrics import design_effect
+
+    fig, axes = plt.subplots(2, 3, figsize=(WIDE, 4.1))
+    stats = []
+    for ax, (m, title, fmt) in zip(axes.flat, BOARD_METRICS, strict=True):
+        de = design_effect(ref_runs, var_runs, m)
+        pairs, sd = de["pairs"], de["stats"]
+        stats.append((f"board mechanism: {m} ({labels[1]} − {labels[0]}, paired)", sd))
+        for i, (a_, b_) in pairs.items():
+            first = orig is None or i in orig
+            ax.plot([0, 1], [a_, b_], color=INK2, lw=0.7, alpha=0.45 if first else 0.3, zorder=1)
+            ax.scatter([0, 1], [a_, b_], s=11, zorder=2, color=INK2 if first else "none", edgecolors=INK2, lw=0.7)
+        for x, k in ((0, 0), (1, 1)):
+            vals = [v[k] for v in pairs.values()]
+            mu = statistics.fmean(vals)
+            lo, hi = t_ci(vals)
+            ax.plot([x + (0.13 if x else -0.13)] * 2, [lo, hi], color=C["a"] if x == 0 else C["defect"], lw=2.2,
+                    solid_capstyle="round", zorder=3)
+            ax.scatter([x + (0.13 if x else -0.13)], [mu], marker="D", s=30, zorder=4,
+                       color=C["a"] if x == 0 else C["defect"], edgecolors="white", lw=0.7)
+            ax.text(x + (0.2 if x else -0.2), mu, fmt.format(mu), ha="left" if x else "right", va="center",
+                    fontsize=6.5, color=INK)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(list(labels), fontsize=7)
+        ax.set_xlim(-0.55, 1.55)
+        ax.tick_params(labelsize=6.5)
+        ax.grid(axis="x", visible=False)
+        ax.set_title(title, loc="left", fontsize=8, pad=12)
+        if sd:
+            pt = "p<0.001" if sd["p"] < 0.001 else f"p={sd['p']:.3f}"
+            if m == "win_rate":           # percentage points
+                dtxt = f"Δ {100 * sd['mean']:+.1f} pp  [{100 * sd['tlo']:+.1f}, {100 * sd['thi']:+.1f}]  {pt}"
+            else:
+                dtxt = f"Δ {sd['mean']:+.3f}  [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]  {pt}"
+            ax.text(0.0, 1.01, dtxt.replace("-", "\u2212"),
+                    transform=ax.transAxes, ha="left", va="bottom", fontsize=6.3, color=INK2)
+    n = len(design_effect(ref_runs, var_runs, "welfare")["pairs"])
+    hs = [Line2D([], [], color=INK2, marker="o", ms=3.5, lw=0.7, label="one world (paired)" + (
+              f": ● first {len(orig)}, ○ extension" if orig else "")),
+          Line2D([], [], color=C["a"], marker="D", ms=4.5, lw=2, label=f"{labels[0]}: mean, 95% t-CI"),
+          Line2D([], [], color=C["defect"], marker="D", ms=4.5, lw=2, label=f"{labels[1]}: mean, 95% t-CI")]
+    fig.legend(handles=hs, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.03), fontsize=6.8)
+    fig.suptitle(f"Without God: {labels[0]} vs {labels[1]} on the same {n} worlds (Δ = off − on, paired; "
+                 "sign-flip p)", x=0.01, ha="left", fontsize=8.5, y=1.0)
+    fig.tight_layout(rect=(0, 0.04, 1, 0.97), h_pad=1.6, w_pad=1.2)
+    return _save(fig, out_dir, "fig6_board_mechanism"), stats
 
 
 # ------------------------------------------------------------------ network pair
@@ -302,6 +364,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--div-cell", action="append", default=[], help="cells for fig3 (default: --cell)")
     ap.add_argument("--sweep", action="append", default=[], help='fig5 rows: "group|label=SPEC"')
     ap.add_argument("--design", help='fig5 design panel: "label=REF_SPEC|VARIANT_SPEC"')
+    ap.add_argument("--board", help='fig6: "REF_RUNS|VARIANT_RUNS[|original seeds]" (no-God board on vs off)')
     ap.add_argument("--world", default="median", help='"median" (rule) or a game index of the main cell')
     a = ap.parse_args(argv)
     cells = _cells(a.cell)
@@ -319,9 +382,14 @@ def main(argv: list[str] | None = None) -> None:
         p5, s5 = fig5_sweep(conds, design, a.out_dir)
         print(*p5)
         stats += s5
+    if a.board:
+        ps = a.board.split("|")
+        p6, s6 = fig6_board_mechanism(ps[0], ps[1], a.out_dir, parse_seeds(ps[2]) if len(ps) > 2 else None)
+        print(*p6)
+        stats += s6
     for lab, s in stats:
         print(f"  {lab.replace(chr(10), ' ')}: {s['mean']:+.3f} t95 [{s['tlo']:+.3f}, {s['thi']:+.3f}] "
-              f"boot [{s['lo']:+.3f}, {s['hi']:+.3f}] p={s['p']:.3f} n={s['n']}")
+              f"boot [{s['lo']:+.3f}, {s['hi']:+.3f}] p={s['p']:.4f} n={s['n']}")
     main_run = parse_spec(cells[0][1]).run
     if a.world == "median":
         w, why = median_world({i: abs(d) for i, d in cell_deltas(main_run).items()})

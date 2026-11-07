@@ -146,3 +146,13 @@ def test_design_effect_joins_runs_and_pairs_same_worlds(synth_run: Path, fake_ru
     assert set(de["pairs"]) == set(one) and all(a == b for a, b in de["pairs"].values()) and not de["dropped"]
     other = design_effect(str(synth_run), str(fake_run))       # different worlds at the same index -> dropped
     assert not other["pairs"] or other["dropped"] == []
+
+
+def test_fig6_board_mechanism_renders(synth_run: Path, tmp_path: Path) -> None:
+    from swarm.viz.metrics import game_metrics
+    from swarm.viz.paper_figs import fig6_board_mechanism
+
+    m = game_metrics(synth_run / "games" / "g00-god")
+    assert {"defects_correct", "defects_wrong"} <= set(m) and m["defects_correct"] >= 0
+    paths, _ = fig6_board_mechanism(str(synth_run), str(synth_run), tmp_path, frozenset({0}))
+    assert all(p.stat().st_size > 2000 for p in paths)
