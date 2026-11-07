@@ -172,3 +172,26 @@ Mutation tests are in `tests/analysis/test_invariants.py`: each tampered copy of
 | 28 | ok | salvage_truncated | Salvage runs only when no complete JSON object decodes. It keeps only complete action objects after `"actions"` (string-aware), and a cut-off last action is dropped. In grid_oss_sim_k2 it fired 8 times in 8,920 turns | no action |
 | 29 | ok | grid_stats deltas / health | Δ = god − nogod per seed. The exact sign-flip p includes the identity. Seeds pair across cells by world (`world_seed` depends only on run.seed and game_idx). The unhealthy drop is per seed across all branches. Caveat: health is a post-treatment variable, so report the dropped seeds per branch (k2, k6 and r2 seq: none dropped) | no action |
 | 30 | ok | reasoning_effort / provider_sort | They are hashed only when set, which re-keys gpt-oss cells as intended. The cache key itself does not include them; it is safe because they enter game_id via config_hash | no action |
+
+# Sweep validity check (final, after fbba90e)
+
+All results below come from the run logs. The checks cover every run in the final analysis: b2_sweep_base, sweep_start1, sweep_start8 + r3b2_sweep_start8, r3_sweep_start14 + r3b2_sweep_start14, sweep_k1, r3_sweep_k4, sweep_board_off + b2_sweep_board_off, r3_sweep_n5 and sweep_n20.
+
+**1. Invariant checker.** The checker reports 0 violations on every run, using `--base runs/grid_oss_sim_k2` for the cells that reuse G1's control games. The one exception is sweep_n20, whose only flags are in the excluded worlds g04 and g05: crashed games with no events, and the missing pair of g04-god. In every cell that reuses G1's control, the control equals G1's no-God game exactly, except g00, which diverges at r6. That is precisely G1's empty-response break.
+
+**2. End reasons.** No game in the analysed data ended `budget_exceeded` or `error`; there are 147 done games. The re-runs were compared with the originals for every round the original completed, excluding rounds after the original's own uncacheable break: sweep_start14→r3_*, b2_sweep_start8→r3b2_*, b2_sweep_start14→r3b2_*, partial_k4/n5/board_off_0447→r3_*/sweep_board_off/b2_sweep_board_off. In 80 of 80 games the events, prompts and responses are identical.
+
+**3. N=20.** Worlds 4 and 5 are excluded. g04-nogod, g05-god and g05-nogod crashed (`UndefinedError: board_enabled`) with 0 calls; g04-god is unpaired. All 9 done N=20 games share one system prompt and one prompt_set_hash (the pre-change template). The A−B result, n=4, +0.088 [−0.170, +0.345], matches.
+
+**4. B″.** B″ forks exactly at F in 30 of 30 worlds (F = 3/8/14/3 for base/start8/start14/board_off). Before F, events and calls are identical to the control (only run_id and game_start.config_hash differ). At F, all 10 turn prompts are identical, all 10 seeds are new, and 0 of 290 responses are identical to the control. The first action divergence is at r=F in every world.
+
+**5. Spot checks** (recomputed from outcome.json):
+- board_off noGod − G1 noGod: −0.200, t95 [−0.333, −0.067], p=0.031, n=6;
+- board_off A−N: +0.056 [−0.170, +0.281];
+- k1 A−N: −0.104 [−0.213, +0.005], p=0.062;
+- start14 A−N: −0.025 [−0.080, +0.030];
+- base N−B: +0.054 [−0.050, +0.158].
+
+All of these equal SWEEP_RESULTS.md.
+
+**Leak oracle.** It scanned 28,959 sweep agent requests (= agent calls in all 147 done games) with 0 hits.
