@@ -210,14 +210,14 @@ Neither tripling the budget (H3) nor sequential turns (H2) changes God's effect 
 One factor at a time around G1, on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board off, N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR). Validity checks (CR):
 - God fired at exactly the scheduled rounds and K.
 - B″ forks exactly at the fork round in 30 of 30 worlds, and 0 of 290 fork-round responses match the control.
-- All 147 analysed games completed, with 0 invariant violations.
+- All 147 analysed games completed; 0 invariant violations.
 - 80 of 80 re-run games are identical to their originals.
 - The leak oracle scanned 28,959 agent requests with 0 hits.
 
 - **God effect.** No A−N welfare t95 excludes zero. The closest is K=1, with one forged DM: −0.104 [−0.213, +0.005], p = 0.062. Given about 8 uncorrected tests, we read it as noise.
 - **Late God.** Acting first at round 14 is tightly null: −0.025 [−0.080, +0.030]. Otherwise n = 8 excludes only large effects (MDE ≈ 0.15-0.25).
 - **No noise arm.** K=6, N=5 and N=20 (n = 4) have God − B only; all are null.
-- **Board off.** Turning the message board off lowers no-God welfare *by itself*: −0.200 [−0.333, −0.067], p = 0.031, n = 6, with all 6 worlds negative. God stays null there (A−N +0.056 [−0.170, +0.281]). Given low n, multiple tests and differently seeded controls, it is exploratory.
+- **Board off.** Turning the message board off lowers no-God welfare *by itself*: −0.200 [−0.333, −0.067], p = 0.031, n = 6, with all 6 worlds negative. God stays null there (A−N +0.056 [−0.170, +0.281]). Given low n, many tests and differently seeded controls, it is exploratory.
 - **Cost:** $2.142.
 
 ## 6 Discussion
