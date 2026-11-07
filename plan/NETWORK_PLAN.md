@@ -220,6 +220,27 @@ On a fallback abort, the cells restart at 12 in flight, replaying from the cache
 - C: 4,800 calls at 5 in flight, about 6 s each, so ≈ 1.6 h.
 - **Done ≈ 15:00 EST.**
 
+## 6c. Side run: high reasoning (Iraj, 13:35: "run with high reasoning and see if it changes things")
+
+**What it is:** `configs/net40_er3_contacts_high_sim.yaml` is B with exactly two changes:
+- `llm.openrouter.reasoning_effort: high`, where B uses low;
+- agent `max_tokens: 8000`, where B uses 1000, because reasoning tokens count toward it.
+
+**How it runs:**
+- Worlds 0-1 only, at 4 in flight, so 20 are in flight in total with A, B and C.
+- `max_rounds` stays 30 so the prompt is word-for-word B's. A watcher
+  (`scratchpad/stop_r10.sh`) stops the run once both worlds finish round 10.
+- It is compared with B's worlds 0-1 at rounds ≤ 10.
+- Hard cap $0.60. Driver log: `runs/network40_driver4_Bhigh.log`.
+
+**Round 1, which doubles as the smoke:**
+- 94 calls cost $0.0113, or $0.00012 per call.
+- Output: 1,565 tokens per call on average, of which 1,389 are reasoning; the max is 3,843. Truncation 0/94.
+- Fallback 7%.
+- A round takes about 7 minutes.
+
+**Projection:** $0.16 for 10 rounds. ETA ≈ 14:45.
+
 ## 6. Launch (12:45:17 at 6 + 6 in flight; relaunched 12:49:07 at 4 + 4; superseded at 13:22)
 
 **The 12-in-flight attempt was stopped under the fallback rule:**

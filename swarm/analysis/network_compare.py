@@ -12,7 +12,7 @@ Per condition (one run dir = one condition; games matched by game_idx):
   winners     cumulative share of agents that have won, by round (the figure)
   relays      key copies traced through give transfers: a RELAY = an agent receives a copy whose info it
               does not need (not an open need, or it already holds that info) and later gives the same
-              copy on. A relay chain = a copy delivered (to an agent that needed it) after >= 2 give hops
+              copy on to a THIRD agent (handing it back to the giver is counted as a return). A relay chain = a copy delivered (to an agent that needed it) after >= 2 give hops
               with >= 1 relaying intermediary; also the graph distance origin -> final holder.
   distance    per (agent, need): d = graph distance (on the condition's graph, or on --ref-graph for the
               complete-graph run: a placebo) to the nearest initial holder of that info; fill rate by d;
@@ -42,7 +42,7 @@ from swarm.analysis import network as netan
 from swarm.analysis import social
 
 INTRO_VERB = r"(?:ask|asking|talk to|contact|reach out to|message|dm|ping|try|check with|go to|speak (?:to|with))"
-FORWARD = re.compile(r"\bforward|\bpass (?:it|them|this|that|the key)? ?(?:on|along|to)\b|\brelay|on (?:my|your|their) behalf|"
+FORWARD = re.compile(r"(?<!looking )\bforward(?!ing to| to (?:receiv|get|hear|work|trad))|\bpass (?:it|them|this|that|the key)? ?(?:on|along|to)\b|\brelay|on (?:my|your|their) behalf|"
                      r"\bmiddle ?man|\bintermediar|\bthrough you\b|\bvia\b|\bbroker", re.I)
 T95 = {1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31, 9: 2.26, 10: 2.23, 11: 2.20,
        12: 2.18, 13: 2.16, 14: 2.14, 15: 2.13}
@@ -138,19 +138,20 @@ def relays(g: dict[str, Any], dist: dict[str, dict[str, int]]) -> dict[str, Any]
         p = path.setdefault(c, [] if f is None else [(f, 0, False)])
         if d["cause"] == "give" and len(p) >= 2 and p[-1][0] == f and not p[-1][2]:
             relay_events.append({"round": e["round"], "relay": f, "from": p[-2][0], "to": t, "info": info,
-                                 "copy": c, "delivered_need": needed})
+                                 "copy": c, "delivered_need": needed, "returned": t == p[-2][0]})
         p.append((t, e["round"], needed))
         if d["cause"] != "give":
             path[c] = [(t, e["round"], needed)]                  # minted copy: new origin
     chains = []
     for c, p in path.items():
         hops = len(p) - 1
-        if hops >= 2 and p[-1][2] and any(not x[2] for x in p[1:-1]):
+        if hops >= 2 and p[-1][2] and p[-1][0] != p[0][0] and any(not x[2] for x in p[1:-1]):
             o, fin = p[0][0], p[-1][0]
             chains.append({"copy": c, "hops": hops, "path": [f"{x[0]}@r{x[1]}" for x in p],
                            "origin_dist": dist.get(o, {}).get(fin)})
-    return {"relay_events": relay_events, "n_relay_events": len(relay_events),
-            "n_relay_delivered": sum(r["delivered_need"] for r in relay_events),
+    fwd = [r for r in relay_events if not r["returned"]]      # passed on to a third agent (not handed back)
+    return {"relay_events": relay_events, "n_relay_events": len(fwd), "n_returns": len(relay_events) - len(fwd),
+            "n_relay_delivered": sum(r["delivered_need"] for r in fwd),
             "chains": chains, "n_chains": len(chains),
             "chains_beyond_nbhd": sum((c["origin_dist"] or 0) >= 2 for c in chains),
             "gives_hist": dict(collections.Counter(len(p) - 1 for p in path.values() if len(p) > 1))}
@@ -295,7 +296,7 @@ def analyse(run_dir: Path, ref_graphs: dict[Any, nx.Graph] | None = None, at_rou
         stats = netan.graph_stats(g["graph"])
         o = game_outcome(g)
         r = relays(g, netan._dist(g["graph"]))
-        o.update({k: r[k] for k in ("n_relay_events", "n_relay_delivered", "n_chains", "chains_beyond_nbhd")})
+        o.update({k: r[k] for k in ("n_relay_events", "n_returns", "n_relay_delivered", "n_chains", "chains_beyond_nbhd")})
         rows.append(o)
         rel.append({"label": g["label"], **r})
         dfill += [{"game_idx": g["game_idx"], **x} for x in distance_fill(g, dist)]
@@ -318,7 +319,7 @@ def summarise(res: list[dict[str, Any]]) -> dict[str, Any]:
         gs = c["games"]
         s: dict[str, Any] = {"n_games": len(gs), "partial": sum(g["status"] != "done" for g in gs),
                              "mode": c["mode"]}
-        for k in ("win_rate", "welfare", "mean_score", "needs_filled", "rounds", "n_relay_events",
+        for k in ("win_rate", "welfare", "mean_score", "needs_filled", "rounds", "n_relay_events", "n_returns",
                   "n_relay_delivered", "n_chains", "chains_beyond_nbhd"):
             s[k] = mean_ci([g[k] for g in gs])
         for k in ("win_rate", "welfare", "needs_filled"):
@@ -499,7 +500,7 @@ def main(argv: list[str] | None = None) -> None:
     ex = examples(res, a.examples)
     for run, s in summ.items():
         print(f"== {run} ({s['n_games']} games, {s['partial']} partial, mode {s['mode']})")
-        for k in ("win_rate", "welfare", "needs_filled", "rounds", "n_relay_events", "n_relay_delivered",
+        for k in ("win_rate", "welfare", "needs_filled", "rounds", "n_relay_events", "n_returns", "n_relay_delivered",
                   "n_chains", "chains_beyond_nbhd"):
             print(f"  {k}: {s[k]}")
         for k in s:
