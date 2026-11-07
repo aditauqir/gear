@@ -7,7 +7,7 @@
 - each run on a copy of the tree without my change and on the live tree, with output in `/tmp/claude-1000/review/`;
 - comparison: `cmp` of every `events.jsonl`, `llm_calls.jsonl` (full prompts) and `snapshots.jsonl`, for both fork branches.
 
-All of them are byte-identical. The scripts are `/tmp/claude-1000/review/{dryrun,mkbase,cmp}.sh`.
+All of them are byte-identical, with one exception: fix #1 (8ebbee7) was approved by the lead to change the prompts, and therefore events, from round 2 on. The scripts are `/tmp/claude-1000/review/{dryrun,mkbase,cmp}.sh`.
 
 **Severity.** `bug-high` = wrong results or aborted runs in realistic use. `bug-low` = latent, rare or cosmetic-in-data. `cleanup` = no behaviour change.
 
@@ -15,7 +15,7 @@ All of them are byte-identical. The scripts are `/tmp/claude-1000/review/{dryrun
 
 | # | Severity | Where | Finding | Status |
 |---|---|---|---|---|
-| 1 | bug-high | runner/wiring.py:133, context/policies.py:92 | Own-action ledger items collide on item_id; the prompt shows one action twice and drops the other | **open** (changes prompt text; lead decision) |
+| 1 | bug-high | runner/wiring.py:131-142, context/policies.py:92 | Own-action ledger items collided on item_id; the prompt showed one action twice and dropped the other | **fixed** 8ebbee7 (lead-approved; changes prompts, see below) |
 | 2 | bug-high | context/leak_oracle.py:169 | `original_text` canary matched the bare note text; a repeated note or a DM aborted the game with TruthLeak | **fixed** d5b7eb5 |
 | 3 | bug-high | game/engine.py:120 (was `asyncio.gather`) | Simultaneous mode: when one act() raised (BudgetExceeded), the other LLM calls kept running and spending after game_end, and logged into a closed GameWriter | **fixed** 43bf2f2 |
 | 4 | bug-low | runner/wiring.py:261 | ScriptedGod `after_turns>0` in simultaneous mode (and `after_turns>=n_agents`) never fired, silently | **fixed** c2f4a3d (fail fast) |
@@ -40,7 +40,7 @@ All of them are byte-identical. The scripts are `/tmp/claude-1000/review/{dryrun
 
 ## Bugs in detail
 
-### 1. Own-action items collide on item_id (bug-high, OPEN)
+### 1. Own-action items collide on item_id (bug-high, FIXED 8ebbee7)
 **Where.** `LedgerSink.emit` calls `own_action_items(d.agent, round, [d.action], ...)` once per `action_result`, so `n` is always 0. Every own action of a turn gets the item_id `"<agent>:<round>:own_action:0"`. `fit()` then builds `items = {i.item_id: i ...}` (policies.py:92): the dict keeps only the last one, while `sections[*].item_ids` lists the id twice. `to_view` renders the surviving item twice.
 
 **Failure, observed.** In the FakeLLM dry run (6 rounds), the round-4 prompt of sandy_dune contains:
@@ -50,9 +50,11 @@ All of them are byte-identical. The scripts are `/tmp/claude-1000/review/{dryrun
 ```
 Its round-3 `give_key` to fern_beacon is gone, although the log line shows the give happened. Every real run (sim60 included) has this whenever an agent takes 2 actions. Agents lose memory of their own gives and defects.
 
-**Fix.** Number own actions per (agent, round) in LedgerSink, e.g. `n = sum(1 for it in ledger if it.round == r and it.kind == "own_action")`, then build the item with that `n`. A simpler alternative: emit the turn's own actions as one batch at the end of `_resolve`.
+**Fix (8ebbee7, approved by the lead).** LedgerSink now numbers own actions per (agent, round). Each action of a turn gets its own `...:own_action:<n>`. The same dry-run prompt now shows `You gave fern_beacon your key for info 1` alongside the board post.
 
-**Why not applied.** The fix changes the prompt text from round 2 on. The task's hard constraint says prompts must stay byte-identical. Needs the lead's call.
+**Test.** `tests/runner/test_wiring_review.py::test_ledger_sink_numbers_own_actions_per_turn`. It fails on the old code.
+
+**Runs before 8ebbee7 have this bug.** That covers `or_10x30_sim`, `or_10x30_seq`, the smoke runs, and every other real-engine run made from this codebase before that commit. In those runs, agents' context from round 2 on misrepresents their own 2-action turns. Results from them are not comparable with runs after the fix: the prompts differ, so the LLM cache does not carry over either.
 
 ### 2. Leak-oracle false positive aborts games (bug-high, FIXED d5b7eb5)
 **Before.** A `replace` memory_overwrite added the bare old note text as a canary for every later prompt. LLM agents often repeat a note ("Plan: trade with X for info 4"). If God replaced round r-1 (the ScriptedGod default `round: prev`) and the same text was still shown as round r-2's note, or the agent had sent it in a DM, `assert_clean` raised `TruthLeak`. The game then ended as `error`, and the fork pair was broken.
