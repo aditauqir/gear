@@ -7,7 +7,8 @@ EventBodies to emit. Those events carry the ground truth:
   - `message` (Message.forged=True, true_sender="GOD", intervention_id) for fraud,
   - `memory_overwrite` (old_text = the original, new_text, intervention_id) for CoT control,
   - `god_power` (the action incl. its target, cost, budget_left, ok/reason) for both.
-A failed power (disabled, bad target, over budget, ...) spends nothing, creates no intervention id,
+A failed power (disabled, bad target, a cot_control mode other than the configured one, over
+budget, ...) spends nothing, creates no intervention id,
 and emits one `god_power` event with ok=False.
 
 Indistinguishability (REVIEW_v2 leak 1): a forged DM is built exactly the way a real DM sent in the
@@ -123,6 +124,8 @@ def apply_cot_control(state: GameState, action: CotControl, cfg: GodCfg, memory:
         return _fail(state, action, "cot_control", "power_disabled")
     if action.target not in pcfg.targets:
         return _fail(state, action, "cot_control", "target_kind_disabled")
+    if action.mode != pcfg.mode:                  # the edit mode is a config knob, not God's choice
+        return _fail(state, action, "cot_control", "mode_disabled")
     if action.agent not in state.agents:
         return _fail(state, action, "cot_control", "unknown_agent")
     if action.round < 1:

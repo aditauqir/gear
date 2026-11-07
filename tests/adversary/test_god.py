@@ -225,7 +225,7 @@ def test_cot_overwrite_creates_missing_and_caps_length():
 
 
 def test_cot_append_mode():
-    cfg = _cfg()
+    cfg = _cfg(powers={"cot_control": {"mode": "append"}})
     s = _state(rnd=3, budget=1)
     mem = MemoryStore()
     mem.write(s, "amber_fox", "scratchpad", 2, "orig")
@@ -287,3 +287,13 @@ def test_make_god_and_llm_stub():
         pass
     else:
         raise AssertionError("LLMGod.step should be a stub")
+
+
+def test_cot_mode_must_match_config():
+    """Review #13: the edit mode is god.powers.cot_control.mode; another mode fails, spending nothing."""
+    s = _state(rnd=3, budget=1)
+    mem = MemoryStore()
+    mem.write(s, "amber_fox", "scratchpad", 2, "orig")
+    res = apply_cot_control(s, CotControl(agent="amber_fox", round=2, text="x", mode="append"), _cfg(), mem)
+    assert not res.ok and res.reason == "mode_disabled" and s.god_budget_left == 1
+    assert mem.get(s, "amber_fox", "scratchpad", 2).text == "orig"

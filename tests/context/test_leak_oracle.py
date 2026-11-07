@@ -126,7 +126,7 @@ def test_append_mode_original_not_a_canary():
     sink = oracle.wrap(MemorySink())
     mem.write(st, "coral_elk", "scratchpad", 2, "a long enough note about info 6")
     for b in apply_cot_control(st, CotControl(agent="coral_elk", round=2, text="more", mode="append"),
-                               GodCfg(), mem).events:
+                               GodCfg(powers={"cot_control": {"mode": "append"}}), mem).events:
         sink.emit(b)
     assert [c.kind for c in oracle.canaries] == ["intervention_id"]
 
