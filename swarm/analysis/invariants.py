@@ -45,6 +45,7 @@ from typing import Any
 import yaml
 
 from swarm.config import RunConfig
+from swarm.context.base import render_action
 from swarm.context.leak_oracle import Canary, scan_text
 from swarm.rng import make_rng
 from swarm.schema import GameState, defect_release_turn, turn_index
@@ -136,6 +137,7 @@ class GameChecker:
         self.held_ever: dict[str, set[tuple[int, int]]] = collections.defaultdict(set)
         self.overwrites: list[dict[str, Any]] = []
         self.key_of: dict[int, int] = {}
+        self.own_lines: dict[tuple[str, int], collections.Counter[str]] = collections.defaultdict(collections.Counter)
 
     # ------------------------------------------------------------------ helpers
     def bad(self, check: str, detail: str) -> None:
@@ -214,6 +216,7 @@ class GameChecker:
                 prev_obs[d["agent"]] = d["obs"]["turn_index"]
             elif typ == "action_result":
                 a, act = d["agent"], d["action"]
+                self._own_line(a, r, d)
                 if act["kind"] == "give_key":
                     has = act["info_id"] in rp.held(a)
                     if d["ok"] and not has:
@@ -261,6 +264,17 @@ class GameChecker:
         return self.out
 
     # ------------------------------------------------------------------ pieces
+    def _own_line(self, a: str, r: int, d: dict[str, Any]) -> None:
+        """The ledger line an own action renders as (context.base.own_action_items + turn.j2)."""
+        from swarm.schema import ACTION_ADAPTER
+
+        try:
+            act = ACTION_ADAPTER.validate_python(d["action"])
+        except Exception:
+            return
+        text = render_action(act) + ("" if d["ok"] else f" (failed: {d.get('reason') or 'invalid'})")
+        self.own_lines[(a, r)][f"- (r{r}) {text}\n"] += 1
+
     def _transfer(self, ev: dict[str, Any], rp: Replay, all_copies: set[str],
                   pending_mint: dict[tuple[str, int, int], int], gives: list[tuple[int, str, str, int, int]]) -> None:
         d, r = ev["data"], ev["round"]
@@ -532,6 +546,16 @@ class GameChecker:
                     if int(tok) in never:
                         self.bad("prompts", f"{cid} r{r} {a} system line shows key {tok} of info "
                                             f"{never[int(tok)]} it never held: {ln[:80]!r}")
+            # own-action history: each "(r k) You ..." line at most as often as the agent did it
+            # (catches the pre-8ebbee7 ledger collision: one action shown twice, the other dropped)
+            for (ag, rr), lines in self.own_lines.items():
+                if ag != a or r is None or rr >= r:
+                    continue
+                for ln, c in lines.items():
+                    shown = user.count(ln)
+                    if shown > c:
+                        self.bad("prompts", f"{cid} r{r} {a} shows own action of r{rr} {shown}x, done {c}x: "
+                                            f"{ln.strip()[:70]!r}")
             own = self.mem_at_turn.get((a, r))
             if own is not None:
                 for mt in NOTE_RE.finditer(user):

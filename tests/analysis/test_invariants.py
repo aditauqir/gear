@@ -125,3 +125,20 @@ def test_foreign_key_value_in_a_system_line_is_a_leak(sim_run: Path, tmp_path: P
         return cs
     _rewrite(gdir / "llm_calls.jsonl", inject)
     assert any(v.check == "prompts" and "never held" in v.detail for v in check_run(run))
+
+
+def test_duplicated_own_action_line_is_caught(sim_run: Path, tmp_path: Path) -> None:
+    """The pre-8ebbee7 ledger collision showed one own action twice; the checker must flag that."""
+    run = _copy(sim_run, tmp_path)
+    gdir = run / "games" / "g00-nogod"
+
+    def dup(cs):
+        for c in cs:
+            u = c["request"]["messages"][1]["content"]
+            line = next((ln for ln in u.splitlines() if ln.startswith("- (r1) You ")), None)
+            if line and c["request"]["meta"]["round"] >= 2:
+                c["request"]["messages"][1]["content"] = u.replace(line + "\n", line + "\n" + line + "\n", 1)
+                return cs
+        raise AssertionError("no own-action line found")
+    _rewrite(gdir / "llm_calls.jsonl", dup)
+    assert any(v.check == "prompts" and "own action" in v.detail for v in check_run(run))
