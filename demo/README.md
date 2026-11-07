@@ -117,24 +117,75 @@ $PY -m swarm.viz.paper_figs plan/figs --cell "G1 sim K=2=runs/grid_oss_sim_k2" \
 ```
 
 The paper figures in `plan/figs/` are vector PDFs plus 200-dpi PNGs, 7.0 in wide. They are numbered
-as in `paper/draft.md` §5, and every plotted number is in `plan/figs/NUMBERS.txt`.
+as in `paper/draft.md` §5, and every plotted number is in `plan/figs/NUMBERS.txt`. The numbers match
+`plan/GRID_RESULTS.md` and `plan/SWEEP_RESULTS.md`.
 
-- `fig2_network`: the median-|Δwelfare| world of G1 (rule-picked: g02) at God's first move and at
-  round 20. Panel A is with God, panel B without.
-- `fig3_divergence`: share of agents diverged against rounds since each branch forked, per cell, with
-  the B′ baseline. A fork-matched B″ is added with `--baseline` once the sweep produces it.
-- `fig4_welfare`: per-world Δ with the mean and Student-t 95% CI.
-  - Left: H1 against B′.
-  - Right: G3, G2, and the paired interactions H3 and H2.
+- `fig2_network`: the median-|Δwelfare| world of G1 (rule-picked: g02) at God's first move and at round 20.
+- `fig3_divergence`: share of agents acting differently from no-God, aligned on the fork round F.
+  - Panels: God at r3 (G1), r8, r14, and board off.
+  - Each panel shows God against the fork-matched noise B″, and B′ for G1.
+- `fig4_welfare`:
+  - Left: H1 on G1, with A − B, B′ − B, B″ − B, and the primary A − B″.
+  - Right: G3, G2, and the paired H3 and H2.
+  - Every interval is a Student-t 95% CI with a sign-flip p.
+- `fig5_sweep`: God − B″ per sweep condition.
+  - Conditions: start r1, r3, r8, r14; K = 1, 2, 4; board off.
+  - A small panel shows the design effect of turning the board off without God: −0.200
+    [−0.333, −0.067], p = 0.03, n = 6.
 
-The results dashboard is `plan/figs/grid_dashboard.html`: one self-contained page with every metric,
-the noise baseline, divergence, and LLM health and cost. It shows each sweep cell once that cell has at
-least one finished world:
+Rebuild the paper figures:
 
 ```bash
-$PY -m swarm.viz.dashboard plan/figs/grid_dashboard.html --cell "G1 sim K=2=runs/grid_oss_sim_k2" \
-  --cell "G3 sim K=6=runs/grid_oss_sim_k6" --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2" --sweeps "runs/sweep_*"
+$PY -m swarm.viz.paper_figs plan/figs \
+  --cell "G1 sim K=2=runs/grid_oss_sim_k2,runs/b2_sweep_base" --cell "G3 sim K=6=runs/grid_oss_sim_k6" \
+  --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2" \
+  --div-cell "God at r3 (G1)=runs/grid_oss_sim_k2,runs/b2_sweep_base" \
+  --div-cell "God at r8=runs/sweep_start8,runs/r3b2_sweep_start8" \
+  --div-cell "God at r14=runs/r3_sweep_start14,runs/r3b2_sweep_start14" \
+  --div-cell "board off=runs/sweep_board_off,runs/b2_sweep_board_off" \
+  --sweep "God's first round|r1 (B′, forks r1)=runs/sweep_start1,runs/grid_oss_sim_k2@noise#0-7" \
+  --sweep "God's first round|r3 (G1 worlds 0-7)=runs/grid_oss_sim_k2,runs/b2_sweep_base#0-7" \
+  --sweep "God's first round|r8=runs/sweep_start8,runs/r3b2_sweep_start8" \
+  --sweep "God's first round|r14=runs/r3_sweep_start14,runs/r3b2_sweep_start14" \
+  --sweep "God's budget K|K=1=runs/sweep_k1,runs/b2_sweep_base" \
+  --sweep "God's budget K|K=2 (G1 worlds 0-7)=runs/grid_oss_sim_k2,runs/b2_sweep_base#0-7" \
+  --sweep "God's budget K|K=4=runs/r3_sweep_k4,runs/b2_sweep_base" \
+  --sweep "Board|board off=runs/sweep_board_off,runs/b2_sweep_board_off" \
+  --design "board off=runs/grid_oss_sim_k2#0-5|runs/sweep_board_off"
+```
+
+### Cell specs
+
+A cell spec has the form `RUN[,NOISE_RUN[@BRANCH]][#seeds]`, as in `sweep_stats`.
+
+- `RUN` is the run dir that holds the god and nogod branches.
+- `NOISE_RUN` supplies the fork-matched noise B″. Its default branch is `noisefork`; add `@noise` to
+  use G1's B′ for start r1.
+- `#seeds` restricts the cell to the listed worlds.
+
+### Dashboard
+
+The results dashboard is `plan/figs/grid_dashboard.html`: one self-contained page.
+
+- **Cells:** all grid and sweep cells.
+- **Per cell:** God − no God, B″ − no God, and the primary God − B″, each with the 95% t-CI, p and n,
+  for every metric.
+- **Design effects:** each cell's no-God branch against G1's.
+- **Per world:** God next to the noise.
+- **Divergence:** aligned on F.
+- **Trajectories, health and cost.**
+
+```bash
+$PY -m swarm.viz.dashboard plan/figs/grid_dashboard.html \
+  --cell "G1 sim K=2 (base)=runs/grid_oss_sim_k2,runs/b2_sweep_base" --cell "G3 sim K=6=runs/grid_oss_sim_k6" \
+  --cell "G2 seq K=2=runs/r2_grid_oss_seq_k2" \
+  --cell "sweep: God starts r1=runs/sweep_start1,runs/grid_oss_sim_k2@noise#0-7" \
+  --cell "sweep: God starts r8=runs/sweep_start8,runs/r3b2_sweep_start8" \
+  --cell "sweep: God starts r14=runs/r3_sweep_start14,runs/r3b2_sweep_start14" \
+  --cell "sweep: K=1=runs/sweep_k1,runs/b2_sweep_base" --cell "sweep: K=4=runs/r3_sweep_k4,runs/b2_sweep_base" \
+  --cell "sweep: board off=runs/sweep_board_off,runs/b2_sweep_board_off" \
+  --cell "sweep: N=5=runs/r3_sweep_n5" --cell "sweep: N=20=runs/sweep_n20"
 ```
 
 Every number in the videos, figures and dashboard comes from one module, `swarm/viz/metrics.py`.
-Its outcome definitions match `swarm.analysis.grid_results`.
+Its outcome definitions match `swarm.analysis.grid_results` and `swarm.analysis.sweep_stats`.
