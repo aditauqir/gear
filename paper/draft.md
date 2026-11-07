@@ -235,7 +235,7 @@ A null result therefore means "no large effect", not "no effect". We will replac
 
 ---
 
-## References (all verified on the arXiv abstract page, 2026-11-07)
+## References (all verified on the arXiv abstract page, 2026-11-07; venue of [15] verified on the NeurIPS proceedings page)
 
 1. L. Hammond, A. Chan, J. Clifton, J. Hoelscher-Obermaier, A. Khan, et al. (44 authors). *Multi-Agent Risks from Advanced AI*. Cooperative AI Foundation Technical Report #1, 2025. arXiv:2502.14143.
 2. J. S. Park, J. C. O'Brien, C. J. Cai, M. R. Morris, P. Liang, M. S. Bernstein. *Generative Agents: Interactive Simulacra of Human Behavior*. 2023. arXiv:2304.03442.
@@ -251,7 +251,7 @@ A null result therefore means "no large effect", not "no effect". We will replac
 12. Z. Chen, Z. Xiang, C. Xiao, D. Song, B. Li. *AgentPoison: Red-teaming LLM Agents via Poisoning Memory or Knowledge Bases*. 2024. arXiv:2407.12784.
 13. E. Jones, A. Dragan, J. Steinhardt. *Adversaries Can Misuse Combinations of Safe Models*. 2024. arXiv:2406.14595.
 14. R. Greenblatt, B. Shlegeris, K. Sachan, F. Roger. *AI Control: Improving Safety Despite Intentional Subversion*. ICML 2024. arXiv:2312.06942.
-15. S. R. Motwani, M. Baranchuk, M. Strohmeier, V. Bolina, P. H. S. Torr, L. Hammond, C. Schroeder de Witt. *Secret Collusion among AI Agents: Multi-Agent Deception via Steganography*. 2024. arXiv:2402.07510. [CHECK: the summary in `research/summaries/` says NeurIPS 2024; the arXiv page shows no venue, so cite as arXiv unless confirmed.]
+15. S. R. Motwani, M. Baranchuk, M. Strohmeier, V. Bolina, P. H. S. Torr, L. Hammond, C. Schroeder de Witt. *Secret Collusion among AI Agents: Multi-Agent Deception via Steganography*. Advances in Neural Information Processing Systems 37 (NeurIPS 2024). arXiv:2402.07510. Proceedings: https://proceedings.neurips.cc/paper_files/paper/2024/hash/861f7dad098aec1c3560fb7add468d41-Abstract-Conference.html
 16. A. Rose, C. Cullen, S. Abdelnabi, P. Torr, B. G. Kaplowitz, C. Schroeder de Witt. *Detecting Multi-Agent Collusion Through Multi-Agent Interpretability*. 2026. arXiv:2604.01151.
 17. M. Cemri, M. Z. Pan, S. Yang, L. A. Agrawal, et al. (13 authors). *Why Do Multi-Agent LLM Systems Fail?* 2025. arXiv:2503.13657.
 18. S. Zhang, M. Yin, J. Zhang, J. Liu, Z. Han, J. Zhang, B. Li, C. Wang, H. Wang, Y. Chen, Q. Wu. *Which Agent Causes Task Failures and When? On Automated Failure Attribution of LLM Multi-Agent Systems*. 2025. arXiv:2505.00212.
