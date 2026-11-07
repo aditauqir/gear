@@ -43,6 +43,12 @@ LEDGER_STOP = 7.80                 # hard: the ledger must never reach this
 # Sweep-total guard: the ledger was $5.0575 when the main grid ended (before any sweep spend), and the
 # whole sweep may spend $2.30, so new drivers stop at 5.0575 + 2.30 (other agents' spend counts too).
 SWEEP_LEDGER_STOP = 7.35
+# RunBudget reserves a worst-case estimate for EVERY pending call (before the concurrency semaphore):
+# (prompt x price_in + max_tokens x price_out) x (concurrent games x N). With the old 0.1/0.5 $/M
+# estimates that was ~$0.15 at r18 with 8-12 games, so tight caps ended games "budget_exceeded" while
+# real spend was far below the cap (04:2x, b2_sweep_start8/14, sweep_start14). The configs now use
+# 0.03/0.15 $/M (2x the realized fitted price; operational, hashed as fixed) and caps get this margin.
+RESERVE_MARGIN = 0.06
 
 FRAUD = {"power": "message_fraud", "after_turns": 0,
          "args": {"sender": "recent_partner", "receiver": "closest_to_winning"}}
@@ -71,7 +77,7 @@ class Cond:
     def cap(self) -> float:
         if self.cap_usd is not None:
             return self.cap_usd
-        return round(1.25 * projection(self, 1.35)["total"] + 0.005, 2)
+        return round(1.25 * projection(self, 1.35)["total"] + RESERVE_MARGIN, 2)
 
     @property
     def god_only(self) -> bool:
@@ -182,7 +188,7 @@ def config_dict(name: str, c: Cond, conc: int = 4) -> dict[str, Any]:
                   for r in ("agent", "god", "judge", "summarizer")},
         "llm": {"budget_usd": c.cap, "cache": {"mode": "read_write"},
                 "openrouter": {"enabled": True, "model": "openai/gpt-oss-120b", "max_concurrency": conc,
-                               "global_cap_usd": 8.0, "price_in_per_mtok": 0.1, "price_out_per_mtok": 0.5,
+                               "global_cap_usd": 8.0, "price_in_per_mtok": 0.03, "price_out_per_mtok": 0.15,
                                "reasoning_effort": "low", "provider_sort": "price"}},
     }
 
@@ -373,7 +379,7 @@ def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only:
         ctl = int("nogod" in branches and not c.god_only)
         opts = [f"n={c.n}", f"g={49 * c.n}", "pcap=16500", f"rounds={c.rounds}", f"seeds={s}",
                 f"shared={c.fork_round - 1}", f"paid={paid}", f"ctl={ctl}"]
-        cap = cap_usd if cap_usd is not None else round(1.25 * pr["total"] + 0.005, 2)
+        cap = cap_usd if cap_usd is not None else round(1.25 * pr["total"] + RESERVE_MARGIN, 2)
         caps.append(cap)
         cells.append(f"sweep/{name}:{cap:.2f}:{len(branches)}:{','.join(opts)}")
         print(f"{name:13s} seeds {s} projected ${pr['total']:.3f} (cap ${cap:.2f}) calls ~{pr['calls']:.0f}")
