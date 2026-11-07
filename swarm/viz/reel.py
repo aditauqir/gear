@@ -145,7 +145,9 @@ def build(out: Path, main: tuple[str, Path], cells: list[tuple[str, Path]], n_bo
             plt.close(wv.fig)
             f = new_fig()
             if upto is None:
-                card_end(f, wv.god, wv.nogod, "")
+                card_end(f, wv.god, wv.nogod, num(
+                    f"Across all {g1['n']} worlds of this cell the mean Δ welfare is {g1['mean']:+.2f} "
+                    f"[{g1['tlo']:+.2f}, {g1['thi']:+.2f}]: this world is the tail, not the typical case."))
                 fr.add(f, 4.5)
         f = new_fig()
         card_grid(f, main, cells, st)
