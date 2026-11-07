@@ -1,5 +1,19 @@
 # SIM60: 60-agent "Keys & God" simulation (simultaneous turns, paired God vs no-God)
 
+> **Caveats. Read these before using any number below.**
+> 1. **Pre-8ebbee7 ledger bug.** The run used git `1993b5c` plus uncommitted edits. It started at
+>    06:20:04Z, before the own-action `item_id` fix (`8ebbee7`, 06:30:57Z) landed. In 2-action
+>    turns, agents saw their second own action twice and lost the first one from their history.
+> 2. **No board skip.** The run predates `post_skip_rounds` (548424f). All 60 agents could post
+>    every round.
+> 3. **n=1.** This is one paired fork with no noise replica. God vs no-God differences after the
+>    fork mix God's effect with sampling noise.
+> 4. **Context 3000, max_tokens 1200.** The 10-agent runs used 14000 and 700. These numbers are
+>    not comparable to `or_10x30_sim` / `or_10x30_seq`.
+> 5. **Config hash.** The run hashed `global_cap_usd` = 6.0, giving config_sha256 `f448fe8b...`.
+>    Since `be1bcbc`, the cap is hashed as the legacy $2. Re-running this exact config on current
+>    code therefore gives a different hash, game id and seeds, plus a cold cache.
+
 Run `runs/or_60x20_sim` (config `configs/demo_or_60_sim.yaml`, seed 0, OpenRouter
 `qwen/qwen3.6-35b-a3b`, thinking off). It is a single paired fork: both branches share seeds and
 rounds 1-2 (God first acts in round 3). All numbers below come from the run's manifest, events,
@@ -55,6 +69,46 @@ about 2% and the mean prompt was 3.8k tokens. In hindsight, 30 rounds (about $2.
 the observed late-round rate) would have fit the run budget. 50 rounds (about $4.2) would not.
 With $2.06 already spent by this task, re-running 30 rounds would push this task past the $4.00
 limit, so I did not re-run.
+
+## Why outputs hit max_tokens
+
+The data below comes from llm_calls.jsonl in `or_60x2_smoke`, `or_60x20_sim` and `or_10x30_sim`.
+Only lengths and structure were inspected.
+
+**Not Qwen thinking leaking.** Every request has `thinking: false`. The `reasoning` field is empty
+in all calls, and all output is in `text`.
+
+**The cause is the free-text `thought` key.** The agent writes its JSON with `thought` first, then
+`actions`, then `note`.
+- **Smoke run:** 31 of 34 truncated outputs ended inside `thought` and never reached `actions`.
+  The median truncated `thought` was 1886 chars, against 451 chars in completed replies. In
+  completed replies, `actions` had a median of 184 chars and `note` 105 chars, so `note` is not
+  the cause.
+- **What the long thoughts contain:** the agent works through who holds and needs which ids,
+  using the board posts. The truncated thoughts repeat themselves a little: the median share of
+  repeated sentences is 3.5%, against 0% in completed replies.
+
+**Trigger: prompt size.**
+- **Smoke, round 2 (8.2k-token prompts, 60 board posts):** 29 of 60 first attempts hit the
+  700-token limit. Over the whole smoke run, 34 of 186 calls did (18%).
+- **Full run (context 3000, prompts about 4k tokens, max_tokens 1200):** 6 of 67 round-2 first
+  attempts hit the limit, and 30 of 1351 calls overall (2.2%), spread across rounds.
+- **10-agent sim (700 tokens):** 22 of 329 calls (6.7%), with the same structure. Every sample
+  ended inside `thought`.
+
+**Three truncated samples:**
+
+| run, round, agent | completion tokens | chars | structure at cut-off |
+|---|---|---|---|
+| smoke r2 `lemon_harbor` | 700 / 700 | 2071 | only `thought` (2067 chars), no `actions` |
+| full r2 `bold_piper` | 1200 / 1200 | 3053 | only `thought` (3052 chars), no `actions` |
+| full r2 `ember_delta` | 1200 / 1200 | 3500 | only `thought` (3496 chars), names 8 players |
+
+**What this means for the grid:** a cut-off reply costs a retry with the full prompt, and if the
+retry also fails, the turn is lost. Options:
+- put `actions` before `thought` in the format,
+- add a length cap for the thought to the prompt,
+- or salvage the `actions` key from a truncated reply.
 
 ## Results (20 rounds)
 
