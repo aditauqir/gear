@@ -51,3 +51,14 @@ def test_unhealthy_branch_excludes_its_seed(tmp_path, capsys):
     assert sorted(gs.load_run(rd, keep_unhealthy=True)["seeds"]) == [0, 1, 2]
     gs.main([str(rd), "--boot", "50"])
     assert "UNHEALTHY games/g01-god" in capsys.readouterr().out
+
+
+def test_t_ci_is_wider_than_percentile_bootstrap_for_one_outlier_seed():
+    """Review: 7 zeros and one 2.0 -> the bootstrap's lower bound is exactly 0 (looks 'positive'),
+    the t interval covers 0 on both sides."""
+    xs = [0.0] * 7 + [2.0]
+    lo, hi = gs.t_ci(xs)
+    assert lo < 0 < hi and abs((lo + hi) / 2 - 0.25) < 1e-9
+    blo, _ = gs.boot_ci(xs, 2000, random.Random(0))
+    assert blo == 0.0
+    assert gs.t_ci([1.0]) != gs.t_ci([1.0])        # nan for n < 2
