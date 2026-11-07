@@ -115,7 +115,7 @@ For each world we run:
 - **A (God):** the scripted schedule is active.
 - **B (no God):** the same world, the same branch key, and the same replica id. All sampling seeds and response-cache keys are therefore identical to A's.
 - **B′ (noise replica, cell G1 only):** God-free like B, but with a different replica id from round 1. It has fresh seeds and disjoint cache keys, so it measures whole-game sampling drift.
-- **B″ (fork-matched noise, follow-up sweep):** God-free, sharing A/B's history up to God's first round and resampled with fresh seeds from that round on. It is the matched null for divergence, and it resamples *all* agents from that round, so it is an upper bound on noise. In the sweep it forks exactly at God's round in every world (SR).
+- **B″ (fork-matched noise, follow-up sweep):** God-free, sharing A/B's history up to God's first round and resampled with fresh seeds from that round on. It is the matched null for divergence, and it resamples *all* agents from that round, so it is an upper bound on noise.
 
 A and B issue byte-identical requests until God first acts, and a single-flight response cache sends each distinct request to the provider once. The branches are therefore **identical by construction** before the intervention, even though the provider honours seeds only partly (in a direct probe, 5 of 6 fixed-seed calls returned byte-identical replies; GR §2). Afterwards an agent's request differs only once something it observes has changed; since everyone reads the public log, this coupling lasts about one round. B′ differs from round 1, while God first acts in round 3, so only B″ is aligned with the God fork.
 
@@ -207,11 +207,10 @@ Against a fork-matched baseline, God's divergence is *below* noise. On G1's worl
 Neither tripling the budget (H3) nor sequential turns (H2) changes God's effect (Table 3). Across about 27 outcome tests, the one interval that excludes zero is needs lost in the turn-mode contrast: −0.113 [−0.207, −0.018]. Its sign-flip p is 0.062 at n = 8, uncorrected, so we treat it as noise. A single-seed pilot's hint of opposite-sign effects by turn mode did not replicate (GR §5).
 
 ### 5.5 Follow-up sweep (exploratory) [VERIFY]
-We varied one factor at a time around G1 on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board off, and N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR).
+We varied one factor at a time around G1 on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board off, and N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR). God fired at exactly the scheduled rounds and K in every God branch. B″ first differs from its control exactly at the fork round in every world; in the world checked, 0 of 10 fork-round responses were identical.
 - **God effect.** No A−N welfare t95 excludes zero. The closest is K=1, with one forged DM: −0.104 [−0.213, +0.005], p = 0.062. Given about 8 uncorrected tests, we read it as noise.
-- **Late God.** Acting first at round 14 is tightly null: −0.025 [−0.080, +0.030].
+- **Late God.** Acting first at round 14 is tightly null: −0.025 [−0.080, +0.030]. At n = 8, A−N otherwise excludes only large effects (MDE ≈ 0.15-0.25).
 - **No noise arm.** K=6, N=5 and N=20 (n = 4) have God − B only; all are null.
-- **Power.** At n = 8, A−N excludes only large effects (MDE ≈ 0.15-0.25).
 - **Board off.** Turning the message board off lowers no-God welfare *by itself*: −0.200 [−0.333, −0.067], p = 0.031, n = 6, with all 6 worlds negative. God stays null there (A−N +0.056 [−0.170, +0.281]). Given the low n, multiple comparisons and differently seeded controls, this is an exploratory game-design finding.
 - **Cost.** The sweep cost $2.142.
 
@@ -279,8 +278,10 @@ Do not add numbers from their full texts without opening them.
 
 **Sweep incidents** (SR; `plan/SWEEP_PLAN.md`) [VERIFY]:
 - **False budget stops.** The per-run budget reserved a worst-case estimate for every pending call, so some cells stopped early with a false `budget_exceeded` although actual spend was below cap. The estimate was fixed, and the affected games were finished by re-running from the cache, which replays every completed call exactly.
-- **N=20 crash.** A template change made mid-run crashed 3 games in two N=20 worlds. Those worlds were excluded, so N=20 rests on 4 worlds.
-- **Logging and controls.** The serving provider was logged for only part of the sweep. Some God-only cells reuse G1's control games through the cache.
+- **N=20 crash.** A template change made mid-run crashed 3 N=20 games (world 4 no-God; world 5 God and no-God). Worlds 4-5 were excluded, so N=20 rests on 4 healthy worlds.
+- **Provider logging.** The serving provider was logged only from 03:52 EST. The ~20k stage-1 sweep calls (God and control branches) have no provider recorded, so a provider confound between branches cannot be ruled out there. Logged calls went to PrimeIntellect or Near AI (10,553 vs. 344).
+- **Concurrency.** OpenRouter concurrency ran at 12, above the planned 8, from 03:57 to 04:50, which raises the share of fallback providers [VERIFY: from planA-sweep's report; not stated in SWEEP_PLAN/SWEEP_RESULTS].
+- **Shared controls.** Some God-only cells reuse G1's control games through the cache.
 
 **Framing and construct validity.** Prompt wording strongly affects LLM behaviour [19]. The action is called "defect", and the agents are told they are playing a trading game. Both could shift baseline cooperation. The paired design holds framing fixed across branches, but the size of God's effect may depend on the baseline level of cooperation that the framing sets. A key-trading game is a stylised stand-in for real multi-agent deployments, so results transfer only qualitatively.
 
