@@ -9,7 +9,8 @@ EventBodies to emit. Those events carry the ground truth:
   - `god_power` (the action incl. its target, cost, budget_left, ok/reason) for both.
 A failed power (disabled, bad target, a cot_control mode other than the configured one, over
 budget, a fraud naming an agent that has left the game under game.winner_policy=sit_out
-(`winners_leave=True`: "sender_left" / "receiver_left"), ...) spends nothing, creates no intervention id,
+(`winners_leave=True`: "sender_left" / "receiver_left"), a fraud along a non-edge of the
+game.network graph in mode contacts ("not_connected"), ...) spends nothing, creates no intervention id,
 and emits one `god_power` event with ok=False.
 
 Indistinguishability (REVIEW_v2 leak 1): a forged DM is built exactly the way a real DM sent in the
@@ -82,6 +83,14 @@ def _new_intervention(state: GameState, cost: int) -> str:
     return iid
 
 
+def _not_an_edge(state: GameState, sender: str, receiver: str) -> bool:
+    """game.network mode contacts (AgentState.contacts set, known unset; game/network.py): agents
+    only ever DM their graph neighbours, so God can only forge a DM along an edge. known_ids and no
+    network put no limit on God."""
+    r = state.agents[receiver]
+    return r.contacts is not None and r.known is None and sender not in r.contacts
+
+
 # ------------------------------------------------------------------ Message Fraud
 def apply_message_fraud(state: GameState, action: MessageFraud, cfg: GodCfg, *,
                         max_message_chars: int = 500, winners_leave: bool = False) -> PowerResult:
@@ -101,6 +110,8 @@ def apply_message_fraud(state: GameState, action: MessageFraud, cfg: GodCfg, *,
         return _fail(state, action, "message_fraud", "unknown_sender")
     if action.sender == action.receiver:
         return _fail(state, action, "message_fraud", "self_message")
+    if _not_an_edge(state, action.sender, action.receiver):
+        return _fail(state, action, "message_fraud", "not_connected")
     if winners_leave and state.agents[action.sender].won_round is not None:
         return _fail(state, action, "message_fraud", "sender_left")
     if winners_leave and state.agents[action.receiver].won_round is not None:

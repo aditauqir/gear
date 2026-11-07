@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,10 @@ class GameChecker(PromptChecks):
         self.sit_out = self.g.winner_policy == "sit_out"
         self.left: dict[str, tuple[int, float]] = {}
         self.left_notices: collections.Counter[tuple[str, str]] = collections.Counter()   # (receiver, text)
+        # game.network (from game_start; all None = no network): contacts per agent, and in mode
+        # known_ids the replayed known names (start = contacts, + names seen in each observation)
+        self.contacts: dict[str, set[str]] | None = None
+        self.known: dict[str, set[str]] | None = None
 
     # ------------------------------------------------------------------ helpers
     def bad(self, check: str, detail: str) -> None:
@@ -78,6 +83,7 @@ class GameChecker(PromptChecks):
                     {a: s.get("won_round") for a, s in start["agents"].items()})
         key_of = {i: k for s in rp.keys.values() for i, k in s.values()}
         self.key_of = key_of
+        self._network_start(start["agents"])
         all_copies = {c for s in rp.keys.values() for c in s}
         prev_obs = {a: -1 for a in agents}
         msgs: list[dict[str, Any]] = []
@@ -125,6 +131,7 @@ class GameChecker(PromptChecks):
             elif typ == "action_result":
                 a, act = d["agent"], d["action"]
                 self._own_line(a, r, d)
+                self._network_action(a, r, d)
                 if a in self.left and d["ok"] and act["kind"] != "grep_log":
                     self.bad("left", f"r{r} {a} left in r{self.left[a][0]} but its {act['kind']} succeeded")
                 if act["kind"] == "give_key":
@@ -134,6 +141,8 @@ class GameChecker(PromptChecks):
                     if not d["ok"] and d.get("reason") == "no_such_key" and has:
                         self.bad("keys", f"r{r} {a} give_key info {act['info_id']} failed no_such_key but it held one")
             elif typ == "key_transfer":
+                if d["cause"] == "give" and not self._may_dm(d["from_agent"], d["to_agent"]):
+                    self.bad("network", f"r{r} give {d['from_agent']}->{d['to_agent']} is not along a graph edge")
                 for side in (d["from_agent"], d["to_agent"]):
                     if side in self.left:
                         self.bad("left", f"r{r} key_transfer {d['cause']} of info {d['info_id']} touches "
@@ -145,6 +154,9 @@ class GameChecker(PromptChecks):
             elif typ == "message":
                 m = d["message"]
                 msgs.append(m)
+                if m["channel"] == "dm" and not self._may_dm(m["sender_shown"], m["receiver"]):
+                    self.bad("network", f"r{r} DM {m['msg_id']} {m['sender_shown']}->{m['receiver']} is not "
+                                        f"along a graph edge (forged={bool(m.get('forged'))})")
                 if m["sender_shown"] in self.left or m.get("receiver") in self.left:   # forged ones too
                     self.bad("left", f"r{r} message {m['msg_id']} {m['sender_shown']}->{m.get('receiver')} "
                                      "involves an agent that left")
@@ -212,6 +224,81 @@ class GameChecker(PromptChecks):
             for o in agents:
                 if o != a and self.left_notices[(o, left_text(a))] != 1:
                     self.bad("left", f"{o} got {self.left_notices[(o, left_text(a))]} 'left' notices for {a}")
+
+    # ------------------------------------------------------------------ game.network
+    LEARN_KINDS = ("gift_received", "burned", "defect_attempt")
+
+    def _network_start(self, agents: dict[str, Any]) -> None:
+        """Read the graph (and known names) off game_start; leaves both None without a network."""
+        if any(s.get("contacts") is not None for s in agents.values()):
+            self.contacts = {a: set(s.get("contacts") or []) for a, s in agents.items()}
+            for a, nb in self.contacts.items():
+                for b in nb:
+                    if a not in self.contacts.get(b, set()):
+                        self.bad("network", f"edge {a}-{b} is not symmetric")
+            if not self.g.network.on:
+                self.bad("network", "game_start has contacts although game.network.topology=complete")
+        if any(s.get("known") is not None for s in agents.values()):
+            self.known = {a: set(s.get("known") or []) for a, s in agents.items()}
+            if self.contacts is None or self.known != self.contacts:
+                self.bad("network", "known names at the start != the graph neighbours")
+        if self.g.network.on and self.contacts is None:
+            self.bad("network", "game.network is on but game_start has no contacts")
+
+    def _may_dm(self, a: str | None, b: str | None) -> bool:
+        """Mode contacts: may a and b exchange a DM / key? (always True otherwise)."""
+        if self.contacts is None or self.known is not None or a is None or b is None:
+            return True
+        return b in self.contacts.get(a, set())
+
+    def _sees_post(self, viewer: str, sender: str) -> bool:
+        if getattr(self.g.board, "scope", "global") != "neighbors":
+            return True
+        return self.contacts is not None and sender in self.contacts[viewer]
+
+    def _line_local(self, viewer: str, actor: str | None, target: str | None, known: set[str] | None) -> bool:
+        """contacts: some named party is the viewer or a contact; known_ids: every named party is known."""
+        if self.contacts is None:
+            return True
+        named = [x for x in (actor, target) if x is not None]
+        if self.known is not None:
+            return all(x == viewer or x in (known or set()) for x in named)
+        return any(x == viewer or x in self.contacts[viewer] for x in named)
+
+    def _names_seen(self, a: str, obs: dict[str, Any], names: list[str]) -> set[str]:
+        """Independent re-statement of the learning rule: DM / board senders and names in their text,
+        names in gift_received / burned / defect_attempt notices."""
+        def in_text(text: str) -> set[str]:
+            return {n for n in names if re.search(rf"(?<![A-Za-z0-9_]){re.escape(n)}(?![A-Za-z0-9_])", text)}
+        out: set[str] = set()
+        for m in obs.get("inbox", []) + obs.get("board", []):
+            if m["sender"] in names:
+                out.add(m["sender"])
+            out |= in_text(m["text"])
+        for nt in obs.get("notices", []):
+            if nt["kind"] in self.LEARN_KINDS:
+                out |= in_text(nt["text"])
+        out.discard(a)
+        return out
+
+    def _network_action(self, a: str, r: int, d: dict[str, Any]) -> None:
+        """ok peer actions only on addressable agents; network refusals only on non-addressable ones."""
+        if self.contacts is None:
+            return
+        act = d["action"]
+        other = act.get("to") if act["kind"] in ("send_message", "give_key") else act.get("target")
+        if act["kind"] not in ("send_message", "give_key", "defect") or other not in self.contacts:
+            return
+        allowed = other in (self.known[a] if self.known is not None else self.contacts[a])
+        reason = d.get("reason")
+        if d["ok"] and not allowed:
+            self.bad("network", f"r{r} {a} {act['kind']} on {other} succeeded but {other} is not "
+                                f"{'known to it' if self.known is not None else 'a contact'}")
+        if reason in ("not_connected", "unknown_contact") and allowed:
+            self.bad("network", f"r{r} {a} {act['kind']} on {other} refused ({reason}) but it was allowed")
+        want = "unknown_contact" if self.known is not None else "not_connected"
+        if reason in ("not_connected", "unknown_contact") and reason != want:
+            self.bad("network", f"r{r} {a} refused with {reason}, mode gives {want}")
 
     # ------------------------------------------------------------------ pieces
     def _own_line(self, a: str, r: int, d: dict[str, Any]) -> None:
@@ -316,9 +403,15 @@ class GameChecker(PromptChecks):
         if abs(p["score"] - st.score(a)) > 1e-9:
             self.bad("obs", f"r{r} {a} pinned score {p['score']} != replay {st.score(a)}")
         gone = {x for x, w in st.won.items() if w is not None} if self.sit_out else set()
-        want_peers = sorted(x for x in rp.keys if x != a and x not in gone)
+        known_before = set(self.known[a]) if self.known is not None else None
+        if self.known is not None:                       # known_ids: learn from this observation
+            self.known[a] |= self._names_seen(a, obs, list(rp.keys))
+        pool = (self.known[a] if self.known is not None
+                else self.contacts[a] if self.contacts is not None else set(rp.keys))
+        want_peers = sorted(x for x in pool if x != a and x not in gone)
         if sorted(p["peers"]) != want_peers:
-            self.bad("obs", f"r{r} {a} pinned peers {p['peers']} != players still in the game {want_peers}")
+            self.bad("obs", f"r{r} {a} pinned peers {p['peers']} != players still in the game "
+                            f"(that it may address) {want_peers}")
         # inbox / board: exactly the messages stamped prev <= s < t
         prev = prev_obs[a]
         anon = self.g.board.anonymous
@@ -328,7 +421,8 @@ class GameChecker(PromptChecks):
         if want_in != got_in:
             self.bad("obs", f"r{r} {a} inbox {got_in} != expected {want_in}")
         want_bd = sorted(m["msg_id"] for m in msgs
-                         if m["channel"] == "board" and m["sender_shown"] != a and prev <= self._shown(m) < t_obs)
+                         if m["channel"] == "board" and m["sender_shown"] != a and prev <= self._shown(m) < t_obs
+                         and self._sees_post(a, m["sender_shown"]))
         got_bd = sorted(m["msg_id"] for m in obs["board"])
         if want_bd != got_bd:
             self.bad("obs", f"r{r} {a} board {got_bd} != expected {want_bd}")
@@ -340,10 +434,11 @@ class GameChecker(PromptChecks):
             shown = "(anonymous)" if (truth["channel"] == "board" and anon) else truth["sender_shown"]
             if m["sender"] != shown or m["text"] != truth["text"]:
                 self.bad("obs", f"r{r} {a} message {m['msg_id']} rendered as {m['sender']!r}, truth {shown!r}")
-        self._log_lines(r, a, obs, prev, t_obs, msgs, gives, burns)
+        self._log_lines(r, a, obs, prev, t_obs, msgs, gives, burns, known_before)
 
     def _log_lines(self, r: int, a: str, obs: dict[str, Any], prev: int, t: int, msgs: list[dict[str, Any]],
-                   gives: list[tuple[int, str, str, int, int]], burns: list[dict[str, Any]]) -> None:
+                   gives: list[tuple[int, str, str, int, int]], burns: list[dict[str, Any]],
+                   known_before: set[str] | None = None) -> None:
         vl, w = self.g.view_log, self.g.window_turns
         if vl.content == "none":
             if obs["log"]:
@@ -352,14 +447,21 @@ class GameChecker(PromptChecks):
         hid = vl.actor_identity == "hidden"
         dhid = (vl.defect_actor_identity or vl.actor_identity) == "hidden"
         want: list[tuple[Any, ...]] = []
+        def local(actor: str | None, target: str | None) -> bool:     # game.network: local lines only
+            return self._line_local(a, actor, target, known_before)
+
         for s, src, dst, info, rr in gives:
-            if t - w <= s < t:
+            if t - w <= s < t and local(None if hid else src, dst):
                 want.append(("give", rr, None if hid else src, dst, info, None))
         for m in msgs:
             if t - w <= self._shown(m) < t:
                 sender = None if hid else m["sender_shown"]
                 if m["channel"] == "board":
-                    want.append(("board_post", m["round"], None if self.g.board.anonymous else sender, None, None, None))
+                    if self._sees_post(a, m["sender_shown"]):
+                        want.append(("board_post", m["round"], None if self.g.board.anonymous else sender,
+                                     None, None, None))
+                elif not local(sender, m["receiver"]):
+                    continue
                 elif vl.content == "actions_msg_meta":
                     want.append(("dm_meta", m["round"], sender, m["receiver"], None, None))
                 elif vl.content == "full":
@@ -372,7 +474,7 @@ class GameChecker(PromptChecks):
                 show = (mode == "delayed" or a != b["target"]) and prev < b["release_turn"] <= t
             else:
                 show = False
-            if show:
+            if show and local(None if dhid else b["actor"], b["target"]):
                 want.append(("defect", b["round"], None if dhid else b["actor"], b["target"], b["info_id"], b["correct"]))
         got = [(ln["kind"], ln["round"], ln.get("actor"), ln.get("target"),
                 ln.get("info_id") if ln["kind"] in ("give", "defect") else None,
@@ -420,6 +522,11 @@ class GameChecker(PromptChecks):
                 self.bad("defects", f"r{r} {a} snapshot burned/lost != replay")
             if s["won_round"] != rp.won.get(a):
                 self.bad("scores", f"r{r} {a} snapshot won_round {s['won_round']} != replay {rp.won.get(a)}")
+            if self.contacts is not None and set(s.get("contacts") or []) != self.contacts[a]:
+                self.bad("network", f"r{r} {a} snapshot contacts changed during the game")
+            if self.known is not None and set(s.get("known") or []) != self.known[a]:
+                self.bad("network", f"r{r} {a} snapshot known names {sorted(s.get('known') or [])} != replay "
+                                    f"{sorted(self.known[a])}")
 
     def _ended_early(self, r: int) -> bool:
         return any(e["type"] == "game_end" and e["data"]["outcome"]["end_reason"] == "budget_exceeded"

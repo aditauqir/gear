@@ -24,6 +24,14 @@ engine or observe) and asserts, per game:
              none after its win round), no later successful action, no key transfer to/from it, no
              DM to/from it (God's forged ones included); its score stays at its value when it won; every other agent gets
              exactly one "left" notice for it; pinned peers never list a departed agent
+  network    (game.network) the graph on game_start is symmetric and fixed (every snapshot); mode
+             contacts: every DM (God's forged ones too) and give is along an edge, and every ok
+             send/give/defect targets a contact; known_ids: start known = neighbours, the known set
+             replayed from each observation (DM / board senders and names in their text, names in
+             gift/burn/defect notices) equals every snapshot, and ok actions target known names;
+             not_connected / unknown_contact refusals only on agents the actor could not address.
+             The obs check then expects pinned peers = contacts / known names (minus departed), the
+             board of game.board.scope=neighbors, and only local log lines (game/network.py)
   god        God events only in the god branch; ok powers == scheduled entries, <= K, budget_left
              bookkeeping; forged messages == ok frauds; memory_overwrites == ok cot_controls
   prompts    (llm_calls) no truth field / intervention id / banned word in the system prompt;

@@ -74,7 +74,8 @@ def closest_to_winning(state: GameState, exclude: set[AgentId] | None = None) ->
 
 def recent_partner(state: GameState, victim: AgentId, view: GodView | None = None) -> AgentId:
     """The other party of the victim's latest give/dm/defect; else the holder of the victim's first
-    open need; else the first other agent by id."""
+    open need; else the first other agent by id (game.network mode contacts: both fallbacks only
+    among the victim's contacts)."""
     hist = view.activity_check(state.round) if view is not None else None
     hist = hist if hist is not None else state.history
     for rec in sorted(hist, key=lambda r: r.turn_index, reverse=True):
@@ -82,11 +83,16 @@ def recent_partner(state: GameState, victim: AgentId, view: GodView | None = Non
             return rec.target
         if rec.target == victim and rec.actor not in (victim, "GOD"):
             return rec.actor
+    vs = state.agents[victim]
+    # game.network mode contacts: only a graph neighbour can plausibly DM the victim (and a forged DM
+    # must follow an edge), so the fallbacks pick among its contacts. Recent partners always are.
+    pool = (sorted(vs.contacts) if vs.contacts is not None and vs.known is None and vs.contacts
+            else [a for a in sorted(state.agents) if a != victim])
     for need in missing_needs(state, victim):
-        for other in sorted(state.agents):
+        for other in pool:
             if other != victim and any(k.info_id == need for k in state.agents[other].keys):
                 return other
-    return next(a for a in sorted(state.agents) if a != victim)
+    return pool[0]
 
 
 def _pick(state: GameState, spec: Any, default: str, *, seed: int, salt: tuple[Any, ...],

@@ -4,7 +4,7 @@
 It decides every game_id, agent seed and LLM cache key, so its rules are frozen:
   - `sweep` is excluded (each expanded cell has its own hash);
   - options added after the freeze are left out while at their defaults (game.board and its later
-    keys, run.resample_from_round, reasoning.salvage_truncated, the OpenRouter provider knobs), so
+    keys, game.network, run.resample_from_round, reasoning.salvage_truncated, the OpenRouter provider knobs), so
     older configs keep their hash; run.log_prompt_trace (logging only) is never hashed;
   - operational knobs (caps, budget, concurrency, paths, retry, price estimates, run name/n_games)
     are hashed as the fixed values in HASH_OPERATIONAL (CODE_REVIEW #6), so changing them never
@@ -53,9 +53,11 @@ def config_hash(cfg: Any) -> str:
     else:
         b = d["game"]["board"]
         for k, default in (("post_skip_rounds", 0), ("enabled", True),     # added later; same rule
-                           ("visible_delay_rounds", 0)):
+                           ("visible_delay_rounds", 0), ("scope", "global")):
             if b[k] == default:
                 b.pop(k)
+    if cfg.game.network == type(cfg.game.network)():           # added later; board rule
+        d["game"].pop("network")
     if d["run"]["resample_from_round"] is None:                 # added later; board rule
         d["run"].pop("resample_from_round")
     d["run"].pop("log_prompt_trace")                            # logging only: never hashed

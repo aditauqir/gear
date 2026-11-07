@@ -42,6 +42,9 @@ send_message still costs one slot. Same in both turn modes (decided per agent tu
 game.board.post_skip_rounds = k > 0: an agent whose post_board succeeds in round r is skipped in
 rounds r+1..r+k (delayed_until_round), with a skip notice and a resume notice (both shown at its
 next observation, i.e. when it resumes).
+game.network (game/network.py, off by default): the graph is on the state from world generation;
+rules refuse actions across non-edges / at unknown names, observe filters the board / view_log and
+the player list, and each observation teaches the agent the names in it (network.learn, known_ids).
 End of round: round_end event + deep-copied snapshot. The game ends at max_rounds, when every agent
 is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded"; the round it cut
 short still gets its round_end and snapshot).
@@ -84,7 +87,7 @@ from swarm.schema import (
     turn_index,
 )
 
-from . import rules
+from . import network, rules
 from .board import BOARD_WHOLE_TURN  # noqa: F401  (re-export: old engine name)
 from .board import whole_turn_text as _whole_turn_text  # noqa: F401
 from .observe import grep_log, mark_observed, observe
@@ -298,6 +301,7 @@ class GameEngine:
 
     def _observe(self, agent: AgentId, t: int) -> Observation:
         obs = observe(self.state, agent, self.g, t)
+        network.learn(self.state, agent, obs)          # game.network known_ids: names seen in obs
         mark_observed(self.state, agent, t)
         self.obs_turns[agent].append(t)
         return obs

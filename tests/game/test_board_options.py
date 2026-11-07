@@ -53,6 +53,7 @@ def test_defaults_off_and_hash_unchanged():
     assert cfg.game.board == BoardCfg(post_costs_turn=False, anonymous=False)
     d = cfg.model_dump(mode="json", exclude={"sweep"})
     d["game"].pop("board")
+    d["game"].pop("network")                                            # later field, off by default
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD   # cap is hashed as legacy $2
     for k in ("reasoning_effort", "provider_sort", "provider_order", "allow_fallbacks"):  # later, off
         d["llm"]["openrouter"].pop(k)
@@ -265,8 +266,9 @@ def test_post_skip_combines_with_anonymous_and_prompt_rules():
 def test_post_skip_hash_unchanged_at_default():
     base = RunConfig.model_validate({"game": {"board": {"post_costs_turn": True}}})
     d = base.model_dump(mode="json", exclude={"sweep"})
-    for k in ("post_skip_rounds", "enabled", "visible_delay_rounds"):    # later board fields, at defaults
+    for k in ("post_skip_rounds", "enabled", "visible_delay_rounds", "scope"):   # later board fields
         d["game"]["board"].pop(k)
+    d["game"].pop("network")                                            # later field, off by default
     d["run"].pop("resample_from_round")
     d["run"].pop("log_prompt_trace")                                    # logging only, never hashed
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD

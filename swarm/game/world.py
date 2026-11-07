@@ -22,6 +22,8 @@ from collections.abc import Sequence
 from swarm.config import GameCfg
 from swarm.schema import AgentId, AgentState, GameState, InfoId, KeyCopy
 
+from .network import attach as attach_network
+
 ADJECTIVES = (
     "amber", "brisk", "cedar", "dusty", "ember", "fern", "gilded", "hazel", "ivory", "jade",
     "keen", "lunar", "maple", "noble", "olive", "pale", "quiet", "rusty", "sandy", "tidal",
@@ -132,7 +134,9 @@ def _assign_needs(agents: Sequence[AgentId], holdings: dict[AgentId, list[KeyCop
 
 def generate_world(cfg: GameCfg, seed: int, game_id: str = "g0",
                    names: Sequence[AgentId] | None = None) -> GameState:
-    """Build the initial GameState (round 0). Deterministic in (cfg, seed, names). Always feasible."""
+    """Build the initial GameState (round 0). Deterministic in (cfg, seed, names). Always feasible.
+    With game.network on, the agents' contacts (and known names) come from game.network.make_graph,
+    seeded by the same world seed but on its own stream (the deal and needs are unchanged)."""
     rng = random.Random(seed)
     n, k, m = cfg.n_agents, cfg.keys_per_agent, cfg.needs_per_agent
     agents = list(names) if names is not None else make_names(n, rng)
@@ -152,7 +156,9 @@ def generate_world(cfg: GameCfg, seed: int, game_id: str = "g0",
         holdings[a] = kcs
     copies = [(a, kc.info_id) for a in agents for kc in holdings[a]]
     needs = _assign_needs(agents, holdings, copies, m, rng)
-    return GameState(
+    state = GameState(
         game_id=game_id, round=0, turn_index=0, order=list(agents),
         agents={a: AgentState(agent=a, keys=holdings[a], needs=needs[a]) for a in agents},
     )
+    attach_network(state, cfg, seed)
+    return state

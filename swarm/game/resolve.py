@@ -12,7 +12,8 @@ Per action, in order:
   otherwise       rules.apply; in simultaneous mode a failed give_key / defect also queues a "system"
                   notice (conflict_text): the state may have changed since the agent observed it
                   (not for winner_policy=sit_out departures: rules already sent a "left" notice, or
-                  the actor itself has left, "actor_left")
+                  the actor itself has left, "actor_left"; nor for game.network refusals, which
+                  already sent their own notice)
   sit_out mid-turn win: once an action of this turn (a minted defect) or, in simultaneous mode, an
                   earlier agent's give in this round's resolution completes the agent's needs, it has
                   left: every remaining action fails "actor_left" (it does not execute) and the agent
@@ -42,11 +43,12 @@ from swarm.schema import (
     PostBoard,
 )
 
-from . import board, rules
+from . import board, network, rules
 
 Result = tuple[bool, str | None]
-# sit_out departures: the actor already got a "left" notice (or has itself left), so no conflict notice
-_NO_CONFLICT_NOTICE = (*rules.LEFT_REASONS, "actor_left")
+# sit_out departures: the actor already got a "left" notice (or has itself left), so no conflict notice;
+# game.network refusals: rules already sent a "not connected" / "don't know that agent" notice
+_NO_CONFLICT_NOTICE = (*rules.LEFT_REASONS, "actor_left", *network.REASONS)
 
 
 @dataclass

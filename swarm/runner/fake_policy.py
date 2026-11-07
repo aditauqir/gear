@@ -22,7 +22,7 @@ import re
 from swarm.schema import ChatRequest
 
 _YOU = re.compile(r"You are ([a-z]+_[a-z]+)\.")
-_PLAYERS = re.compile(r"Players: (.+)")
+_PLAYERS = re.compile(r"(?:Players you know|Your contacts \([^)\n]*\)|Players): (.+)")   # + game.network labels
 _KEYS = re.compile(r"\{info_id: (\d+), key: (\d+)\}")
 _NEEDS = re.compile(r"Needs still open(?: \(info ids\))?: ([0-9, ]+)")
 _DM = re.compile(r"DM from ([a-z]+_[a-z]+): (.+)")

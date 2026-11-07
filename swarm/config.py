@@ -82,13 +82,40 @@ class BoardCfg(Cfg):
     #   view_log, grep_log) k rounds later than they otherwise would (sim: a round-r post from round r+1+k).
     enabled: bool = True
     visible_delay_rounds: int = Field(0, ge=0)
+    # Added with game.network (default global = original rules; left out of config_hash at its default).
+    # neighbors: an agent sees only the posts of its graph neighbours (board view, view_log, grep_log).
+    scope: Literal["global", "neighbors"] = "global"
 
     @model_validator(mode="after")
     def _check(self) -> BoardCfg:
         if not self.enabled and (self.post_costs_turn or self.anonymous or self.post_skip_rounds
-                                 or self.visible_delay_rounds):
+                                 or self.visible_delay_rounds or self.scope != "global"):
             raise ValueError("game.board.enabled=false cannot be combined with other board options")
         return self
+
+
+class NetworkCfg(Cfg):
+    """Social network over the agents (added after the freeze; topology "complete" = the original
+    rules, and the whole section is left out of config_hash while it equals its defaults).
+    The graph is generated from the WORLD seed (game.network module), so the God / no-God / noise
+    branches of one game share it.
+    topology: complete | erdos_renyi (mean_degree; resampled from the same seeded stream until
+        connected) | watts_strogatz (k, p) | barabasi_albert (m) | ring.
+    mode: contacts = only graph edges can DM / give_key / defect ("not_connected" otherwise);
+        known_ids = every pair may interact, but an agent starts knowing only its neighbours' names
+        and learns a name when it is named in a message or board post it sees, or gives to / defects
+        on it ("unknown_contact" for an unknown name)."""
+    topology: Literal["complete", "erdos_renyi", "watts_strogatz", "barabasi_albert", "ring"] = "complete"
+    mode: Literal["contacts", "known_ids"] = "contacts"
+    mean_degree: float = Field(3.0, gt=0)          # erdos_renyi: p = mean_degree / (n - 1)
+    k: int = Field(4, ge=2)                        # watts_strogatz: ring-lattice degree (even)
+    p: float = Field(0.1, ge=0.0, le=1.0)          # watts_strogatz: rewiring probability
+    m: int = Field(2, ge=1)                        # barabasi_albert: edges per new node
+
+    @property
+    def on(self) -> bool:
+        """Is any network restriction active? (complete graph = the original rules)."""
+        return self.topology != "complete"
 
 
 class GameCfg(Cfg):
@@ -110,11 +137,21 @@ class GameCfg(Cfg):
     max_message_chars: int = Field(500, ge=1)
     view_log: ViewLogCfg = ViewLogCfg()
     board: BoardCfg = BoardCfg()
+    network: NetworkCfg = NetworkCfg()
 
     @model_validator(mode="after")
     def _check(self) -> GameCfg:
         if self.immediate_reply:
             raise ValueError("game.immediate_reply is not implemented (cut, REVIEW_v2 s3)")
+        nw = self.network
+        if self.board.scope == "neighbors" and not nw.on:
+            raise ValueError("game.board.scope=neighbors needs a game.network.topology other than complete")
+        if nw.topology == "watts_strogatz" and (nw.k % 2 or nw.k >= self.n_agents):
+            raise ValueError("game.network.k must be even and < n_agents (watts_strogatz)")
+        if nw.topology == "barabasi_albert" and nw.m >= self.n_agents:
+            raise ValueError("game.network.m must be < n_agents (barabasi_albert)")
+        if nw.topology == "erdos_renyi" and nw.mean_degree > self.n_agents - 1:
+            raise ValueError("game.network.mean_degree must be <= n_agents - 1 (erdos_renyi)")
         if self.needs_per_agent > (self.n_agents - 1) * self.keys_per_agent:
             raise ValueError("needs_per_agent cannot be satisfied by the other agents' keys")
         return self

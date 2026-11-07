@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
+
+from pydantic import SerializerFunctionWrapHandler, model_serializer
 
 from swarm.rng import canonical_json, sha256_hex
 from swarm.schema.base import AgentId, GameId, InfoId, MemoryKind, MutableState, Record
@@ -27,6 +29,22 @@ class AgentState(MutableState):
     delayed_until_round: int = -1      # wrong-defect penalty `delay`: no turns while round <= this
     won_round: int | None = None
     last_obs_turn: int = -1            # turn_index of this agent's previous observation
+    # game.network (added after the freeze; both None = no network = the original rules). contacts:
+    # the agent's graph neighbours (sorted). known: game.network.mode=known_ids only, the names it
+    # knows (starts as its contacts, grows as it learns names; sorted). contacts set + known None =
+    # mode contacts. Both are left out of every dump while None, so state hashes, snapshots and
+    # game_start events of no-network games are byte-identical to before.
+    contacts: list[AgentId] | None = None
+    known: list[AgentId] | None = None
+
+    @model_serializer(mode="wrap")
+    def _drop_unset_network(self, handler: SerializerFunctionWrapHandler) -> Any:
+        d = handler(self)
+        if isinstance(d, dict):
+            for k in ("contacts", "known"):
+                if d.get(k, 0) is None:
+                    d.pop(k)
+        return d
 
 
 class Message(Record):

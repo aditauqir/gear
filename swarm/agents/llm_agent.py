@@ -71,6 +71,11 @@ def default_counter(cfg: RunConfig) -> TokenCounter:
     return make_counter(cfg.context.tokenizer)
 
 
+def network_mode(cfg: RunConfig) -> str:
+    """game.network mode for the templates: "" when off (complete graph), else contacts / known_ids."""
+    return cfg.game.network.mode if cfg.game.network.on else ""
+
+
 def system_context(cfg: RunConfig) -> dict[str, Any]:
     """Template variables for system.j2: run constants only (no agent name, no round)."""
     g = cfg.game
@@ -80,7 +85,8 @@ def system_context(cfg: RunConfig) -> dict[str, Any]:
                  "board_costs_turn": g.board.post_costs_turn, "board_anonymous": g.board.anonymous,
                  "board_skip_rounds": g.board.post_skip_rounds, "board_enabled": g.board.enabled,
                  "board_delay_rounds": g.board.visible_delay_rounds,
-                 "winners_leave": g.winner_policy == "sit_out"},
+                 "winners_leave": g.winner_policy == "sit_out",
+                 "network": network_mode(cfg), "board_local": g.board.scope == "neighbors"},
         "cot_mode": cfg.reasoning.cot_mode,
         "scratchpad": cfg.reasoning.scratchpad.enabled,
     }
@@ -113,7 +119,7 @@ class LLMAgent:
 
     def build_messages(self, bundle: ContextBundle, grep: GrepResult | None = None) -> list[ChatMessage]:
         """[system (run-constant), user (turn.j2 over the PromptView)]."""
-        user = self.prompts.render("turn.j2", view=bundle.to_view(grep))
+        user = self.prompts.render("turn.j2", view=bundle.to_view(grep), network=network_mode(self.cfg))
         return [ChatMessage(role="system", content=self.system_text), ChatMessage(role="user", content=user)]
 
     def _request(self, messages: list[ChatMessage], *, game_id: str, round: int, attempt: int,

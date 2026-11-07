@@ -175,6 +175,10 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
     cfg = spec.cfg
     check_schedule(cfg)
     state = generate_world(cfg.game, spec.world_seed, spec.game_id)
+    if cfg.game.network.on:                      # the graph is also on game_start (AgentState.contacts)
+        from swarm.game.network import network_meta
+
+        sink.write_meta(network=network_meta(state, cfg.game))
     memory = MemoryStore(cfg.reasoning)
     oracle = LeakOracle(enabled=not cfg.game.view_log.reveal_provenance)
     counter = default_counter(cfg)

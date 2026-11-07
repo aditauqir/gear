@@ -18,7 +18,7 @@ Your keys: {% for k in view.pinned.holdings %}{info_id: {{ k.info_id }}, key: {{
 
 Score: {{ "%.2f" | format(view.pinned.score) }}{% if view.pinned.won %} (you have won; you may keep helping others){% endif %}
 
-Players: {{ view.pinned.peers | join(", ") }}
+{% if network is defined and network == "contacts" %}Your contacts (the only players you can message or trade with): {% elif network is defined and network == "known_ids" %}Players you know: {% else %}Players: {% endif %}{{ view.pinned.peers | join(", ") }}
 {% if view.grep %}
 
 [Log search "{{ view.grep.pattern }}": {{ view.grep.hits | length }} hits{% if view.grep.truncated %}, truncated{% endif %}]

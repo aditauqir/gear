@@ -30,6 +30,10 @@ Rules (ARCHITECTURE_v2 §1, D1-D4, D12, D13):
   stay recorded on its AgentState (copy conservation) but are out of play, so its score is LOCKED at
   the value it had when it won. Every other agent gets a "left" notice. "continue" (the default) is
   unchanged: winners keep acting and only defect-on-a-winner is refused.
+- game.network (game/network.py; off by default): send_message / give_key / defect aimed at an agent
+  the actor may not address fail "not_connected" (mode contacts: not a graph neighbour) or
+  "unknown_contact" (mode known_ids: a name it does not know), state unchanged, with a "system"
+  notice to the actor. Checked after unknown_agent / self_target and before the sit_out checks.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ import os
 from collections.abc import Sequence
 
 from swarm.config import GameCfg
+from swarm.game import network
 from swarm.rng import make_msg_id
 from swarm.schema import (
     GOD,
@@ -256,6 +261,21 @@ def _peer_error(state: GameState, actor: AgentId, other: AgentId) -> str | None:
 LEFT_REASONS = ("recipient_left", "target_left")
 
 
+_WHAT_FAILED = {"send_message": "Your message was not delivered.",
+                "give_key": "Your give_key of info #{info} did not happen (you keep the key).",
+                "defect": "Your defect had no effect (no penalty)."}
+
+
+def _network_fail(state: GameState, actor: AgentId, action: Action, other: AgentId) -> Events | None:
+    """game.network: refuse an action aimed at an agent the actor may not address (None = allowed)."""
+    reason = network.reach_error(state, actor, other)
+    if reason is None:
+        return None
+    what = _WHAT_FAILED.get(action.kind, "").format(info=getattr(action, "info_id", "?"))
+    return [*_fail(state, actor, action, reason),
+            _notice(state, actor, "system", network.reach_text(state, actor, other, reason, what))]
+
+
 def _left_fail(state: GameState, actor: AgentId, action: Action, other: AgentId, reason: str) -> Events:
     """Failed action aimed at a departed winner: action_result + a "left" notice to the actor."""
     what = {"send_message": "Your message was not delivered.",
@@ -270,6 +290,9 @@ def _send(state: GameState, actor: AgentId, a: SendMessage, cfg: GameCfg) -> Eve
     err = _peer_error(state, actor, a.to)
     if err:
         return _fail(state, actor, a, err)
+    blocked = _network_fail(state, actor, a, a.to)
+    if blocked is not None:
+        return blocked
     if departed(state, a.to, cfg):
         return _left_fail(state, actor, a, a.to, "recipient_left")
     _, evs = deliver_message(state, channel="dm", sender_shown=actor, receiver=a.to,
@@ -281,6 +304,9 @@ def _give(state: GameState, actor: AgentId, a: GiveKey, cfg: GameCfg) -> Events:
     err = _peer_error(state, actor, a.to)
     if err:
         return _fail(state, actor, a, err)
+    blocked = _network_fail(state, actor, a, a.to)
+    if blocked is not None:
+        return blocked
     if departed(state, a.to, cfg):
         return _left_fail(state, actor, a, a.to, "recipient_left")
     src = state.agents[actor]
@@ -303,6 +329,9 @@ def _defect(state: GameState, actor: AgentId, a: DefectAction, cfg: GameCfg) -> 
     err = _peer_error(state, actor, a.target)
     if err:
         return _fail(state, actor, a, err)
+    blocked = _network_fail(state, actor, a, a.target)
+    if blocked is not None:
+        return blocked
     tgt = state.agents[a.target]
     if departed(state, a.target, cfg):
         return _left_fail(state, actor, a, a.target, "target_left")

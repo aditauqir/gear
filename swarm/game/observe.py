@@ -25,6 +25,11 @@ Timing (all by global turn index t; `prev` = AgentState.last_obs_turn, -1 before
   sender = ANON_SENDER, board_post log lines with actor=None, which also covers grep_log and the
   context built from observations). Truth (Message.sender_shown / true_sender) is untouched.
 
+- game.network (game/network.py; off = unchanged): pinned peers = the agent's contacts (mode contacts)
+  or the names it knows, including those it learns from this very observation (known_ids), minus
+  departed winners; give / defect / DM log lines only when local (network.line_visible).
+  game.board.scope = neighbors: board view and board_post lines only for posts by graph neighbours.
+
 `grep_log` searches the agent's VISIBLE log history: the union of the windows of all its past
 observations (`obs_turns`, tracked by the engine) plus released defect lines, matched as a
 case-insensitive literal substring of the rendered line (plus " #<info_id>").
@@ -38,6 +43,7 @@ from collections.abc import Callable, Sequence
 
 from swarm.config import GameCfg
 from swarm.context.base import render_log_line
+from swarm.game import network
 from swarm.game.rules import departed, open_needs, score
 from swarm.schema import (
     ActionRecord,
@@ -78,17 +84,22 @@ def _msg_view(m: Message, cfg: GameCfg) -> AgentMessageView:
                             receiver=m.receiver, text=text)
 
 
-def pinned_facts(state: GameState, agent: AgentId, cfg: GameCfg) -> PinnedFacts:
+def pinned_facts(state: GameState, agent: AgentId, cfg: GameCfg,
+                 learned: set[AgentId] | frozenset[AgentId] = frozenset()) -> PinnedFacts:
     """Identity, needs, holdings (with key ids, D15), score. Rebuilt from state every turn.
-    peers = the players still in the game (winner_policy=sit_out: departed winners are dropped)."""
+    peers = the players still in the game (winner_policy=sit_out: departed winners are dropped);
+    with game.network on, only those the agent may address (its contacts, or the names it knows
+    plus `learned`, the names it learns from the observation being built)."""
     s = state.agents[agent]
+    may = network.visible_peers(state, agent)
+    pool = state.agents if may is None else may | set(learned)
     holdings = sorted((KeyView(info_id=k.info_id, key=k.key) for k in s.keys),
                       key=lambda kv: (kv.info_id, kv.key))
     return PinnedFacts(
         agent=agent, round=state.round, max_rounds=cfg.max_rounds,
         needs_open=list(open_needs(state, agent)), needs_burned=list(s.burned), needs_lost=list(s.lost),
         holdings=holdings, can_give=sorted({k.info_id for k in s.keys}), score=score(state, agent),
-        peers=sorted(a for a in state.agents if a != agent and not departed(state, a, cfg)),
+        peers=sorted(a for a in pool if a != agent and not departed(state, a, cfg)),
         won=s.won_round is not None,
     )
 
@@ -134,6 +145,13 @@ def _defect_shown_by_release(rec: ActionRecord, viewer: AgentId, cfg: GameCfg) -
     return False
 
 
+def _line_shown(state: GameState, viewer: AgentId, m: Message, line: LogLine, cfg: GameCfg) -> bool:
+    """game.network / board.scope filter for a message line (always True when both are off)."""
+    if m.channel == "board":
+        return network.sees_post(state, viewer, m.sender_shown, cfg)
+    return network.line_visible(state, viewer, line.actor, line.target)
+
+
 def _log_lines(state: GameState, viewer: AgentId, cfg: GameCfg,
                in_window: Callable[[int], bool], released: Callable[[int], bool]) -> list[LogLine]:
     """Every line `viewer` may see, given predicates for window records (by stamp) and for delayed
@@ -145,7 +163,7 @@ def _log_lines(state: GameState, viewer: AgentId, cfg: GameCfg,
     for idx, m in enumerate(state.messages):
         if in_window(_shown_stamp(m, cfg)):
             line = _message_line(m, cfg)
-            if line is not None:
+            if line is not None and _line_shown(state, viewer, m, line, cfg):
                 out.append((_shown_stamp(m, cfg), 0, idx, line))
     mode = cfg.view_log.defect_visibility
     for idx, rec in enumerate(state.history):
@@ -159,7 +177,7 @@ def _log_lines(state: GameState, viewer: AgentId, cfg: GameCfg,
             show = False                                    # victim_only, or the victim's own burn
         if show:
             line = _record_line(rec, cfg)
-            if line is not None:
+            if line is not None and network.line_visible(state, viewer, line.actor, line.target):
                 out.append((rec.turn_index, 1, idx, line))
     out.sort(key=lambda x: x[:3])
     return [ln for *_, ln in out]
@@ -183,7 +201,8 @@ def observe(state: GameState, agent: AgentId, cfg: GameCfg, turn_idx: int | None
     inbox = [_msg_view(m, cfg) for m in state.messages
              if m.channel == "dm" and m.receiver == agent and _new_since(m.turn_index, t, prev)]
     board = [_msg_view(m, cfg) for m in state.messages
-             if m.channel == "board" and m.sender_shown != agent and _new_since(_shown_stamp(m, cfg), t, prev)]
+             if m.channel == "board" and m.sender_shown != agent and _new_since(_shown_stamp(m, cfg), t, prev)
+             and network.sees_post(state, agent, m.sender_shown, cfg)]
     notices = []
     for n in state.notices:
         if n.agent != agent:
@@ -192,7 +211,10 @@ def observe(state: GameState, agent: AgentId, cfg: GameCfg, turn_idx: int | None
                else _new_since(n.turn_index, t, prev))
         if due:
             notices.append(NoticeView(kind=n.kind, text=n.text))
-    return Observation(agent=agent, round=state.round, turn_index=t, pinned=pinned_facts(state, agent, cfg),
+    learned = (network.names_seen(agent, inbox, board, notices, state.agents)
+               if state.agents[agent].known is not None else set())
+    return Observation(agent=agent, round=state.round, turn_index=t,
+                       pinned=pinned_facts(state, agent, cfg, learned),
                        inbox=inbox, board=board, log=view_log(state, agent, cfg, t, prev), notices=notices)
 
 
