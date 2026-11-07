@@ -26,6 +26,10 @@
 
 All three commits were made in the worktree and cherry-picked onto the live tree. The check was then re-run on the live tree, which includes other agents' uncommitted edits: before vs after the pick, 18/18 files are byte-identical. The invariant checker reports 0 violations on the board-options dry run. Full suite: 553 passed. The 1 failure is `tests/viz/test_story.py`, caused by planA-viz's uncommitted `paper_figs.py` edit, not by the refactor. `CONTRACTS.md` still says `swarm/schema.py`; it now means the `swarm/schema/` package (same names).
 
+**Noise-branch check (added later).** Pre-refactor dbaadc3 vs master: dry runs with `runner.fork.noise_replica=true` (sim, seq, board options). 27/27 files byte-identical (god, nogod and noise branches); the invariant checker reports 0 violations.
+
+**Timing note.** The lead's "do it on a branch" message arrived after R1-R3 were already on master (03:26). The sweep started at 03:27:56, so every sweep condition runs on the refactored master. Master is left as it is so all conditions share one code version. Any further refactor (R4-R7) goes on a `refactor-modular` branch, and only after the sweep.
+
 ## Steps to apply
 
 ### R1. `swarm/schema.py` becomes a package `swarm/schema/`
