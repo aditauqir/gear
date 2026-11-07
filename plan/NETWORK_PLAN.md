@@ -1,14 +1,35 @@
-# NETWORK_PLAN: first real runs with the social network (N=40, 30 rounds, gpt-oss-120b)
+# NETWORK_PLAN: first real runs with the social network (N=40, gpt-oss-120b)
 
-**Status (2026-11-07 12:49 EST): RUNNING at N=40 × 30 rounds × 6 worlds, conditions A, B and C.**
+**Status (2026-11-07 13:23 EST): RUNNING the final design (Iraj, 13:20: "do parallelism and 4 worlds and
+shorten complete-graph").**
 
-Two `infra/grid_driver.py` watchdogs run at **4 in flight each (8 total)**, with hard caps. A first
-start at 6 each (12:45) was stopped at 12:48 under the >15% fallback rule (§6), and both cells
-replay from the cache.
-- **driver A:** `net40_complete_sim`.
-- **driver BC:** `net40_er3_contacts_sim`, then `net40_er3_known_sim`.
+| cond | config | worlds | rounds | in flight | hard cap |
+|---|---|---|---|---|---|
+| A complete | `configs/net40_complete_sim.yaml` | 0-3 | **20** | 6 | $1.61 |
+| B ER3 contacts | `configs/net40_er3_contacts_sim.yaml` | 0-3 | 30 | 5 | $1.06 |
+| C ER3 known_ids | `configs/net40_er3_known_sim.yaml` | 0-3 | 30 | 5 | $1.24 |
 
-The logs are `runs/network40_driver_{A,BC}.log`. Results go to `plan/NETWORK_RESULTS.md`.
+All three cells run at once, 16 in flight in total. B and C use the same concurrency. Three
+`infra/grid_driver.py` watchdogs log to `runs/network40_driver4_{A,B,C}.log`, with
+`--max-fallback 0.5` (§6b). The fallback share per cell is in every status line.
+
+**How the conditions are compared:**
+- **Primary:** A vs B vs C at matched rounds (≤ 20), from the round-20 state of B and C.
+- **Secondary:** B vs C at 30 rounds.
+
+Results go to `plan/NETWORK_RESULTS.md`.
+
+**Restart at 13:22 (safe, replays from the cache):**
+- B kept its 4 worlds. Those games replay from the cache up to the stop (about round 11).
+- **A had to start from scratch.** `game.max_rounds` is game semantics (it is in the config hash
+  and in the prompt), so the 20-round A has new game ids. The 30-round A partial, at round 7 and
+  $0.309 spent, is `runs/partial_net40_complete_sim_30r_1322`.
+- Worlds 4-5 of A and B were stopped, kept in `runs/partial*_1322`, and are excluded from the
+  analysis.
+
+**Superseded designs:**
+- **12:49-13:22:** N=40 × 30 rounds × 6 worlds at 4 + 4 in flight (§0-§6).
+- **12:14-12:38:** N=20 × 40 rounds × 8 worlds (§7).
 
 History. A first launch at N=20 × 40 rounds × 8 worlds (A, B, C, D; §7) started at 12:14. The
 operator stopped it at 12:38 when the lead relayed Iraj's "maybe try 40 agents" and asked for
@@ -163,7 +184,43 @@ input part.
 - **Ledger:** $7.913 at launch, so its worst case is **$13.70**, below $14.80. The drivers stop at
   **$14.69** ($7.692 + $7.00).
 
-## 6. Launch (12:45:17 at 6 + 6 in flight; relaunched 12:49:07 at 4 + 4)
+## 6b. Final launch (13:23:05 EST): 4 worlds, A at 20 rounds, 16 in flight
+
+**Projection with the fallback price mix:**
+- Near AI and Venice cost $0.03 / $0.15 per M, against PrimeIntellect's $0.021 / $0.077. That is
+  about 1.45× per call at the plateau.
+- At 12 in flight we saw 38% fallback. The projection assumes **40% fallback, ×1.2 on cost**.
+
+| cond | central (PrimeIntellect only) | × fallback mix | cap |
+|---|---|---|---|
+| A, 20 rounds, 4 worlds | $0.96 | $1.15 | $1.61 |
+| B, 30 rounds, 4 worlds | $0.60 | $0.73, less the cached prefix | $1.06 |
+| C, 30 rounds, 4 worlds | $0.72 | $0.87 | $1.24 |
+| **total** | $2.28 | **$2.75** | **$3.91** |
+
+- **Caps:** 1.3 × the mix projection + $0.11. The $0.11 covers RunBudget's reservation for 160
+  pending calls.
+- **Task spend before this launch:** **$0.676**. That is the smokes, the probe, the stopped N=20
+  runs ($0.182), the stopped 12-in-flight start ($0.019), the 30-round A ($0.309) and B's worlds
+  4-5 plus its 30-round part.
+- **Task worst case:** $0.676 + $3.91 = **$4.59 ≤ $7.00**.
+- **Ledger:** $8.368 at launch, so its worst case is **$12.28**, below $14.80. The drivers stop at
+  $14.69.
+
+**Abort rules:**
+- the grid rules, which already cover errors and 429s above 5%;
+- the new `--max-fallback 0.5`: abort when more than 50% of fresh (non-cached) responses come
+  from a provider other than PrimeIntellect, after 200 fresh responses.
+
+On a fallback abort, the cells restart at 12 in flight, replaying from the cache.
+
+**ETA:**
+- A: 3,200 calls at 6 in flight, about 10 s each, so ≈ 1.5 h.
+- B: 4,800 calls minus about 1,700 cached, at 5 in flight, so ≈ 1 h.
+- C: 4,800 calls at 5 in flight, about 6 s each, so ≈ 1.6 h.
+- **Done ≈ 15:00 EST.**
+
+## 6. Launch (12:45:17 at 6 + 6 in flight; relaunched 12:49:07 at 4 + 4; superseded at 13:22)
 
 **The 12-in-flight attempt was stopped under the fallback rule:**
 - It was supposed to be the same setting for every condition, at 6 per driver.

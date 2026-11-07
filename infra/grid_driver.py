@@ -20,6 +20,8 @@ e.g. god + B'' on a cached control: paid=2,ctl=0; a game cell with B'': paid=2,c
   errors     > 5% of LLM calls with an error (after >= 100 calls); any HTTP 400 at once
   parse      > 10% of turns parse_ok=false (after >= 100 turns)
   trunc      > 5% of responses finish_reason=length (after >= 200 responses)
+  fallback   (only with --max-fallback F) > F of the fresh (non-cached) responses served by a provider
+             other than --primary-provider (default PrimeIntellect), after >= 200 fresh responses
   branch     any single branch (game dir) with > 10% of its LLM calls errored (after >= 30 calls), or
              > 30% of its turns noop because of an error (llm_error or failed parse; after >= 20 turns):
              the "all calls error -> noop turns -> status done" failure
@@ -44,6 +46,7 @@ REPO = Path(__file__).resolve().parent.parent
 RUNS = REPO / "runs"
 LEDGER = RUNS / "openrouter_ledger.jsonl"
 LOG = RUNS / "grid_driver.log"
+FALLBACK: tuple[str, float] | None = None       # (primary provider, max fallback share): --max-fallback
 
 
 def log(msg: str) -> None:
@@ -143,6 +146,7 @@ class Cell:
         self.spent = self.w_done = 0.0
         self.calls = self.errors = self.http400 = self.paid = 0
         self.resp = self.length = self.turns = self.parse_fail = 0
+        self.providers: dict[str, int] = {}      # fresh (non-cached) responses by serving provider
 
     def update(self) -> None:
         for d in self.ledger.new():
@@ -182,6 +186,8 @@ class Cell:
             self.length += r.get("finish_reason") == "length"
             if not r.get("cache_hit"):
                 self.paid += 1
+                pv = str(r.get("provider"))
+                self.providers[pv] = self.providers.get(pv, 0) + 1
                 self.w_done += call_weight(int(d["request"]["meta"].get("round") or 1), self.n_agents,
                                            self.g, self.pcap)
 
@@ -191,7 +197,13 @@ class Cell:
     def status(self) -> str:
         return (f"{self.name}: spent ${self.spent:.4f} projected ${self.projected():.3f} (cap ${self.cap:.2f}) "
                 f"done {self.w_done / self.w_total:.1%} calls {self.calls} paid {self.paid} errors {self.errors} "
-                f"turns {self.turns} parse_fail {self.parse_fail} length {self.length}/{self.resp}")
+                f"turns {self.turns} parse_fail {self.parse_fail} length {self.length}/{self.resp}"
+                + (f" fallback {self.fallback_share():.1%} {self.providers}" if self.providers else ""))
+
+    def fallback_share(self) -> float:
+        n = sum(self.providers.values())
+        primary = FALLBACK[0] if FALLBACK else "PrimeIntellect"
+        return 1 - self.providers.get(primary, 0) / n if n else 0.0
 
     def abort_reason(self, ledger_stop: float) -> str | None:
         if (m := mem_available_gb()) < 15:
@@ -207,6 +219,8 @@ class Cell:
                 return f"branch: {gname} {e}/{c} LLM calls errored"
             if t >= 20 and ne / t > 0.30:
                 return f"branch: {gname} {ne}/{t} turns noop because of errors"
+        if FALLBACK and sum(self.providers.values()) >= 200 and self.fallback_share() > FALLBACK[1]:
+            return f"fallback: {self.fallback_share():.1%} of fresh responses not from {FALLBACK[0]} > {FALLBACK[1]:.0%}"
         if self.http400:
             return f"errors: {self.http400} HTTP 400"
         if self.calls >= 100 and self.errors / self.calls > 0.05:
@@ -313,8 +327,13 @@ def main() -> int:
     ap.add_argument("--cap-override", action="store_true",
                     help="pass llm.budget_usd=<the cell spec's cap> to each cell (per-cell hard caps)")
     ap.add_argument("--log", type=Path, default=None, help="log file (default runs/grid_driver.log)")
+    ap.add_argument("--max-fallback", type=float, default=None, help="abort when this share of fresh calls is "
+                    "served by a provider other than --primary-provider (after 200 fresh calls)")
+    ap.add_argument("--primary-provider", default="PrimeIntellect")
     args = ap.parse_args()
-    global LOG
+    global LOG, FALLBACK
+    if args.max_fallback is not None:
+        FALLBACK = (args.primary_provider, args.max_fallback)
     if args.log is not None:
         LOG = args.log if args.log.is_absolute() else REPO / args.log
     if args.attach:

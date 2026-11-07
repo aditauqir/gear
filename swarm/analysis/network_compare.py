@@ -85,7 +85,7 @@ def game_outcome(g: dict[str, Any]) -> dict[str, Any]:
         e["round"] for e in ev if e["type"] == "win")
     status = "done" if any(e["type"] == "game_end" for e in ev) else "partial"
     return {"game_idx": g["game_idx"], "label": g["label"], "status": status, "n_agents": n,
-            "max_rounds": ev[0]["data"]["max_rounds"],
+            "max_rounds": min(ev[0]["data"]["max_rounds"], g.get("at_round") or 10**6),
             "end_reason": out.get("end_reason"), "rounds": ends[-1]["round"] if ends else 0,
             "win_rate": sum(per.get(a, {}).get("won_round") is not None for a in g["names"]) / n if per
             else sum(wins_by_round.values()) / n,
@@ -258,8 +258,34 @@ def introductions(g: dict[str, Any], stats: dict[str, Any]) -> dict[str, Any] | 
 
 
 # ------------------------------------------------------------------ per condition
-def analyse(run_dir: Path, ref_graphs: dict[Any, nx.Graph] | None = None) -> dict[str, Any]:
-    games = [g for g in netan.load_run(run_dir)]
+def truncate(g: dict[str, Any], R: int) -> dict[str, Any]:
+    """The game as it stood at the end of round R (matched-rounds comparison): events, messages,
+    transfers and known sets of rounds <= R; outcome rebuilt from the win / round_end events."""
+    ev = [e for e in g["events"] if e["round"] <= R and e["type"] != "game_end"]
+    ends = [e for e in ev if e["type"] == "round_end"]
+    scores = ends[-1]["data"]["scores"] if ends else {a: 0.0 for a in g["names"]}
+    won = {}
+    for e in ev:
+        if e["type"] == "win":
+            won.setdefault(e["data"]["agent"], e["round"])
+    sg = dict(g["social"])
+    sg["msgs"] = [m for m in sg["msgs"] if m["round"] <= R]
+    sg["transfers"] = [t for t in sg["transfers"] if t["round"] <= R]
+    sg.pop("_tok", None)
+    out = {**g, "events": ev, "social": sg, "known": {r: k for r, k in g["known"].items() if r <= R},
+           "outcome": {"per_agent": {a: {"score": scores.get(a, 0.0), "won_round": won.get(a)} for a in g["names"]},
+                       "end_reason": f"truncated_r{R}", "welfare": ends[-1]["data"]["welfare"] if ends else None}}
+    out["at_round"] = R
+    if ends and ends[-1]["round"] == R:
+        out["events"] = ev + [{"type": "game_end", "round": R, "data": {"outcome": out["outcome"]}}]
+    return out
+
+
+def analyse(run_dir: Path, ref_graphs: dict[Any, nx.Graph] | None = None, at_round: int | None = None,
+            worlds: set[int] | None = None) -> dict[str, Any]:
+    games = [g for g in netan.load_run(run_dir) if worlds is None or int(g["game_idx"]) in worlds]
+    if at_round is not None:
+        games = [truncate(g, at_round) for g in games]
     rows, rel, dfill, gos, intro, centr = [], [], [], [], [], []
     for g in games:
         graph = g["graph"]
@@ -458,11 +484,17 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--json", default=None)
     ap.add_argument("--figs", default=None)
     ap.add_argument("--examples", type=int, default=6)
+    ap.add_argument("--at-round", type=int, default=None, help="analyse every game as of the end of this round")
+    ap.add_argument("--worlds", default=None, help="game_idx range to include, e.g. 0-3")
     a = ap.parse_args(argv)
+    worlds = None
+    if a.worlds:
+        lo, _, hi = a.worlds.partition("-")
+        worlds = set(range(int(lo), int(hi or lo) + 1))
     ref = None
     if a.ref_graph:
         ref = {g["game_idx"]: g["graph"] for g in netan.load_run(Path(a.ref_graph))}
-    res = [analyse(Path(r), ref) for r in a.runs]
+    res = [analyse(Path(r), ref, a.at_round, worlds) for r in a.runs]
     summ = summarise(res)
     ex = examples(res, a.examples)
     for run, s in summ.items():
