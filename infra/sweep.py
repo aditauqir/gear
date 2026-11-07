@@ -360,7 +360,7 @@ def _board_checks(name: str, cfg: Any, ev: list[dict], i: int) -> list[str]:
 
 # ------------------------------------------------------------------ launch
 def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only: list[str] | None,
-           conc: int, price: float, dry_run: bool) -> int:
+           conc: int, price: float, dry_run: bool, cap_usd: float | None = None) -> int:
     write_configs(names)
     cells, caps, total = [], [], 0.0
     for name in names:
@@ -373,7 +373,7 @@ def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only:
         ctl = int("nogod" in branches and not c.god_only)
         opts = [f"n={c.n}", f"g={49 * c.n}", "pcap=16500", f"rounds={c.rounds}", f"seeds={s}",
                 f"shared={c.fork_round - 1}", f"paid={paid}", f"ctl={ctl}"]
-        cap = c.cap if not only else round(1.25 * pr["total"] + 0.005, 2)
+        cap = cap_usd if cap_usd is not None else round(1.25 * pr["total"] + 0.005, 2)
         caps.append(cap)
         cells.append(f"sweep/{name}:{cap:.2f}:{len(branches)}:{','.join(opts)}")
         print(f"{name:13s} seeds {s} projected ${pr['total']:.3f} (cap ${cap:.2f}) calls ~{pr['calls']:.0f}")
@@ -419,6 +419,7 @@ def main() -> int:
     la.add_argument("--conc", type=int, default=4)
     la.add_argument("--price", type=float, default=1.35)
     la.add_argument("--dry-run", action="store_true")
+    la.add_argument("--cap", type=float, default=None, help="hard cap per cell (default 1.25 x projection)")
     st = sub.add_parser("stats")
     st.add_argument("conds", nargs="*")
     a = ap.parse_args()
@@ -441,7 +442,7 @@ def main() -> int:
     if a.cmd == "dry":
         return 0 if dry(names, a.rounds, a.seeds) else 1
     if a.cmd == "launch":
-        return launch(names, a.tag, a.run_prefix, a.seeds, a.only_branches, a.conc, a.price, a.dry_run)
+        return launch(names, a.tag, a.run_prefix, a.seeds, a.only_branches, a.conc, a.price, a.dry_run, a.cap)
     if a.cmd == "stats":
         runs = [str(REPO / "runs" / f"sweep_{n}") for n in names if (REPO / "runs" / f"sweep_{n}").exists()]
         return conda_py(["-m", "swarm.analysis.sweep_stats", *runs])
