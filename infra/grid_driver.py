@@ -131,7 +131,9 @@ class Cell:
         elif int(o.get("free", 0)):
             self.w_total = seeds * (per_branch - shared)                  # only God's rounds > k are paid
         else:
-            self.w_total = seeds * (branches * per_branch - (branches - 1) * shared)
+            # Only the no-God control B replays A's shared prefix from the cache; a 3rd branch (the
+            # noise replica B', own seeds) pays for it too (was ~1% low: CODE_REVIEW #24).
+            self.w_total = seeds * (branches * per_branch - min(branches - 1, 1) * shared)
         self.tails: dict[Path, Tail] = {}
         self.ledger = Tail(LEDGER)
         self.ledger.pos = 0                      # run ids are unique: count the cell's whole spend
@@ -230,8 +232,23 @@ def kill_group(proc: subprocess.Popen) -> None:
         proc.wait(timeout=20)
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()                                  # reap it
     except ProcessLookupError:
         pass
+
+
+def kill_target(pid: int) -> tuple[str, int]:
+    """("group", pgid) when the cell leads its own process group (start_new_session), else ("pid",
+    pid): killing a shared group could hit other cells or this watchdog (CODE_REVIEW #25)."""
+    pgid = os.getpgid(pid)
+    if pgid == pid and pgid != os.getpgid(0):
+        return "group", pgid
+    return "pid", pid
+
+
+def send(target: tuple[str, int], sig: int) -> None:
+    kind, ident = target
+    (os.killpg if kind == "group" else os.kill)(ident, sig)
 
 
 def find_cell_pid(run_id: str) -> int | None:
@@ -260,8 +277,8 @@ def attach(cells: list[Cell], ledger_stop: float) -> int:
             cell.update()
             log(f"ATTACH {cell.name}: already finished; {cell.status()}")
             continue
-        pgid = os.getpgid(pid)
-        log(f"ATTACH {cell.name} pid {pid} pgid {pgid}")
+        target = kill_target(pid)
+        log(f"ATTACH {cell.name} pid {pid} pgid {os.getpgid(pid)}; abort kills the {target[0]} {target[1]}")
         last = 0.0
         while Path(f"/proc/{pid}").exists():
             time.sleep(10)
@@ -270,9 +287,9 @@ def attach(cells: list[Cell], ledger_stop: float) -> int:
             if reason:
                 log(f"ABORT {cell.name} (attach): {reason}; {cell.status()}")
                 try:
-                    os.killpg(pgid, signal.SIGTERM)
+                    send(target, signal.SIGTERM)
                     time.sleep(20)
-                    os.killpg(pgid, signal.SIGKILL)
+                    send(target, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
                 return 3
