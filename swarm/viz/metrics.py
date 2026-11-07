@@ -328,6 +328,34 @@ def cum_curves(run_dir: str | Path, a: str = "god", b: str = "nogod") -> dict[in
     return out
 
 
+def aligned_curves(run_dir: str | Path, br: str = "god") -> tuple[dict[int, list[float]], list[int]]:
+    """Share of agents diverged from no-God per round, re-indexed to rounds since the branch forked:
+    God branch = God's first successful move; other branches = their first round whose actions differ
+    (the God-free re-run B' forks at round 1 because it shares no cached replies). -> ({world: curve}, forks)."""
+    curves, forks = {}, []
+    for i, brs in worlds(run_dir).items():
+        if br not in brs:
+            continue
+        _, ever = divergence(brs[br], brs["nogod"])
+        b = load_branch(brs[br])
+        n = len(b.agents)
+        rs = sorted(ever)
+        fork = b.powers[0].round if (br == "god" and b.powers) else next((r for r in rs if ever[r]), None)
+        if fork is None:
+            continue
+        curves[i] = [len(ever[r]) / n for r in rs if r >= fork]
+        forks.append(fork)
+    return curves, forks
+
+
+def mean_curve(curves: dict[int, list[float]]) -> list[float]:
+    """Pointwise mean; a shorter curve (game ended early) holds its last value."""
+    if not curves:
+        return []
+    L = max(len(ys) for ys in curves.values())
+    return [statistics.fmean(ys[min(r, len(ys) - 1)] for ys in curves.values()) for r in range(L)]
+
+
 def mde(sd: float, n: int, power_z: float = 0.8416) -> float:
     """Minimum detectable mean paired difference, 80% power, two-sided 5% (t quantile for alpha, z for power)."""
     if n < 2 or sd != sd:

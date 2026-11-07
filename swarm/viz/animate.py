@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -24,7 +25,8 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch
 
-from swarm.viz.story import Branch, captions, divergence, load_branch, pacing
+from swarm.viz.metrics import Branch, divergence, load_branch, round_series
+from swarm.viz.story import captions, pacing
 from swarm.viz.style import GRID, INK, INK2, SURFACE, C
 
 W, H, DPI, FPS = 1280, 720, 100, 10
@@ -173,7 +175,8 @@ def draw_ripple(ax, god: Branch, ever: dict[int, set[str]], r: int) -> None:
     ax.bar(xs, [len(ever[x]) for x in xs], width=0.72, color=C["a"], zorder=3)
     if xs:
         ax.text(xs[-1] + 0.6, len(ever[xs[-1]]), f"{len(ever[xs[-1]])}/{n}", fontsize=8.5, va="center", color=INK)
-    _strip_axes(ax, god, r, "Agents acting differently from the no-God world (so far)", (0, n * 1.08))
+    _strip_axes(ax, god, r, "Agents acting differently from the no-God world (so far)\n"
+                "note: a God-free re-run diverges too (noise baseline)", (0, n * 1.08))
     ax.set_yticks([0, n])
 
 
@@ -188,8 +191,60 @@ def _strip_axes(ax, god: Branch, r: int, title: str, ylim) -> None:
     for p in god.powers:
         ax.axvline(p.round, color=C["god"], lw=1.4, ls=(0, (3, 2)), zorder=2)
         ax.text(p.round, ylim[1], "G", color=C["god_ink"], fontsize=7.5, fontweight="bold", ha="center", va="bottom")
-    ax.set_title(title, loc="left", fontsize=9.5, color=INK2, fontweight="normal", pad=9)
+    ax.set_title(title, loc="left", fontsize=9, color=INK2, fontweight="normal", pad=9, linespacing=1.15)
     ax.spines["left"].set_visible(False)
+
+
+# ------------------------------------------------------------------ live metric tiles
+# (key in metrics.round_series, label); "d_*" = God minus no-God of that key (shown on the no-God side)
+TILES = {"god": [("welfare", "welfare"), ("winners", "winners"), ("gives", "keys given"), ("defects", "defects"),
+                 ("board_posts", "board posts"), ("dms", "DMs"), ("god_moves", "God moves"), ("diverged", "diverged")],
+         "nogod": [("welfare", "welfare"), ("winners", "winners"), ("gives", "keys given"), ("defects", "defects"),
+                   ("board_posts", "board posts"), ("dms", "DMs"), ("d_welfare", "Δ welfare"),
+                   ("d_winners", "Δ winners")]}
+TILE_W, TILE_Y, TILE_H = 0.0605, 0.243, 0.068
+
+
+def make_tiles(fig, x0: float, spec: list[tuple[str, str]]) -> dict[str, Any]:
+    out = {}
+    for i, (k, lab) in enumerate(spec):
+        x = x0 + i * TILE_W
+        delta = k.startswith("d_")
+        fig.add_artist(FancyBboxPatch((x + 0.002, TILE_Y), TILE_W - 0.006, TILE_H, boxstyle="round,pad=0.002",
+                                      transform=fig.transFigure, fc="#f1f0ec" if not delta else "#e9eef7", ec="none"))
+        fig.text(x + TILE_W / 2 - 0.001, TILE_Y + TILE_H - 0.014, lab, ha="center", va="center", fontsize=7.5,
+                 color=INK2)
+        out[k] = fig.text(x + TILE_W / 2 - 0.001, TILE_Y + 0.022, "", ha="center", va="center", fontsize=13,
+                          fontweight="bold", color=INK)
+    return out
+
+
+def tile_values(sg: dict[str, float], sn: dict[str, float], n_agents: int, budget: int | None) -> dict[str, dict[str, str]]:
+    """Formatted tile strings for both sides from two metrics.round_series rows (pure, unit-tested)."""
+    def fmt(k: str, v: float) -> str:
+        return f"{v:.2f}" if k == "welfare" else f"{v:.0f}"
+
+    g = {k: fmt(k, sg[k]) for k, _ in TILES["god"] if k in sg}
+    g["winners"] = f"{sg['winners']:.0f}/{n_agents}"
+    g["god_moves"] = f"{sg['god_moves']:.0f}/{budget}" if budget else f"{sg['god_moves']:.0f}"
+    g["diverged"] = f"{sg['diverged']:.0f}/{n_agents}" if sg["diverged"] == sg["diverged"] else "–"
+    n = {k: fmt(k, sn[k]) for k, _ in TILES["nogod"] if k in sn}
+    n["winners"] = f"{sn['winners']:.0f}/{n_agents}"
+    dw, dn = sg["welfare"] - sn["welfare"], sg["winners"] - sn["winners"]
+    n["d_welfare"] = f"{dw:+.2f}".replace("-", "\u2212") if abs(dw) >= 0.005 else "0.00"
+    n["d_winners"] = f"{dn:+.0f}".replace("-", "\u2212") if dn else "0"
+    return {"god": g, "nogod": n}
+
+
+def update_tiles(tiles: dict[str, dict[str, Any]], sg: dict[str, float], sn: dict[str, float], n_agents: int,
+                 budget: int | None) -> None:
+    vals = tile_values(sg, sn, n_agents, budget)
+    for side, ts in tiles.items():
+        for k, t in ts.items():
+            t.set_text(vals[side].get(k, "–"))
+            if k == "d_welfare":
+                d = sg["welfare"] - sn["welfare"]
+                t.set_color(C["a"] if d > 0.005 else C["defect"] if d < -0.005 else INK)
 
 
 # ------------------------------------------------------------------ frames
@@ -244,11 +299,14 @@ class WorldVideo:
         self.header = header
         self.fig = new_fig()
         f = self.fig
-        self.ax_l = f.add_axes([0.0, 0.265, 0.5, 0.545])
-        self.ax_r = f.add_axes([0.5, 0.265, 0.5, 0.545])
-        self.st_l = f.add_axes([0.05, 0.075, 0.37, 0.12])
-        self.st_r = f.add_axes([0.55, 0.075, 0.37, 0.12])
-        f.add_artist(Line2D([0.5, 0.5], [0.08, 0.80], color=GRID, lw=1))
+        self.ser_g = round_series(self.god, self.ever)
+        self.ser_n = round_series(self.nogod)
+        self.ax_l = f.add_axes([0.0, 0.325, 0.5, 0.49])
+        self.ax_r = f.add_axes([0.5, 0.325, 0.5, 0.49])
+        self.st_l = f.add_axes([0.05, 0.072, 0.37, 0.1])
+        self.st_r = f.add_axes([0.55, 0.072, 0.37, 0.1])
+        f.add_artist(Line2D([0.5, 0.5], [0.07, 0.80], color=GRID, lw=1))
+        self.tiles = {side: make_tiles(f, x0, TILES[side]) for side, x0 in (("god", 0.008), ("nogod", 0.508))}
         _legend(f)
         self._txt: list = []
 
@@ -265,6 +323,7 @@ class WorldVideo:
                    show_god=False)
         draw_welfare(self.st_l, self.god, self.nogod, r)
         draw_ripple(self.st_r, self.god, self.ever, r)
+        update_tiles(self.tiles, self.ser_g[r], self.ser_n[r], len(self.god.agents), self.god.budget)
         T = self._txt
         T.append(f.text(0.015, 0.968, "Keys & God", fontsize=16, fontweight="bold", color=INK, va="center"))
         T.append(f.text(0.015, 0.928, self.header, fontsize=9.5, color=INK2, va="center"))
@@ -331,36 +390,72 @@ def card_title(fig, k_desc: str, world_desc: str) -> None:
     _legend(fig)
 
 
-def card_end(fig, god: Branch, nogod: Branch, footer: str = "") -> None:
+SCORE_ROWS = [("welfare", "welfare (mean score)"), ("winners", "winners"), ("gives", "keys given"),
+              ("defects", "defects (burns)"), ("defects_correct", "  of which correct"), ("board_posts", "board posts"),
+              ("dms", "DMs"), ("god_moves", "God moves used"), ("diverged", "agents acting differently")]
+
+
+def scoreboard_rows(sg: dict[str, float], sn: dict[str, float], n_agents: int) -> list[tuple[str, str, str, str]]:
+    """(label, with God, without God, Δ) for the end-card table, from two final round_series rows."""
+    rows = []
+    for k, lab in SCORE_ROWS:
+        a, b = sg[k], sn[k]
+        if k == "diverged":
+            rows.append((lab, f"{a:.0f}/{n_agents}" if a == a else "–", "(reference)", ""))
+            continue
+        f = (lambda v: f"{v:.2f}") if k == "welfare" else (lambda v: f"{v:.0f}")
+        d = a - b
+        ds = (f"{d:+.2f}" if k == "welfare" else f"{d:+.0f}").replace("-", "\u2212")
+        rows.append((lab, f(a), f(b), ds if k != "god_moves" else ""))
+    return rows
+
+
+def card_end(fig, god: Branch, nogod: Branch, footer: str = "", ever: dict[int, set[str]] | None = None) -> None:
     fig.clf()
-    wg, wn = god.welfare(god.R), nogod.welfare(nogod.R)
-    fig.text(0.06, 0.88, "Final scores", fontsize=28, fontweight="bold", color=INK)
-    fig.text(0.06, 0.81, (f"Welfare with God {wg:.2f}  vs  without God {wn:.2f}   (Δ {wg - wn:+.2f})   ·   "
-                          f"winners {len(god.won_by(god.R))} vs {len(nogod.won_by(nogod.R))}").replace("-", "\u2212"),
-             fontsize=15, color=INK)
-    ax = fig.add_axes([0.24, 0.17, 0.62, 0.58])
-    sg, sn = god.score_at(god.R), nogod.score_at(nogod.R)
-    agents = sorted(god.agents, key=lambda a: (sg.get(a, 0) - sn.get(a, 0), a))
+    sg, sn = round_series(god, ever)[god.R], round_series(nogod)[nogod.R]
+    fig.text(0.05, 0.9, "Final scoreboard", fontsize=26, fontweight="bold", color=INK)
+    fig.text(0.05, 0.845, f"{god.label.split('-')[0]} · same world, same seeds · with God vs without God",
+             fontsize=12, color=INK2)
+    # table
+    cols = (0.05, 0.285, 0.375, 0.465)
+    y = 0.77
+    for x, h, ha in zip(cols, ("", "with God", "without", "Δ"), ("left", "right", "right", "right"), strict=True):
+        fig.text(x + (0.06 if ha == "right" else 0), y, h, fontsize=11, color=INK2, ha=ha, fontweight="bold")
+    fig.add_artist(Line2D([0.05, 0.53], [y - 0.018, y - 0.018], color=GRID, lw=1))
+    for i, row in enumerate(scoreboard_rows(sg, sn, len(god.agents))):
+        yy = y - 0.06 - i * 0.052
+        for j, (x, v) in enumerate(zip(cols, row, strict=True)):
+            big = i == 0
+            fig.text(x + (0.06 if j else 0), yy, v, fontsize=(14 if big else 12.5) if j else (12.5 if big else 11.5),
+                     ha="right" if j else "left", color=(C["a"] if j == 1 else INK) if j else INK2,
+                     fontweight="bold" if (big or j == 3) else "normal")
+    # per-agent dumbbells
+    ax = fig.add_axes([0.70, 0.2, 0.27, 0.57])
+    fs, fn = god.score_at(god.R), nogod.score_at(nogod.R)
+    agents = sorted(god.agents, key=lambda a: (fs.get(a, 0) - fn.get(a, 0), a))
     tg = {p.target for p in god.powers}
     for i, a in enumerate(agents):
-        ax.plot([sn.get(a, 0), sg.get(a, 0)], [i, i], color=GRID, lw=3, zorder=1, solid_capstyle="round")
-    ax.scatter([sn.get(a, 0) for a in agents], range(len(agents)), s=210, facecolors="none", edgecolors=C["b"],
-               lw=2.2, zorder=3, label="without God")
-    ax.scatter([sg.get(a, 0) for a in agents], range(len(agents)), s=80, color=C["a"], zorder=4, label="with God")
+        ax.plot([fn.get(a, 0), fs.get(a, 0)], [i, i], color=GRID, lw=3, zorder=1, solid_capstyle="round")
+    ax.scatter([fn.get(a, 0) for a in agents], range(len(agents)), s=120, facecolors="none", edgecolors=C["b"],
+               lw=2, zorder=3, label="without God")
+    ax.scatter([fs.get(a, 0) for a in agents], range(len(agents)), s=50, color=C["a"], zorder=4, label="with God")
     ax.set_yticks(range(len(agents)))
-    ax.set_yticklabels([a + ("   ◀ God's target" if a in tg else "") for a in agents], fontsize=11)
+    ax.set_yticklabels([("◀ " if a in tg else "") + a for a in agents], fontsize=9.5)
     for t, a in zip(ax.get_yticklabels(), agents, strict=True):
         if a in tg:
             t.set_color(C["god_ink"])
             t.set_fontweight("bold")
-    ax.set_xlim(-0.05, 1.05)
+    ax.set_xlim(-0.08, 1.08)
     ax.set_xticks([0, 1 / 3, 2 / 3, 1])
-    ax.set_xticklabels(["0", "1/3", "2/3", "1"], fontsize=10)
-    ax.set_xlabel("final score (share of the 3 needs unlocked)", fontsize=10.5)
+    ax.set_xticklabels(["0", "1/3", "2/3", "1"], fontsize=9)
+    ax.set_title("final score per agent  (◀ = God's target)", fontsize=10.5, color=INK2, loc="left")
     ax.grid(axis="y", visible=False)
-    ax.legend(loc="lower right", fontsize=11, bbox_to_anchor=(1.0, 1.0), ncol=2)
-    if footer:
-        fig.text(0.06, 0.05, footer, fontsize=12, color=INK2)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.07), fontsize=9.5, ncol=2, frameon=False)
+    notes = [footer] if footer else []
+    notes.append("Note: a God-free re-run of the same world also diverges and also moves welfare (noise baseline); "
+                 "one world cannot show a God effect.")
+    for i, t in enumerate(notes):
+        fig.text(0.05, 0.075 - i * 0.04, t, fontsize=10.5 if i < len(notes) - 1 else 9.5, color=INK2)
 
 
 def render_world(run: Path, god: str, nogod: str, fr: Frames, header: str, cards: bool = True,
@@ -378,7 +473,7 @@ def render_world(run: Path, god: str, nogod: str, fr: Frames, header: str, cards
     wv.frames(fr, preview)
     if cards:
         ef = new_fig()
-        card_end(ef, wv.god, wv.nogod, footer)
+        card_end(ef, wv.god, wv.nogod, footer, wv.ever)
         fr.add(ef, end_s)
         plt.close(ef)
     plt.close(wv.fig)

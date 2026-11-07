@@ -40,8 +40,8 @@ def test_captions_cot_effect_and_ripple_counts() -> None:
     caps = captions(god, _branch(label="g00-nogod"), ever)
     assert caps[5][0] == ("god", "GOD rewrites a's private notes from round 4 to:")
     assert ("effect", "a acts on the planted note: defects against c") in caps[6]
-    assert ("ripple", "Ripple: 1/4 agents now act differently than in the no-God world") in caps[5]
-    assert ("ripple", "Ripple: 2/4 agents now act differently than in the no-God world") in caps[6]
+    assert ("ripple", "Divergence: 1/4 agents now act differently than in the no-God world") in caps[5]
+    assert ("ripple", "Divergence: 2/4 agents now act differently than in the no-God world") in caps[6]
     assert ("win", "Wins: with God 1, without God 0") in caps[5]
 
 
@@ -124,3 +124,19 @@ def test_reel_minus_sign_and_build(synth_run: Path, tmp_path: Path) -> None:
     info = build(tmp_path / "r.mp4", ("synth", synth_run), [], n_boot=200)
     assert (tmp_path / "r.mp4").stat().st_size > 10_000 and (tmp_path / "r.json").exists()
     assert info["grid"] and info["seconds"] > 20
+
+
+def test_video_tiles_and_scoreboard_numbers() -> None:
+    from swarm.viz.animate import scoreboard_rows, tile_values
+
+    sg = {"welfare": 0.5, "winners": 5, "gives": 29, "defects": 4, "defects_correct": 2, "board_posts": 15, "dms": 38,
+          "god_moves": 2, "diverged": 10}
+    sn = {"welfare": 0.4, "winners": 4, "gives": 25, "defects": 5, "defects_correct": 3, "board_posts": 16, "dms": 43,
+          "god_moves": 0, "diverged": float("nan")}
+    v = tile_values(sg, sn, 10, 2)
+    assert v["god"]["welfare"] == "0.50" and v["god"]["winners"] == "5/10" and v["god"]["god_moves"] == "2/2"
+    assert v["god"]["diverged"] == "10/10" and v["nogod"]["gives"] == "25"
+    assert v["nogod"]["d_welfare"] == "+0.10" and v["nogod"]["d_winners"] == "+1"
+    rows = {r[0]: r[1:] for r in scoreboard_rows(sg, sn, 10)}
+    assert rows["welfare (mean score)"] == ("0.50", "0.40", "+0.10")
+    assert rows["DMs"] == ("38", "43", "−5") and rows["God moves used"][2] == ""

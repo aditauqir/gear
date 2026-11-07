@@ -63,7 +63,8 @@ def captions(god: Branch, nogod: Branch, ever: dict[int, set[str]] | None = None
     for r in range(1, god.R + 1):
         n = len((ever or {}).get(r, ()))
         if ever is not None and n != prev and god.powers and r >= god.powers[0].round:
-            out[r].append(("ripple", f"Ripple: {n}/{len(god.agents)} agents now act differently than in the no-God world"))
+            out[r].append(("ripple", f"Divergence: {n}/{len(god.agents)} agents now act differently than in the "
+                                     "no-God world"))
         prev = n
         wg = god.wins.get(r, []) if r <= god.rounds_played else []
         wn = nogod.wins.get(r, []) if r <= nogod.rounds_played else []

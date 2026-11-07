@@ -30,10 +30,12 @@ import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
 from swarm.viz.metrics import (  # noqa: E402,F401  (cell_deltas, summarize, ... re-exported for older imports)
+    aligned_curves,
     cell_deltas,
     cum_curves,
     divergence,
     load_branch,
+    mean_curve,
     paired_diff,
     summarize,
     welfare,
@@ -59,42 +61,34 @@ def _save(fig, out_dir: Path, name: str) -> list[Path]:
 
 
 # ------------------------------------------------------------------ divergence
-XMAX = 10   # every curve has saturated well before this round; the x axis stops here (stated on the plot)
-
-def _mean_curve(curves: dict[int, list[float]]) -> list[float]:
-    L = max(len(ys) for ys in curves.values())
-    return [statistics.fmean(ys[min(r, len(ys) - 1)] for ys in curves.values()) for r in range(L)]
-
+XMAX = 8    # rounds after the fork shown; every curve has saturated well before this
 
 def fig3_divergence(cells: list[tuple[str, Path]], out_dir: Path,
                     baselines: list[tuple[str, str]] = (("B′ re-run", "noise"),)) -> list[Path]:
+    """Share of agents diverged from no-God vs rounds since each branch forked (God: its first move; baselines:
+    their first differing round), so God and noise curves start from the same point."""
     fig, axes = plt.subplots(1, len(cells), figsize=(WIDE, 2.3), sharey=True, squeeze=False)
     for k, ((name, run), ax) in enumerate(zip(cells, axes[0], strict=True)):
-        series = [("A vs B (God)", cum_curves(run), CELL_COLORS[k % len(CELL_COLORS)])]
+        series = []
         for j, (lab, br) in enumerate(baselines):
-            c = cum_curves(run, br, "nogod")
+            c, f = aligned_curves(run, br)
             if c:
-                series.insert(0, (f"{lab} vs B", c, NOISE[j % len(NOISE)]))
-        for lab, curves, col in series:
+                series.append((f"{lab} vs B", c, f, NOISE[j % len(NOISE)]))
+        c, f = aligned_curves(run, "god")
+        series.append(("A vs B (God)", c, f, CELL_COLORS[k % len(CELL_COLORS)]))
+        for lab, curves, forks, col in series:
             for ys in curves.values():
-                ax.plot(range(1, len(ys) + 1), ys, color=col, lw=0.6, alpha=0.3)
-            mean = _mean_curve(curves)
-            ax.plot(range(1, len(mean) + 1), mean, color=col, lw=2, label=f"{lab} (n={len(curves)})")
-        god = load_branch(next(iter(worlds(run).values()))["god"])
-        for p in god.powers:
-            ax.axvline(p.round, color=C["god"], lw=0.9, ls=(0, (3, 2)), zorder=0)
+                ax.plot(range(len(ys)), ys, color=col, lw=0.6, alpha=0.3)
+            mean = mean_curve(curves)
+            fk = statistics.median(forks)
+            ax.plot(range(len(mean)), mean, color=col, lw=2, label=f"{lab}: forks r{fk:g}, n={len(curves)}")
         ax.set_title(name, loc="left")
-        ax.set_xlabel("round")
-        sat = min((r + 1 for r, v in enumerate(_mean_curve(series[-1][1])) if v >= 1.0), default=None)
-        ax.set_xlim(0.5, XMAX + 0.5)
-        ax.set_xticks([1, 3, 5, 7, 10])
-        ax.set_ylim(-0.02, 1.1)
-        ax.legend(loc="center right", handlelength=1.4, bbox_to_anchor=(1.0, 0.42))
-        if sat:
-            ax.text(XMAX + 0.3, 0.06, f"A vs B mean = 1 from round {sat}\n(stays there to round 20)", ha="right",
-                    fontsize=6, color=INK2)
-    axes[0][0].set_ylabel("share of agents diverged\n(any action differs so far)")
-    axes[0][0].text(3, 1.065, "God's moves", color=C["god_ink"], fontsize=6.3, va="center", ha="left")
+        ax.set_xlabel("rounds since the branch forked")
+        ax.set_xlim(-0.3, XMAX + 0.3)
+        ax.set_xticks(range(0, XMAX + 1, 2))
+        ax.set_ylim(-0.02, 1.05)
+        ax.legend(loc="lower right", handlelength=1.4)
+    axes[0][0].set_ylabel("share of agents diverged\nfrom B (any action so far)")
     fig.tight_layout(w_pad=0.6)
     return _save(fig, out_dir, "fig3_divergence")
 
@@ -112,7 +106,7 @@ def _forest(ax, rows: list[tuple[str, dict[int, float], str]], h: int, xlim=(-0.
         ax.scatter(xs, yy + rng.uniform(-0.18, 0.18, len(xs)), s=11, color=col, alpha=0.6, lw=0, zorder=2)
         ax.plot([s["tlo"], s["thi"]], [yy, yy], color=INK, lw=1.8, zorder=3, solid_capstyle="round")
         ax.scatter([s["mean"]], [yy], s=36, marker="D", color=INK, zorder=4, edgecolors="white", lw=0.8)
-        ax.text(xlim[1] + 0.08 * (xlim[1] - xlim[0]), yy, f"{s['mean']:+.3f}\n[{s['tlo']:+.3f}, {s['thi']:+.3f}]\np={s['p']:.2f}  n={s['n']}",
+        ax.text(xlim[1] + 0.08 * (xlim[1] - xlim[0]), yy, f"{s['mean']:+.3f}\n[{s['tlo']:+.3f}, {s['thi']:+.3f}]\np={s['p']:.2f}  n={s['n']}".replace("-", "\u2212"),
                 va="center", fontsize=6.2, color=INK2, clip_on=False, linespacing=1.15)
     ax.axvline(0, color=INK2, lw=0.8, zorder=1)
     ax.set_yticks([h - 1 - y for y in range(len(rows))])
@@ -144,18 +138,20 @@ def fig4_welfare(cells: list[tuple[str, Path]], out_dir: Path,
         if pd:
             right.append((f"{short[name]} Δ − {short[n1]} Δ (paired)", pd, INK2))
     h = max(len(left), len(right))
-    H = 0.36 * h + 1.15
+    H = 0.36 * h + 0.95
     fig = plt.figure(figsize=(WIDE, H))
-    bot, top = 0.62 / H, 1 - 0.5 / H
-    axl = fig.add_axes([0.19, bot, 0.18, top - bot])
+    bot, top = 0.45 / H, 1 - 0.42 / H
+    hl = (top - bot) * len(left) / h
+    axl = fig.add_axes([0.19, top - hl, 0.18, hl])
     axr = fig.add_axes([0.72, bot, 0.18, top - bot])
     lim = max(0.5, max(abs(x) for _, d, _ in left + right for x in d.values()) + 0.05)
-    stats = _forest(axl, left, h, (-lim, lim)) + _forest(axr, right, h, (-lim, lim))
+    stats = _forest(axl, left, len(left), (-lim, lim)) + _forest(axr, right, h, (-lim, lim))
     axl.set_title(f"H1: {n1}, God vs. noise", loc="left", x=-0.9)
     axr.set_title("Dose (H1′, H3) and turn mode (H2)", loc="left", x=-1.1)
     hs = [Line2D([], [], marker="o", ls="", color=INK2, alpha=0.6, ms=4, label="one world"),
           Line2D([], [], marker="D", color=INK, ms=5, lw=1.8, label="mean, Student-t 95% CI; sign-flip p")]
-    fig.legend(handles=hs, loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.0))
+    fig.legend(handles=hs, loc="upper left", ncol=1, frameon=False,
+               bbox_to_anchor=(0.04, top - hl - 0.62 / H - 0.06))     # in the space under the shorter left panel
     return _save(fig, out_dir, "fig4_welfare"), stats
 
 
