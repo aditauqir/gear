@@ -1,7 +1,7 @@
 """One OpenAI-compatible async backend (httpx). vllm.py and openrouter.py are presets of it.
 
 Per call, `OpenAICompatClient.chat(req)` does, in order:
-  cache lookup -> pre-call hook (budget) -> concurrency semaphore -> retry loop -> POST
+  cache lookup -> concurrency semaphore -> pre-call hook (budget; first attempt only) -> retry loop -> POST
   -> post-call hook (cost) -> cache write -> accounting (totals + optional LLMCall recorder)
 
 - Retries: 429 (honours Retry-After), 5xx, timeouts, connection errors and empty completions,
@@ -33,6 +33,7 @@ from pydantic import SecretStr
 from swarm.config import RetryCfg
 from swarm.llm.base import (
     AuthError,
+    BudgetExceeded,
     ChatRequest,
     ChatResponse,
     LLMCall,
@@ -205,13 +206,18 @@ class OpenAICompatClient:
                             model=str(data.get("model") or self.model),
                             provider=(str(data["provider"]) if data.get("provider") else None))
 
-    async def _call_with_retry(self, req: ChatRequest) -> ChatResponse:
+    async def _call_with_retry(self, req: ChatRequest, held: list[Any]) -> ChatResponse:
+        """POST with retries. The budget hook runs INSIDE the concurrency semaphore on the first
+        attempt (its token is appended to `held`), so only calls really in flight hold a reservation;
+        calls queued behind the semaphore reserve nothing (the sweep's false budget_exceeded)."""
         sem, client = self._loop_state()
         attempt = 0
         while True:
             t0 = time.perf_counter()
             try:
                 async with sem:
+                    if not held:
+                        held.append(await self._before_call(req))
                     data = await self._post_once(client, req)
                 return self._to_response(req, data, time.perf_counter() - t0, attempt)
             except (TransientError, RateLimited) as e:
@@ -274,16 +280,23 @@ class OpenAICompatClient:
         return await self._chat_miss(req, key)
 
     async def _chat_miss(self, req: ChatRequest, key: str | None) -> ChatResponse:
-        """Budget hook -> retry loop -> cost hook -> cache write -> accounting."""
-        token = await self._before_call(req)
+        """Retry loop (budget hook inside the semaphore) -> cost hook -> cache write -> accounting."""
+        held: list[Any] = []
         try:
-            resp = await self._call_with_retry(req)
+            resp = await self._call_with_retry(req, held)
+        except BudgetExceeded:
+            raise                                 # refused before sending: nothing reserved or recorded
         except LLMError as e:
-            await self._after_call(req, token, None)
+            if held:
+                await self._after_call(req, held[0], None)
             self.totals.errors += 1
             self._record(req, key, None, f"{type(e).__name__}: {e}")
             raise
-        await self._after_call(req, token, resp)
+        except BaseException:                     # cancelled mid-call: release the reservation
+            if held:
+                await self._after_call(req, held[0], None)
+            raise
+        await self._after_call(req, held[0], resp)
         if self.cache is not None and key is not None and resp.text.strip():
             self.cache.put(key, resp)
         t = self.totals

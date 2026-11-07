@@ -213,3 +213,39 @@ def test_provider_pin_and_provider_logged(tmp_path):
     assert from_dict({}).config_hash() != cfg.config_hash()
     plain = run(mk(tmp_path, lambda r: httpx.Response(200, json=body())).chat(req(seed=2)))
     assert plain.provider is None
+
+
+def test_queued_calls_reserve_nothing(tmp_path):
+    """Sweep incident: every PENDING call used to reserve its worst-case estimate before the
+    concurrency semaphore, so 8 queued calls blew a cap that 2 in-flight calls fit easily
+    (false budget_exceeded far below the cap). Now only calls in flight hold a reservation."""
+    peak = {"reserved": 0.0}
+    budget = RunBudget(0.0)
+
+    async def slow(request):
+        peak["reserved"] = max(peak["reserved"], budget.reserved)
+        await asyncio.sleep(0.01)
+        return httpx.Response(200, json=body(cost=0.00001))
+
+    est = estimate_cost(req(), 1.0, 4.0)
+    budget.cap = 2.5 * est                       # room for 2 in-flight reservations, not 8
+    c = OpenRouterClient(enabled=True, api_key=SecretStr(KEY), transport=httpx.MockTransport(slow),
+                         ledger=GlobalLedger(tmp_path / "l.jsonl", 2.0), retry=FAST, max_concurrency=2,
+                         run_budget=budget)
+
+    async def many():
+        return await asyncio.gather(*(c.chat(req(seed=i)) for i in range(8)))
+    out = run(many())
+    assert len(out) == 8 and peak["reserved"] <= 2 * est + 1e-12
+    assert budget.reserved == 0.0 and abs(budget.spent - 8 * 0.00001) < 1e-12
+
+
+def test_one_budget_per_run_across_paid_clients(tmp_path):
+    """Review #9: two OpenRouter models in one run share ONE RunBudget and ONE GlobalLedger."""
+    from swarm.runner.wiring import _paid_budget
+
+    cfg = from_dict(TINY)
+    shared: dict = {}
+    b1, l1 = _paid_budget(cfg, shared)
+    b2, l2 = _paid_budget(cfg, shared)
+    assert b1 is b2 and l1 is l2 and b1.cap == cfg.llm.budget_usd

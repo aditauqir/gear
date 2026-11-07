@@ -47,7 +47,20 @@ def _abs(p: str) -> Path:
     return q if q.is_absolute() else REPO_ROOT / q
 
 
-def _build_client(cfg: RunConfig, role: str, run: RunWriter, cache: Any) -> Any:
+def _paid_budget(cfg: RunConfig, shared: dict[str, Any]) -> tuple[Any, Any]:
+    """The run's ONE RunBudget and ONE GlobalLedger, created on first use and shared by every paid
+    client (a second model must not get a second per-run cap; CODE_REVIEW #9)."""
+    if "budget" not in shared:
+        from swarm.llm.budget import GlobalLedger, RunBudget
+
+        o = cfg.llm.openrouter
+        shared["budget"] = RunBudget(cfg.llm.budget_usd)
+        shared["ledger"] = GlobalLedger(_abs(o.ledger_path), o.global_cap_usd)
+    return shared["budget"], shared["ledger"]
+
+
+def _build_client(cfg: RunConfig, role: str, run: RunWriter, cache: Any,
+                  shared: dict[str, Any] | None = None) -> Any:
     backend, model = cfg.model_for(role)
     if backend == "fake":
         from swarm.llm.base import FakeLLM
@@ -61,14 +74,14 @@ def _build_client(cfg: RunConfig, role: str, run: RunWriter, cache: Any) -> Any:
         return VLLMClient.from_cfg(cfg.llm.vllm, model=model, retry=cfg.llm.retry, cache=cache,
                                    recorder=run.log_llm_call, run_id=run.run_id)
     if backend == "openrouter":
-        from swarm.llm.openrouter import GlobalLedger, OpenRouterClient, RunBudget, load_key
+        from swarm.llm.openrouter import OpenRouterClient, load_key
 
         o = cfg.llm.openrouter
+        budget, ledger = _paid_budget(cfg, {} if shared is None else shared)
         return OpenRouterClient(enabled=o.enabled, api_key=load_key(), base_url=o.base_url, model=model,
                                 max_concurrency=o.max_concurrency, price_in_per_mtok=o.price_in_per_mtok,
                                 price_out_per_mtok=o.price_out_per_mtok,
-                                ledger=GlobalLedger(_abs(o.ledger_path), o.global_cap_usd),
-                                run_budget=RunBudget(cfg.llm.budget_usd), retry=cfg.llm.retry, cache=cache,
+                                ledger=ledger, run_budget=budget, retry=cfg.llm.retry, cache=cache,
                                 recorder=run.log_llm_call, run_id=run.run_id,
                                 reasoning_effort=o.reasoning_effort, provider_sort=o.provider_sort,
                                 provider_order=o.provider_order, allow_fallbacks=o.allow_fallbacks)
@@ -89,10 +102,11 @@ def build_clients(cfg: RunConfig, run: RunWriter, engine: str = "real") -> Clien
         cache = ResponseCache(path, cfg.llm.cache.mode)
     roles = ["agent"] + (["god"] if cfg.god.kind == "llm" else [])
     built: dict[tuple[str, str], Any] = {}
+    shared: dict[str, Any] = {}                      # one RunBudget + GlobalLedger for all paid clients
     for role in roles:
         key = cfg.model_for(role)
         if key not in built:
-            built[key] = _build_client(cfg, role, run, cache)
+            built[key] = _build_client(cfg, role, run, cache, shared)
             out.closers.append(built[key])
         out.by_role[role] = built[key]
     return out
