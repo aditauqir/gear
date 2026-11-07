@@ -52,13 +52,13 @@ def test_pacing_holds_on_god_and_effect_rounds() -> None:
 
 
 def test_pick_worlds_uses_excess_over_noise_and_ripple_speed() -> None:
-    rows = [{"world": 0, "delta": 0.20, "noise_delta": 0.17, "rounds_to_80pct": 1},
-            {"world": 1, "delta": -0.27, "noise_delta": -0.13, "rounds_to_80pct": 1},
-            {"world": 2, "delta": 0.05, "noise_delta": None, "rounds_to_80pct": 3},
-            {"world": 3, "delta": 0.00, "noise_delta": 0.0, "rounds_to_80pct": 3}]
+    rows = [{"world": 0, "delta": 0.20, "noise_delta": 0.17, "spread_auc": 0.6},
+            {"world": 1, "delta": -0.27, "noise_delta": -0.13, "spread_auc": 0.1},
+            {"world": 2, "delta": 0.05, "noise_delta": None, "spread_auc": 0.4},
+            {"world": 3, "delta": 0.00, "noise_delta": 0.0, "spread_auc": 0.4}]
     p = pick_worlds(rows)
     assert p["harm"]["world"] == 1          # 0.27 - 0.13 = 0.14 beats 0.20 - 0.17 = 0.03
-    assert p["ripple"]["world"] == 2        # slowest spread, tie broken by excess (0.05 > 0.0)
+    assert p["ripple"]["world"] == 2        # slowest spread among non-harm picks; tie broken by excess
     assert pick_worlds([]) == {}
 
 
@@ -75,7 +75,7 @@ def test_real_run_helpers(fake_run: Path) -> None:
     caps = captions(god, nogod, ever)
     assert any(k == "god" for r in caps for k, _ in caps[r])
     rows = world_table(fake_run)
-    assert rows and {"world", "delta", "rounds_to_80pct", "victim_delta"} <= set(rows[0])
+    assert rows and {"world", "delta", "spread_auc", "victim_delta"} <= set(rows[0])
 
 
 @pytest.mark.slow
@@ -104,3 +104,12 @@ def test_paper_figs_render_and_match_grid_stats(synth_run: Path, tmp_path: Path)
     for p in fig_divergence(cells, tmp_path) + fig_delta_welfare(cells, tmp_path, n_boot=200)[0]:
         assert p.stat().st_size > 2000
     assert (tmp_path / "fig_divergence.pdf").read_bytes()[:4] == b"%PDF"
+
+
+def test_reel_minus_sign_and_build(synth_run: Path, tmp_path: Path) -> None:
+    from swarm.viz.reel import build, num
+
+    assert num("Δ -0.27 [-0.04, +0.06] g-03") == "Δ −0.27 [−0.04, +0.06] g-03"
+    info = build(tmp_path / "r.mp4", ("synth", synth_run), [], n_boot=200)
+    assert (tmp_path / "r.mp4").stat().st_size > 10_000 and (tmp_path / "r.json").exists()
+    assert info["grid"] and info["seconds"] > 20

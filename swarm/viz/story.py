@@ -130,6 +130,8 @@ def captions(god: Branch, nogod: Branch, ever: dict[int, set[str]] | None = None
         if p.power == "message_fraud":
             out[p.round].append(("god", f"GOD forges a DM to {p.target}, signed as {p.spoofed}:"))
             out[p.round].append(("quote", f"“{_short(p.text, 110)}”"))
+            if p.target in god.won_by(p.round - 1):
+                out[p.round].append(("effect", f"{p.target} had already won before the lie arrived"))
             base = {(r, a, t) for r, a, t, _ in nogod.gives}
             took = [g for g in god.gives if g[1] == p.target and g[2] == p.spoofed and p.round <= g[0] <= p.round + 1
                     and (g[0], g[1], g[2]) not in base]
@@ -203,6 +205,9 @@ def world_table(run_dir: str | Path, with_ripple: bool = True) -> list[dict[str,
             full = next((r for r in sorted(ever) if len(ever[r]) >= 0.8 * n_ag), None)
             row["fork"] = fork
             row["rounds_to_80pct"] = (full - fork) if (full and fork) else None
+            # agents diverged so far at rounds fork .. fork+3, and its mean share (lower = slower ripple)
+            row["spread"] = [len(ever.get(r, ())) for r in range(fork, fork + 4)] if fork else None
+            row["spread_auc"] = (sum(row["spread"]) / (4 * n_ag)) if fork else None
             sg, sn = g.score_at(g.R), n.score_at(n.R)
             row["victim_delta"] = {p.target: sg.get(p.target, 0) - sn.get(p.target, 0) for p in g.powers}
         rows.append(row)
@@ -211,16 +216,17 @@ def world_table(run_dir: str | Path, with_ripple: bool = True) -> list[dict[str,
 
 def pick_worlds(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """harm: largest God-caused welfare change beyond the world's own noise replica,
-    |delta| - |noise_delta| (|delta| when no replica); ripple: slowest spread to 80% of agents (ties: harm)."""
+    |delta| - |noise_delta| (|delta| when no replica); ripple: slowest spread, i.e. the lowest mean share of
+    agents diverged over the fork round and the 3 rounds after it (ties: harm, then world index)."""
     def excess(r: dict[str, Any]) -> float:
         return abs(r["delta"]) - abs(r["noise_delta"] or 0.0)
 
     out = {}
     if rows:
         out["harm"] = max(rows, key=lambda r: (excess(r), -r["world"]))
-        rip = [r for r in rows if r.get("rounds_to_80pct") is not None and r is not out["harm"]]
+        rip = [r for r in rows if r.get("spread_auc") is not None and r is not out["harm"]]
         if rip:
-            out["ripple"] = max(rip, key=lambda r: (r["rounds_to_80pct"], excess(r), -r["world"]))
+            out["ripple"] = min(rip, key=lambda r: (r["spread_auc"], -excess(r), r["world"]))
     return out
 
 

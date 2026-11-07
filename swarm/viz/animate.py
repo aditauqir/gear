@@ -122,8 +122,8 @@ def draw_panel(ax, title: str, b: Branch, pos, r: int, *, ever=None, new=(), ram
             if hot:
                 lab = "forged DM" if p.power == "message_fraud" else "notes rewritten"
                 x0, y0 = pos[p.target]
-                ax.text(x0, y0 + (0.19 if y0 >= -0.2 else -0.19), lab, ha="center",
-                        va="bottom" if y0 >= -0.2 else "top", fontsize=9.5, fontweight="bold", color="white",
+                up = -0.2 <= y0 <= 0.5           # badge above the node, except top and bottom rows (inward)
+                ax.text(x0, y0 + (0.19 if up else -0.19), lab, ha="center", va="bottom" if up else "top", fontsize=9.5, fontweight="bold", color="white",
                         zorder=6, bbox=dict(boxstyle="round,pad=0.25", fc=C["god_ink"], ec="none"))
             if hot and p.spoofed in pos:
                 j = agents.index(p.spoofed)
@@ -270,7 +270,7 @@ class WorldVideo:
         T.append(f.text(0.015, 0.928, self.header, fontsize=9.5, color=INK2, va="center"))
         T.append(f.text(0.5, 0.955, f"Round {r} / {R}", fontsize=21, fontweight="bold", color=INK, ha="center",
                         va="center"))
-        T.append(f.text(0.985, 0.955, "1 s per round  ·  holds on God's moves", fontsize=8.5, color=INK2,
+        T.append(f.text(0.985, 0.955, "pauses on God's moves", fontsize=8.5, color=INK2,
                         ha="right", va="center"))
         lines = [c for c in self.caps.get(r, []) if c[0] != "win"][:3] or \
             [("info", "Rounds 1–2 are identical in both worlds (shared seeds and cached replies)" if r < 3 else
@@ -290,8 +290,14 @@ class WorldVideo:
         wg, wn = len(self.god.won_by(r)), len(self.nogod.won_by(r))
         return f"Welfare {g:.2f} with God vs {n:.2f} without  ·  winners so far {wg} vs {wn}"
 
-    def frames(self, fr: Frames, preview: tuple[int, str] | None = None) -> None:
+    def frames(self, fr: Frames, preview: tuple[int, str] | None = None, upto: int | None = None,
+               fast_after: int | None = None, fast_s: float = 0.6) -> None:
+        """upto: stop after this round; fast_after: rounds after it without a God event get fast_s seconds."""
         for r, secs in pacing(self.god.R, self.caps):
+            if upto is not None and r > upto:
+                break
+            if fast_after is not None and r > fast_after and secs <= 1.0:
+                secs = fast_s
             n_tot = max(1, round(secs * FPS))
             ramp_n = min(len(RAMP), n_tot)
             for i in range(ramp_n):
@@ -329,8 +335,9 @@ def card_end(fig, god: Branch, nogod: Branch, footer: str = "") -> None:
     fig.clf()
     wg, wn = god.welfare(god.R), nogod.welfare(nogod.R)
     fig.text(0.06, 0.88, "Final scores", fontsize=28, fontweight="bold", color=INK)
-    fig.text(0.06, 0.81, f"Welfare with God {wg:.2f}  vs  without God {wn:.2f}   (Δ {wg - wn:+.2f})   ·   "
-             f"winners {len(god.won_by(god.R))} vs {len(nogod.won_by(nogod.R))}", fontsize=15, color=INK)
+    fig.text(0.06, 0.81, (f"Welfare with God {wg:.2f}  vs  without God {wn:.2f}   (Δ {wg - wn:+.2f})   ·   "
+                          f"winners {len(god.won_by(god.R))} vs {len(nogod.won_by(nogod.R))}").replace("-", "\u2212"),
+             fontsize=15, color=INK)
     ax = fig.add_axes([0.24, 0.17, 0.62, 0.58])
     sg, sn = god.score_at(god.R), nogod.score_at(nogod.R)
     agents = sorted(god.agents, key=lambda a: (sg.get(a, 0) - sn.get(a, 0), a))
