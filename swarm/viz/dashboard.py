@@ -39,8 +39,10 @@ from swarm.viz.metrics import (  # noqa: E402
     branch_values,
     cell_round_means,
     deltas,
+    design_effect,
     load_cell,
     paired_or_unpaired,
+    parse_seeds,
     parse_spec,
     summarize,
 )
@@ -421,6 +423,41 @@ def design_table(cells: list[tuple[str, dict[str, Any]]]) -> str:
     return "<div class=tbl><table>" + "".join(rows) + "</table></div>"
 
 
+def design_runs_section(designs: list[tuple[str, str, str, Any]]) -> str:
+    """Design effects measured from no-God branches only (may include no-God-only extension runs):
+    var − ref welfare per world, paired on identical worlds, with a per-world chart."""
+    if not designs:
+        return ""
+    rows = ["<tr><th>setting (no God)</th><th>reference runs</th><th>variant runs</th><th>Δ welfare [95% t-CI] p</th>"
+            "<th>n (paired)</th></tr>"]
+    figs = []
+    for lab, ref, var, orig in designs:
+        de = design_effect(ref, var)
+        s = de["stats"]
+        rows.append(f"<tr><td><b>{html.escape(lab)}</b></td><td class=dim>{html.escape(ref)}</td>"
+                    f"<td class=dim>{html.escape(var)}</td>"
+                    + (f"<td><b>{num(s['mean'])}</b> {ci(s['tlo'], s['thi'])} <span class='{pcls(s['p'])}'>"
+                       f"p={s['p']:.3f}</span></td><td>{s['n']}</td>" if s else "<td>–</td><td>–</td>") + "</tr>")
+        if de["pairs"]:
+            fig, ax = plt.subplots(figsize=(3.2, 2.4))
+            for i, (a_, b_) in de["pairs"].items():
+                first = orig is None or i in orig
+                ax.plot([0, 1], [a_, b_], color=INK2, lw=0.8, alpha=0.6 if first else 0.35)
+                ax.scatter([0, 1], [a_, b_], s=12, color=INK2 if first else "none", edgecolors=INK2, lw=0.8)
+            ma = statistics.fmean(v[0] for v in de["pairs"].values())
+            mb = statistics.fmean(v[1] for v in de["pairs"].values())
+            ax.plot([0, 1], [ma, mb], color=C["defect"], lw=2.2, marker="D", ms=5)
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(["reference", lab], fontsize=8)
+            ax.set_xlim(-0.35, 1.35)
+            ax.tick_params(labelsize=7)
+            ax.set_ylabel("welfare, no God", fontsize=8)
+            ax.grid(axis="x", visible=False)
+            cap = "● original worlds ○ extension worlds; red = mean" if orig is not None else "red = mean"
+            figs.append(f"<div class=fig>{svg(fig)}<p class=cap>{html.escape(lab)}: {cap}.</p></div>")
+    return ("<div class=tbl><table>" + "".join(rows) + "</table></div><div class=grid>" + "".join(figs) + "</div>")
+
+
 # ------------------------------------------------------------------ page
 CSS = """
 :root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--line:#e4e3df;--accent:#2a78d6;--god:#c4386f;--sig:#c4386f}
@@ -447,7 +484,8 @@ details{margin:8px 0} summary{cursor:pointer;color:var(--accent)} code{font-size
 """
 
 
-def build(cells_in: list[tuple[str, Any]], out: Path) -> dict[str, Any]:
+def build(cells_in: list[tuple[str, Any]], out: Path, designs: list[tuple[str, str, str, Any]] | None = None
+          ) -> dict[str, Any]:
     cells, skipped = [], []
     for lab, p in cells_in:
         c = load_cell(p)
@@ -490,6 +528,9 @@ def build(cells_in: list[tuple[str, Any]], out: Path) -> dict[str, Any]:
     parts.append(overview_table(cells))
     parts.append(f"<div class=fig>{chart_overview(cells)}<p class=cap>Δ welfare per world for every cell, against "
                  "the fork-matched noise B″ where the cell has one (primary), else against no God.</p></div>")
+    dr = design_runs_section(designs or [])
+    if dr:
+        parts.append("<h3>Design effects without God, from all no-God runs (incl. no-God-only extensions)</h3>" + dr)
     de = design_table(cells)
     if de:
         parts.append(f"<h3>Design effects without God: each cell's no-God branch − {html.escape(cells[0][0])}'s "
@@ -557,9 +598,16 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--cell", action="append", default=[], help='"label=run_dir"; the first is the reference cell')
     ap.add_argument("--sweeps", action="append", default=[], help='glob of extra run dirs, e.g. "runs/sweep_*"')
     ap.add_argument("--per-run", action="store_true", help="also write <run_dir>/dashboard.html per cell")
+    ap.add_argument("--design", action="append", default=[],
+                    help='"label=REF_RUNS|VARIANT_RUNS[|original seeds]"; runs may be joined with +')
     a = ap.parse_args(argv)
+    designs = []
+    for d in a.design:
+        lab, rest = d.split("=", 1)
+        ps = rest.split("|")
+        designs.append((lab, ps[0], ps[1], parse_seeds(ps[2]) if len(ps) > 2 else None))
     cells = [(c.rsplit("=", 1)[0], c.rsplit("=", 1)[1]) for c in a.cell] + discover(a.sweeps)
-    info = build(cells, a.out)
+    info = build(cells, a.out, designs)
     print(info)
     if a.per_run:
         for lab, p in cells:

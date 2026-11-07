@@ -135,3 +135,14 @@ def test_fig5_sweep_renders(synth_run: Path, tmp_path: Path) -> None:
     assert all(p.stat().st_size > 2000 for p in paths)
     design = [st for lab, st in stats if lab.startswith("design")]
     assert all(st["mean"] == 0 for st in design)          # a cell against itself: no design effect
+
+
+def test_design_effect_joins_runs_and_pairs_same_worlds(synth_run: Path, fake_run: Path) -> None:
+    from swarm.viz.metrics import branch_by_world, design_effect
+
+    one = branch_by_world(str(synth_run))
+    assert one and branch_by_world(f"{synth_run}+{fake_run}").keys() >= one.keys()
+    de = design_effect(str(synth_run), str(synth_run))
+    assert set(de["pairs"]) == set(one) and all(a == b for a, b in de["pairs"].values()) and not de["dropped"]
+    other = design_effect(str(synth_run), str(fake_run))       # different worlds at the same index -> dropped
+    assert not other["pairs"] or other["dropped"] == []

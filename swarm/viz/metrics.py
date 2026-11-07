@@ -495,6 +495,40 @@ def paired_or_unpaired(ca: dict[str, Any], cb: dict[str, Any], metric: str,
                         "mde": float("nan")}
 
 
+def branch_by_world(runs: str | list[str | Path], branch: str = "nogod",
+                    seeds: frozenset[int] | None = None) -> dict[int, Path]:
+    """game_idx -> finished, healthy `branch` dir, gathered over one or more run dirs ('a+b' or a list; the first
+    run that has a world wins). Unlike worlds(), a God branch is not required (e.g. no-God-only extension runs)."""
+    if isinstance(runs, (str, Path)):
+        runs = [r for r in str(runs).split("+") if r]
+    out: dict[int, Path] = {}
+    for r in runs:
+        r, _, sd = str(r).partition("#")
+        keep = parse_seeds(sd) if sd else seeds
+        for i, brs in branch_dirs(r).items():
+            d = brs.get(branch)
+            if i in out or d is None or (keep is not None and i not in keep):
+                continue
+            if is_done(d) and not game_health(d)["reasons"]:
+                out[i] = d
+    return out
+
+
+def design_effect(ref_runs: str | list[str | Path], var_runs: str | list[str | Path], metric: str = "welfare",
+                  branch: str = "nogod") -> dict[str, Any]:
+    """Effect of a setting without God: var − ref outcome of `branch` per world, paired on worlds whose generated
+    world is identical (world_hash). -> {"pairs": {i: (ref, var)}, "dropped": [...], "stats": summarize(...)}."""
+    a, b = branch_by_world(ref_runs, branch), branch_by_world(var_runs, branch)
+    pairs, dropped = {}, []
+    for i in sorted(set(a) & set(b)):
+        if world_hash(a[i]) != world_hash(b[i]):
+            dropped.append(i)
+            continue
+        pairs[i] = (game_metrics(a[i])[metric], game_metrics(b[i])[metric])
+    return {"pairs": pairs, "dropped": dropped,
+            "stats": summarize([v - r for r, v in pairs.values()]) if len(pairs) >= 2 else {}}
+
+
 def load_cell(run_dir: str | Path | CellSpec, with_health: bool = True, with_pairs: bool = True) -> dict[str, Any]:
     """Everything the dashboard needs for one cell. Branches still running are counted but not loaded."""
     spec = parse_spec(run_dir)

@@ -38,6 +38,7 @@ from swarm.viz.metrics import (  # noqa: E402,F401  (cell_deltas, summarize, ...
     load_branch,
     mean_curve,
     paired_diff,
+    parse_seeds,
     parse_spec,
     summarize,
     welfare,
@@ -170,12 +171,13 @@ def fig4_welfare(cells: list[tuple[str, Path]], out_dir: Path,
 
 
 # ------------------------------------------------------------------ sweep summary
-def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple[str, Any, Any] | None, out_dir: Path) -> tuple[list[Path], list]:
+def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple | None, out_dir: Path) -> tuple[list[Path], list]:
     """Left: God − B'' Δwelfare per sweep condition (dots = worlds, ◆ mean, bar = 95% t-CI, p), grouped by factor;
     hollow ○ = God − no God mean for reference. Right: design effect without God (e.g. board off vs on), welfare
     per world in the no-God branch of the two settings on the same worlds, with the paired mean Δ.
-    conds: (group, label, spec); design: (label, spec_reference, spec_variant)."""
-    from swarm.viz.metrics import load_cell, paired_or_unpaired
+    conds: (group, label, spec); design: (label, ref_runs, variant_runs[, frozenset of the original worlds]) where
+    runs may be 'a+b' (no-God-only extension runs join by world index)."""
+    from swarm.viz.metrics import design_effect
 
     rows = [(g, lab, cell_deltas(sp, "god", "noisefork"), cell_deltas(sp, "god", "nogod")) for g, lab, sp in conds]
     rows = [r for r in rows if r[2]]
@@ -223,30 +225,33 @@ def fig5_sweep(conds: list[tuple[str, str, Any]], design: tuple[str, Any, Any] |
           Line2D([], [], marker="o", ls="", mfc="none", mec=INK2, ms=4.5, label="God − no God mean")]
     fig.legend(handles=hs, loc="lower left", ncol=3, frameon=False, bbox_to_anchor=(0.02, -0.01), fontsize=6.5)
     if design:
-        dlab, sref, svar = design
-        ca = load_cell(sref, with_health=False, with_pairs=False)
-        cb = load_cell(svar, with_health=False, with_pairs=False)
-        kind, sd = paired_or_unpaired(ca, cb, "welfare", branch="nogod")
+        dlab, sref, svar, orig = (*design, None)[:4]
+        de = design_effect(sref, svar)
+        sd, kind = de["stats"], "paired"
         if sd:
             stats.append((f"design: {dlab} (no-God welfare, {kind})", sd))
-        common = sorted(set(ca["worlds"]) & set(cb["worlds"]))
         axd = fig.add_axes([0.87, bot + 0.08, 0.12, top - bot - 0.18])
-        for i in common:
-            a_, b_ = ca["worlds"][i]["branches"]["nogod"]["welfare"], cb["worlds"][i]["branches"]["nogod"]["welfare"]
-            axd.plot([0, 1], [a_, b_], color=INK2, lw=0.8, alpha=0.6, marker="o", ms=3)
-        ma = statistics.fmean(ca["worlds"][i]["branches"]["nogod"]["welfare"] for i in common)
-        mb = statistics.fmean(cb["worlds"][i]["branches"]["nogod"]["welfare"] for i in common)
-        axd.plot([0, 1], [ma, mb], color=C["defect"], lw=2.2, marker="D", ms=5)
+        for i, (a_, b_) in de["pairs"].items():
+            first = orig is None or i in orig
+            axd.plot([0, 1], [a_, b_], color=INK2, lw=0.8, alpha=0.6 if first else 0.35, zorder=2)
+            axd.scatter([0, 1], [a_, b_], s=10, zorder=3, color=INK2 if first else "none", edgecolors=INK2,
+                        lw=0.8, alpha=0.8)
+        if de["pairs"]:
+            ma = statistics.fmean(v[0] for v in de["pairs"].values())
+            mb = statistics.fmean(v[1] for v in de["pairs"].values())
+            axd.plot([0, 1], [ma, mb], color=C["defect"], lw=2.2, marker="D", ms=5, zorder=4)
         axd.set_xticks([0, 1])
         axd.set_xticklabels(["board on", "board off"] if "board" in dlab else ["reference", dlab], fontsize=7)
         axd.set_xlim(-0.35, 1.35)
         axd.tick_params(labelsize=6.5)
         axd.grid(axis="x", visible=False)
         axd.set_title(f"Without God: {dlab}\n(welfare per world)", loc="left", fontsize=7.2, x=-0.45)
-        txt = ((f"Δ {sd['mean']:+.3f} [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]\np={sd['p']:.2f}, "
+        txt = ((f"Δ {sd['mean']:+.3f} [{sd['tlo']:+.3f}, {sd['thi']:+.3f}]\np={sd['p']:.3f}, "
                 f"n={sd['n']} ({kind})").replace("-", "\u2212") if sd else "fewer than 2 shared worlds")
-        axd.text(0.5, -0.32, txt,
-                 transform=axd.transAxes, ha="center", va="top", fontsize=6.5, color=INK2)
+        if orig is not None and sd:
+            n0 = sum(1 for i in de["pairs"] if i in orig)
+            txt += f"\n● first {n0} worlds  ○ extension"
+        axd.text(0.5, -0.3, txt, transform=axd.transAxes, ha="center", va="top", fontsize=6.3, color=INK2)
     return _save(fig, out_dir, "fig5_sweep"), stats
 
 
@@ -307,9 +312,10 @@ def main(argv: list[str] | None = None) -> None:
     if a.sweep:
         conds = [(c.split("|", 1)[0], c.split("|", 1)[1].rsplit("=", 1)[0], c.rsplit("=", 1)[1]) for c in a.sweep]
         design = None
-        if a.design:
+        if a.design:          # "label=REF_RUNS|VARIANT_RUNS[|orig seeds]"
             dl, ds = a.design.split("=", 1)
-            design = (dl, *ds.split("|", 1))
+            parts = ds.split("|")
+            design = (dl, parts[0], parts[1], parse_seeds(parts[2]) if len(parts) > 2 else None)
         p5, s5 = fig5_sweep(conds, design, a.out_dir)
         print(*p5)
         stats += s5
