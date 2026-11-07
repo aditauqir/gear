@@ -21,7 +21,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from swarm.viz.animate import FPS, Frames, WorldVideo, card_end, card_title, new_fig
+from swarm.viz.animate import FPS, Frames, WorldVideo, card_end, card_title, new_fig, world_facts
 from swarm.viz.metrics import aligned_curves, cell_deltas, mean_curve, summarize
 from swarm.viz.paper_figs import CELL_COLORS
 from swarm.viz.story import pick_worlds, world_table
@@ -114,8 +114,10 @@ def build(out: Path, main: tuple[str, Path], cells: list[tuple[str, Path]], n_bo
     with tempfile.TemporaryDirectory() as td:
         fr = Frames(td)
         f = new_fig()
-        card_title(f, "Here K=2: forged DM r3, notes r5.",
-                   f"Shown: two worlds from {main[0]} ({len(rows)} worlds), picked from the data, then the grid result.")
+        facts = world_facts(Path(main[1]) / "games" / f"g{rows[0]['world']:02d}-god")
+        card_title(f, facts["k_desc"],
+                   f"Shown: two worlds from {main[0]} ({len(rows)} worlds), picked from the data, then the grid result.",
+                   facts)
         fr.add(f, 8.0)
         for key, kicker, title, why, upto, fast in (
                 ("harm", "World 1 of 2", "The biggest God effect",

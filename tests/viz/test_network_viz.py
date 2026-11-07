@@ -72,3 +72,15 @@ def test_network_video_frame(net_run: Path, tmp_path: Path) -> None:
     wv.draw(2, 2)
     wv.fig.savefig(tmp_path / "f.png", dpi=50)
     assert (tmp_path / "f.png").stat().st_size > 5000
+
+
+def test_title_card_facts_come_from_the_logs(net_run: Path) -> None:
+    import json
+
+    from swarm.viz.animate import world_facts
+
+    d = net_run / "games" / "g00-god"
+    f = world_facts(d)
+    start = next(json.loads(ln)["data"] for ln in open(d / "events.jsonl") if '"type":"game_start"' in ln)
+    assert f["n"] == len(start["agents"]) and f["model"] == "FakeLLM DRY RUN"
+    assert f["keys"] == len(next(iter(start["agents"].values()))["keys"]) and f["k_desc"].startswith("Here K=")

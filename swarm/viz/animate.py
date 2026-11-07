@@ -493,11 +493,30 @@ class WorldVideo:
 
 
 # ------------------------------------------------------------------ cards
-def card_title(fig, k_desc: str, world_desc: str) -> None:
+def world_facts(game_dir: Path) -> dict[str, Any]:
+    """Agent count, keys and needs per agent (from game_start), the agents' model (from llm_calls) and God's
+    schedule, for the title card; read from the logs, never assumed."""
+    import json
+
+    with open(Path(game_dir) / "events.jsonl", encoding="utf-8") as f:
+        start = next(json.loads(ln)["data"] for ln in f if '"type":"game_start"' in ln)
+    ag = list(start["agents"].values())
+    b = load_branch(game_dir)
+    k = len(b.powers)
+    return {"n": len(ag), "keys": len(ag[0]["keys"]) if ag else 0, "needs": len(ag[0]["needs"]) if ag else 0,
+            "model": model_label(Path(game_dir)),
+            "k_desc": f"Here K={k}: " + ", ".join(
+                f"{'forged DM' if p.power == 'message_fraud' else 'notes'} r{p.round}" for p in b.powers) + "."}
+
+
+def card_title(fig, k_desc: str, world_desc: str, facts: dict[str, Any] | None = None) -> None:
     fig.clf()
+    f = facts or {"n": 10, "keys": 5, "needs": 3, "model": "gpt-oss-120b"}
+    who = f"{f['n']} LLM agents ({f['model']})." if f["model"] != "FakeLLM DRY RUN" else \
+        f"{f['n']} agents (FakeLLM dry run)."
     fig.text(0.05, 0.86, "Keys & God", fontsize=40, fontweight="bold", color=INK)
     fig.text(0.05, 0.775, "Does one planted lie ripple through a swarm of LLM agents?", fontsize=18, color=INK2)
-    cols = [("The game", ["10 LLM agents (gpt-oss-120b).", "Each holds 5 keys and needs 3 keys",
+    cols = [("The game", [who, f"Each holds {f['keys']} keys and needs {f['needs']} keys",
                           "that other agents hold.", "Moves: DM, post on a public board,",
                           "give a key, or defect (burn",  "another agent's need).", "Score = share of needs unlocked."]),
             ("God", ["A hidden adversary with a budget.", "It can forge a DM that looks like",
@@ -589,11 +608,9 @@ def render_world(run: Path, god: str, nogod: str, fr: Frames, header: str, cards
                  title_s: float = 7.0, end_s: float = 5.0) -> WorldVideo:
     wv = WorldVideo(run / "games" / god, run / "games" / nogod, header)
     if cards:
-        k = len(wv.god.powers)
-        kd = f"Here K={k}: " + ", ".join(
-            f"{'forged DM' if p.power == 'message_fraud' else 'notes'} r{p.round}" for p in wv.god.powers) + "."
+        facts = world_facts(run / "games" / god)
         tf = new_fig()
-        card_title(tf, kd, title_desc or header)
+        card_title(tf, facts["k_desc"], title_desc or header, facts)
         fr.add(tf, title_s)
         plt.close(tf)
     wv.frames(fr, preview)
