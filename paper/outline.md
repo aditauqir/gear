@@ -2,7 +2,7 @@
 
 Status: updated after the grid, the sweep and the board follow-ups. Every number must trace to
 `plan/GRID_RESULTS.md`, `plan/SWEEP_RESULTS.md`, `plan/CODE_REVIEW.md` or `plan/figs/board_effect.txt`.
-The board follow-up numbers are [VERIFY] until planA-review confirms them.
+All numbers, including the board follow-ups, are verified by planA-review (`plan/CODE_REVIEW.md`, bc5839c).
 
 ## Title options
 
@@ -41,12 +41,12 @@ We contribute:
 3. a **bounded null** for the adversary. God's welfare effect is +0.013 [−0.048, +0.073] (n=16),
    with no effect beyond noise across timing, budget and swarm size. God's divergence is *below*
    fork-matched noise, so divergence curves measure chaos, not attack spread;
-4. a **robust infrastructure effect** [VERIFY]. Removing the public board cuts welfare by 0.173
+4. a **robust infrastructure effect** (verified). Removing the public board cuts welfare by 0.173
    [0.089, 0.257] (p=0.0003, n=16; it replicates on 10 new worlds). Agents send 1.8× the DMs, give
    26% fewer keys, and make 3× the wrong defects.
 
 Framing: "the channel matters more than the liar". The delayed-board God result (+0.122, t95
-includes 0, n=6) is a lead to replicate, not a finding.
+includes 0, n=6) is suggestive only, a lead to replicate.
 
 ## Section plan and word budget (8 pages, body only)
 
@@ -57,7 +57,7 @@ includes 0, n=6) is a lead to replicate, not a finding.
 | 2 Related Work | 410 | done, 21 verified references |
 | 3 Environment & Method | 1201 | done |
 | 4 Experimental Setup | 606 | done |
-| 5 Results | 980 | filled (board follow-up [VERIFY]) |
+| 5 Results | ~990 | done, all numbers verified |
 | 6 Discussion | 264 | done |
 | 7 Conclusion | 98 | done |
 | Appendix A: Limitations and Dual-Use / Ethical Considerations (required) | ~900 | full prose (does not count toward 8 pages) |
@@ -69,9 +69,9 @@ includes 0, n=6) is a lead to replicate, not a finding.
 |---|---|---|---|
 | Fig 1 | Game + God schematic: 10 agents, keys/needs, DM/board/log channels, God with activity_check/message_check and the two powers; inset of the paired fork (shared rounds 1-2, then God / no-God / B′) | Hand-drawn (draw.io or slides). Nothing generated. | TO MAKE |
 | Fig 2 | Network stills of world g02 (median-|Δwelfare| world of G1, |Δ| 0.067, rule-picked): God branch (A) vs no-God branch (B) at God's first move and at round 20 | `plan/figs/fig2_network.{pdf,png}` (planA-viz, `swarm.viz.paper_figs`) | EXISTS |
-| Fig 3 | Divergence: post-fork share of agents acting differently from no-God, God (filled) vs fork-matched noise B″ (hollow), per sweep factor; shows God below noise | `plan/figs/sweep_{start,k,board,n}_divergence.png` (from `infra/sweep/plot.py`); per-round curves optional via `swarm/viz/figures.ripple_png` | EXISTS (sweep) [VERIFY] |
-| Fig 4 | Effect sizes: (a) grid paired Δ with t95 for G1/G2/G3 + B′ and H2/H3 (from `plan/GRID_RESULTS.md`; plot script paper-side, TO MAKE); (b) sweep A−N (filled) and A−B (hollow) welfare with t95 per factor | (b) `plan/figs/sweep_{start,k,board,n}_welfare.png` | (a) TO MAKE, (b) EXISTS [VERIFY] |
-| Fig 5 | Board-off mechanism: board on vs. off (no God, 16 worlds), paired per-world differences with t95 for welfare, win rate, DMs, gives, wrong and correct defects | numbers in `plan/figs/board_effect.txt`; plot script paper-side (TO MAKE) [VERIFY] |
+| Fig 3 | Divergence: post-fork share of agents acting differently from no-God, God (filled) vs fork-matched noise B″ (hollow), per sweep factor; shows God below noise | `plan/figs/sweep_{start,k,board,n}_divergence.png` (from `infra/sweep/plot.py`); per-round curves optional via `swarm/viz/figures.ripple_png` | EXISTS (sweep) |
+| Fig 4 | Effect sizes: (a) grid paired Δ with t95 for G1/G2/G3 + B′ and H2/H3 (from `plan/GRID_RESULTS.md`; plot script paper-side, TO MAKE); (b) sweep A−N (filled) and A−B (hollow) welfare with t95 per factor | (b) `plan/figs/sweep_{start,k,board,n}_welfare.png` | (a) TO MAKE, (b) EXISTS |
+| Fig 5 | Board-off mechanism: board on vs. off (no God, 16 worlds), paired per-world differences with t95 for welfare, win rate, DMs, gives, wrong and correct defects | numbers in `plan/figs/board_effect.txt`; plot script paper-side (TO MAKE) |
 | Fig 6 (optional) | Per-agent timeline of one attacked world: who gave/burned/won per round, God bands, victim ring | `swarm/viz/figures.timeline_png` | optional |
 | Table 1 | Game and model settings (N, rounds, keys/needs/copies, actions per turn, defect rules, visibility, context budget, model, sampling, reasoning effort) | `configs/grid_oss_sim_k2.yaml`, `configs/base.yaml`, run manifests | can fill now (settings, not results) |
 | Table 2 | Grid cells: config, turn mode, God schedule, branches, seeds, cost caps | `plan/GRID_PLAN.md` §2a, `configs/grid_oss_*.yaml` | can fill now (as planned) |
