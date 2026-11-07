@@ -55,8 +55,10 @@ async def _run_one(spec: GameSpec, run: RunWriter, clients: Clients, engine: str
         try:
             outcome = await play_game(spec, gw, clients, engine)
             gw.write_outcome(outcome)
-            gw.close("done")
-            entry.update(status="done", end_reason=outcome.end_reason, rounds=outcome.rounds_played,
+            # the engine ends a game on BudgetExceeded itself: report that, not "done" (CODE_REVIEW #11)
+            status = "budget_exceeded" if outcome.end_reason == "budget_exceeded" else "done"
+            gw.close(status)
+            entry.update(status=status, end_reason=outcome.end_reason, rounds=outcome.rounds_played,
                          welfare=round(outcome.welfare, 4), win_rate=round(outcome.win_rate, 4))
         except Exception as e:  # isolation: one game failing never stops the pool
             from swarm.llm.base import BudgetExceeded

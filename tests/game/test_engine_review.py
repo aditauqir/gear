@@ -57,3 +57,21 @@ def test_empty_ledgers_dict_is_used_not_replaced():
     eng2 = GameEngine(cfg, fresh_game(FOUR), lambda obs, g: AgentOutput(actions=[Noop()]), ledgers=ledgers)
     asyncio.run(eng2.run())
     assert all(ledgers[a] for a in FOUR)
+
+
+def test_budget_stop_closes_the_partial_round():
+    """Review #11: a BudgetExceeded mid-round still emits that round's round_end and snapshot."""
+    cfg = run_cfg(game={"max_rounds": 5})
+    calls = {"n": 0}
+
+    def decide(obs, g):
+        calls["n"] += 1
+        if obs.round == 2 and calls["n"] > 5:          # second agent of round 2
+            raise BudgetExceeded("run", 1.0, 0.1, 1.0)
+        return AgentOutput(actions=[Noop()])
+    eng = GameEngine(cfg, fresh_game(FOUR), decide, sink=MemorySink())
+    out = asyncio.run(eng.run())
+    ends = [e.round for e in eng.sink.events if e.type == "round_end"]
+    assert out.end_reason == "budget_exceeded" and out.rounds_played == 2
+    assert ends == [1, 2] and [s.round for s in eng.snapshots] == [0, 1, 2]
+    assert eng.sink.events[-1].type == "game_end"

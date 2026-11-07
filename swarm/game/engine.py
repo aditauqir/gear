@@ -38,7 +38,8 @@ game.board.post_skip_rounds = k > 0: an agent whose post_board succeeds in round
 rounds r+1..r+k (delayed_until_round), with a skip notice and a resume notice (both shown at its
 next observation, i.e. when it resumes).
 End of round: round_end event + deep-copied snapshot. The game ends at max_rounds, when every agent
-is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded").
+is done (won or no open need), or on BudgetExceeded (end_reason="budget_exceeded"; the round it cut
+short still gets its round_end and snapshot).
 Imports: config, memory, rng, schema, context.base/tokens, llm.base (BudgetExceeded only), game.*.
 """
 
@@ -211,6 +212,7 @@ class GameEngine:
         self.snapshots: list[GameState] = []
         self.end_reason: str | None = None
         self._started = False
+        self._round_open = False
 
     # ------------------------------------------------------------------ helpers
     def emit(self, bodies: Sequence[EventBody]) -> None:
@@ -382,15 +384,23 @@ class GameEngine:
         st.round += 1
         r, n = st.round, len(st.agents)
         st.order = self.order_for_round(r)
+        self._round_open = True
         if self.g.turn_mode == "sequential":
             await self._play_sequential(r, n)
         else:
             await self._play_simultaneous(r, n)
-        st.turn_index = turn_index(r + 1, 0, n) - 1
+        self._end_round()
+
+    def _end_round(self) -> None:
+        """round_end event (state hash, scores) + end-of-round snapshot; also closes a round cut short
+        by BudgetExceeded, so every played round has a round_end and a snapshot."""
+        st = self.state
+        st.turn_index = turn_index(st.round + 1, 0, len(st.agents)) - 1
         sc = self.scores()
         self.emit([self._body(RoundEndData(state_hash=st.state_hash(), scores=sc,
                                            welfare=sum(sc.values()) / max(len(sc), 1)))])
         self._snapshot()
+        self._round_open = False
 
     def outcome(self) -> Outcome:
         """The game's Outcome from the current state."""
@@ -407,7 +417,7 @@ class GameEngine:
         """Play until max_rounds, all agents done, or BudgetExceeded; emits game_end, returns Outcome.
         Other exceptions from players / God (AuthError, CacheMiss, bugs) propagate."""
         self.start()
-        limit = max_rounds or self.g.max_rounds
+        limit = self.g.max_rounds if max_rounds is None else max_rounds
         try:
             while self.state.round < limit:
                 if self.all_done():
@@ -418,6 +428,8 @@ class GameEngine:
                 self.end_reason = "all_done" if self.all_done() else "max_rounds"
         except BudgetExceeded:
             self.end_reason = "budget_exceeded"
+            if self._round_open:                   # the cut-short round still gets round_end + snapshot
+                self._end_round()
         self.state.done = True
         out = self.outcome()
         self.emit([self._body(GameEndData(outcome=out))])

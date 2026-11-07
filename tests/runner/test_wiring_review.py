@@ -75,3 +75,25 @@ def test_runner_openrouter_client_gets_reasoning_effort_and_provider_sort(tmp_pa
                                             "reasoning_effort": "low", "provider_sort": "price"}}})
     c = _build_client(cfg, "agent", RunWriter(tmp_path / "run", "r"), None)
     assert (c.reasoning_effort, c.provider_sort) == ("low", "price")
+
+
+def test_budget_stopped_game_gets_status_budget_exceeded(tmp_path, monkeypatch) -> None:
+    """Review #11: a game the engine ended on BudgetExceeded is status budget_exceeded, not done."""
+    import asyncio
+
+    from swarm.runner import run as runmod
+    from swarm.runner.run import load_experiment, run_experiment
+    from swarm.schema import Outcome
+
+    async def fake_play(spec, gw, clients, engine):
+        return Outcome(game_id=spec.game_id, rounds_played=3, end_reason="budget_exceeded", per_agent={},
+                       welfare=0.0, win_rate=0.0)
+    monkeypatch.setattr(runmod, "play_game", fake_play)
+    from swarm.config import REPO_ROOT
+    cfg, opts = load_experiment(REPO_ROOT / "configs" / "demo.yaml", ["roles.agent.backend=fake",
+                                "llm.cache.mode='off'", "runner.report=false"])
+    rd = asyncio.run(run_experiment(cfg, opts, out_root=tmp_path, run_id="bx"))
+    import json
+    man = json.loads((rd / "manifest.json").read_text())
+    assert man["status"] == "budget_exceeded"
+    assert {g["status"] for g in man["games"]} == {"budget_exceeded"}
