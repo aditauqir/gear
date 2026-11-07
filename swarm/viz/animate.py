@@ -319,7 +319,7 @@ class WorldVideo:
         ramp = RAMP[min(frame_i, len(RAMP) - 1)]
         new = self.ever.get(r, set()) - self.ever.get(r - 1, set())
         draw_panel(self.ax_l, "WITH GOD", self.god, self.pos, r, ever=self.ever, new=new, ramp=ramp, frame_i=frame_i)
-        draw_panel(self.ax_r, "WITHOUT GOD  (same world)", self.nogod, self.pos, r, ramp=ramp,
+        draw_panel(self.ax_r, "WITHOUT GOD", self.nogod, self.pos, r, ramp=ramp,
                    show_god=False)
         draw_welfare(self.st_l, self.god, self.nogod, r)
         draw_ripple(self.st_r, self.god, self.ever, r)
@@ -329,7 +329,7 @@ class WorldVideo:
         T.append(f.text(0.015, 0.928, self.header, fontsize=9.5, color=INK2, va="center"))
         T.append(f.text(0.5, 0.955, f"Round {r} / {R}", fontsize=21, fontweight="bold", color=INK, ha="center",
                         va="center"))
-        T.append(f.text(0.985, 0.955, "pauses on God's moves", fontsize=8.5, color=INK2,
+        T.append(f.text(0.985, 0.955, "same world, same seeds · pauses on God's moves", fontsize=8.5, color=INK2,
                         ha="right", va="center"))
         lines = [c for c in self.caps.get(r, []) if c[0] != "win"][:3] or \
             [("info", "Rounds 1–2 are identical in both worlds (shared seeds and cached replies)" if r < 3 else
