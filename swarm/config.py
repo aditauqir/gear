@@ -221,7 +221,7 @@ class OpenRouterCfg(Cfg):
     model: str = DEFAULT_OPENROUTER_MODEL
     api_key_env: str = "OPENROUTER_API_KEY"        # the key itself is NEVER in config
     max_concurrency: int = Field(8, ge=1)
-    global_cap_usd: float = Field(8.0, ge=0.0)     # across all runs, enforced via the ledger
+    global_cap_usd: float = Field(20.0, ge=0.0)     # across all runs, enforced via the ledger
     ledger_path: str = "runs/openrouter_ledger.jsonl"
     price_in_per_mtok: float = 1.0                 # [E] conservative pre-call estimate; actual cost from provider
     price_out_per_mtok: float = 4.0

@@ -22,7 +22,7 @@ def test_defaults_validate_and_match_lead_decisions():
     assert c.god.tool_call_safety_ceiling == 50
     assert c.context.policy == "full_truncate" and c.context.budget_tokens == 14000
     assert c.roles.agent.max_tokens == 700
-    assert c.llm.openrouter.enabled is False and c.llm.openrouter.global_cap_usd == 8.0
+    assert c.llm.openrouter.enabled is False and c.llm.openrouter.global_cap_usd == 20.0
     assert c.llm.openrouter.model == "qwen/qwen3.6-35b-a3b"
     assert c.model_for("agent") == ("vllm", "Qwen/Qwen3-8B")
 

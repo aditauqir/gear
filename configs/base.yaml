@@ -3,7 +3,7 @@
 # Lead decisions (2026-11-07): sequential turns, defect_gain mint, wrong_defect_penalty lose_need,
 # view_log actions_only/shown/no provenance/window=n_agents, victim_then_delayed delay 3, grep on,
 # cot_replay_window 0 (scratchpad is the persistent store; God targets it, mode replace),
-# context full_truncate 14000, agent max_tokens 700, OpenRouter OFF ($6 global ledger cap; raised from $2 on 2026-11-07).
+# context full_truncate 14000, agent max_tokens 700, OpenRouter OFF ($20 global ledger cap; raised $2 -> $6 -> $8 -> $20 on 2026-11-07, hashed fixed).
 run:
   name: base
   seed: 0
@@ -98,7 +98,7 @@ llm:
     model: qwen/qwen3.6-35b-a3b
     api_key_env: OPENROUTER_API_KEY
     max_concurrency: 8
-    global_cap_usd: 8.0
+    global_cap_usd: 20.0
     ledger_path: runs/openrouter_ledger.jsonl
     price_in_per_mtok: 1.0
     price_out_per_mtok: 4.0
