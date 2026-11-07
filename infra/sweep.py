@@ -366,18 +366,20 @@ def _board_checks(name: str, cfg: Any, ev: list[dict], i: int) -> list[str]:
 
 # ------------------------------------------------------------------ launch
 def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only: list[str] | None,
-           conc: int, price: float, dry_run: bool, cap_usd: float | None = None) -> int:
+           conc: int, price: float, dry_run: bool, cap_usd: float | None = None,
+           paid_seeds: int | None = None, ledger_stop: float | None = None) -> int:
     write_configs(names)
     cells, caps, total = [], [], 0.0
     for name in names:
         c = CONDS[name]
         s = seeds or c.seeds
-        pr = projection(c, price, s, only)
+        ps = paid_seeds or s                 # seeds that are not already cached (projection / watchdog model)
+        pr = projection(c, price, ps, only)
         total += pr["total"]
         branches = only or ["god", "nogod", "noisefork"]
         paid = sum(1 for b in branches if b != "nogod")
         ctl = int("nogod" in branches and not c.god_only)
-        opts = [f"n={c.n}", f"g={49 * c.n}", "pcap=16500", f"rounds={c.rounds}", f"seeds={s}",
+        opts = [f"n={c.n}", f"g={49 * c.n}", "pcap=16500", f"rounds={c.rounds}", f"seeds={ps}",
                 f"shared={c.fork_round - 1}", f"paid={paid}", f"ctl={ctl}"]
         cap = cap_usd if cap_usd is not None else round(1.25 * pr["total"] + RESERVE_MARGIN, 2)
         caps.append(cap)
@@ -390,7 +392,7 @@ def launch(names: list[str], tag: str, run_prefix: str, seeds: int | None, only:
     if only:
         sets += [f"runner.fork.only_branches={json.dumps(only)}", "runner.report=false"]
     cmd = PY + [str(REPO / "infra" / "grid_driver.py"), "--seeds", str(seeds or 8), "--rounds", "20",
-                "--ledger-stop", str(min(LEDGER_STOP, SWEEP_LEDGER_STOP)), "--log", "runs/sweep_driver.log", "--run-prefix", run_prefix,
+                "--ledger-stop", str(min(LEDGER_STOP, ledger_stop or SWEEP_LEDGER_STOP)), "--log", "runs/sweep_driver.log", "--run-prefix", run_prefix,
                 "--cap-override"]
     for cell in cells:
         cmd += ["--cell", cell]
@@ -426,6 +428,9 @@ def main() -> int:
     la.add_argument("--price", type=float, default=1.35)
     la.add_argument("--dry-run", action="store_true")
     la.add_argument("--cap", type=float, default=None, help="hard cap per cell (default 1.25 x projection)")
+    la.add_argument("--paid-seeds", type=int, default=None, help="seeds not yet cached (projection only)")
+    la.add_argument("--ledger-stop", type=float, default=None,
+                    help=f"driver ledger stop (default {SWEEP_LEDGER_STOP}; never above {LEDGER_STOP})")
     st = sub.add_parser("stats")
     st.add_argument("conds", nargs="*")
     a = ap.parse_args()
@@ -448,7 +453,8 @@ def main() -> int:
     if a.cmd == "dry":
         return 0 if dry(names, a.rounds, a.seeds) else 1
     if a.cmd == "launch":
-        return launch(names, a.tag, a.run_prefix, a.seeds, a.only_branches, a.conc, a.price, a.dry_run, a.cap)
+        return launch(names, a.tag, a.run_prefix, a.seeds, a.only_branches, a.conc, a.price, a.dry_run, a.cap,
+                      a.paid_seeds, a.ledger_stop)
     if a.cmd == "stats":
         runs = [str(REPO / "runs" / f"sweep_{n}") for n in names if (REPO / "runs" / f"sweep_{n}").exists()]
         return conda_py(["-m", "swarm.analysis.sweep_stats", *runs])
