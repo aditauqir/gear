@@ -33,6 +33,30 @@
 3. **Two false starts of `sweep_start1` (03:26, 03:28).**
    - They led to the driver fix: a cell counts only the spend since its launch.
    - The partial dirs are `runs/aborted_sweep_start1_*`, about $0.012 in the sweep total.
+4. **Concurrency ran at 12 in flight, above the planned 8: 03:57-04:53 EST.**
+   - Three drivers × OpenRouter `max_concurrency` 4 ran at once.
+   - 03:57-04:47: stage-1 driver A (`sweep_start8` to 04:08, `sweep_start14` 04:08-04:16, `sweep_k1`
+     04:16-04:36, `sweep_k4` from 04:36), stage-1 driver B (`sweep_n20` to 04:28, `sweep_n5` from
+     04:28) and the B″ driver NF (`b2_sweep_base` 03:57-04:19, `b2_sweep_start8` 04:19-04:37,
+     `b2_sweep_start14` 04:37-04:43), plus `sweep_board_off` 04:43-04:47 (stopped).
+   - 04:46-04:53: the repair drivers R1 (`r3_sweep_start14`, then `r3_sweep_k4`), R2
+     (`r3b2_sweep_start8`, `r3b2_sweep_start14`) and R3 (`r3_sweep_n5`), followed by R4
+     (`sweep_board_off`, from 04:48).
+   - From 04:53:35 at most 8 were in flight: R1 (k4, to 04:56) + R4, then R4 + R5
+     (`b2_sweep_board_off`, 04:59-05:16).
+   - **Provider share** (provider logged per call from ee03d98, 03:52; non-cached calls joined to
+     the ledger by run id and call id, timestamps EST; "price" = realized cost / fitted cheapest
+     list price $0.0142/$0.0445 per M):
+
+     | window | calls with provider logged | PrimeIntellect | Near AI (fallback) |
+     |---|---|---|---|
+     | 12 in flight, 03:57-04:53 | 5,766 (+1,735 unlogged from processes started before 03:52: `sweep_start8`, `sweep_n20`) | 5,532 (95.9%), price ×1.14 | 234 (4.1%), price ×2.21 |
+     | ≤ 8 in flight, 04:53-05:21 | 3,171 | 3,171 (100%), price ×1.27 | 0 |
+
+   - The fallback share was small (4%) during the 12-in-flight window and zero afterwards.
+   - The calls before 03:52 (stage-1 God/control branches of start1, start8 and N=20, and the
+     smokes) have no provider record.
+
 
 ## 1. Design
 
