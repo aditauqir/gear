@@ -1,0 +1,16 @@
+# outputs and caches
+runs/
+cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+build/
+dist/
+# secrets and logs
+.env*
+*.log
+# large binaries
+research/pdfs/
