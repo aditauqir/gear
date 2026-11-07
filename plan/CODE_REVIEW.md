@@ -234,3 +234,26 @@ Determinism check after every commit, branch vs master:
 - FakeLLM dry runs: sim + B′, seq, board options, noise fork B″, plus cot-replay, log-none, msg-meta and a grep-heavy policy (sim and seq). All files are byte-identical.
 - All 28 config hashes and game ids are unchanged.
 - invariants: 0 violations.
+
+# Social-dynamics claims (539ca42, swarm/analysis/social.py): verification
+
+All three claims were recomputed from the events. The worlds are the 40 matched worlds of grid_oss_sim_k2 (16), grid_oss_sim_k6 (16) and r2_grid_oss_seq_k2 (8), each with a God and a noGod branch. A world's delta is God minus noGod, summed over its interventions. Every God power was ok, so no failed power is counted as a case.
+
+**(a) Forged DM: 83 vs 22.**
+- Definition: a case is each ok message_fraud (72 cases: k2 16, k6 48, seq 8). The count is give key_transfers from the receiver B to the shown sender X in rounds t..t+2 (fraud round t, which is when B first sees the forged DM). These are transfer counts, not cases.
+- Reproduced exactly: 20+56+7 vs 4+12+6.
+- Paired per world, n=40: +1.53 gives per world, t95 [+1.00, +2.05], sign-flip p < 1e-4. 29 worlds are > 0, 2 are < 0 and 9 are 0. The "≥1 give" version is +0.95 [+0.62, +1.28].
+- Robust to the window: t..t+1 gives +1.52, t..t+5 gives +1.77.
+- **The effect is not uniform across cells:**
+  - sim K=2: +1.00 [+0.61, +1.39], p=0.0005, n=16. B's total gives are unchanged (+0.25 [−0.25, +0.75]), so the forgery *redirects* a give to X.
+  - sim K=6: +2.75 [+1.75, +3.75], p=0.0001.
+  - **seq K=2: +0.12 [−0.57, +0.82], p=1.0, n=8, i.e. no effect.**
+- Verdict: a robust behavioural God effect in simultaneous turns. In K=2 it redirects gives without adding any, which is consistent with the null welfare result. It is not detected in sequential turns, where n is small.
+
+**(b) Planted "X is lying" note: 43/72 vs 45/72.** The count is overwrite cases where the victim A gives the subject S (the first other agent named in the note) at least one key at any round ≥ t. Reproduced. Paired per world: −0.05 [−0.36, +0.26], p=0.88, with 7 worlds > 0, 12 < 0 and 21 = 0. There is no effect.
+
+**(c) Zero accusations among 19,005 messages (18,933 not forged).**
+- The paper's LIAR regex finds 0 hits.
+- A much broader regex also finds 0: lie/lies, deceit, trick, bluff, false, fake, unreliable, "not to be trusted", don't deal/trade/give, stay away, avoid, careful, warn, steal/stole, never sent/gave, didn't send/give, double-cross.
+- A random sample of 50 messages is all trade offers, requests and thanks; none is an accusation the regex misses.
+- The claim holds.
