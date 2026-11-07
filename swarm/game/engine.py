@@ -10,7 +10,12 @@ Inputs:
     god: GodLike | None  (swarm.adversary.base.GodRunner): init_game(state), should_wake(state),
         await wake(state) -> object with `.events`. Called with state.turn_index = the slot about to
         be played, so anything God delivers is stamped with the wake slot.
-    god_hook(state, round, next_turn) -> list[EventBody]   (legacy/test form of god; sync or async)
+    god_hook(state, round, next_turn) -> list[EventBody]   (legacy form of god; sync or async)
+        FROZEN convention (runner/wiring.py's _SlotGod depends on it): called before every slot
+        (sequential; skipped slots too) / once at the round's first slot (simultaneous) with
+        next_turn = the slot about to be played and state.turn_index = next_turn - 1 on entry.
+        Records the hook creates without resetting turn_index are stamped next_turn - 1, which makes
+        them visible at next_turn. The engine sets state.turn_index = next_turn after the hook.
 Outputs: events through `sink`, end-of-round snapshots (`snapshots`, `on_snapshot`), per-agent
 ledgers (`ledgers`), and the Outcome from `run()`.
 
@@ -139,8 +144,12 @@ class HookGod:
         return True
 
     async def wake(self, state: GameState) -> _HookResult:
-        """Run the hook at slot state.turn_index."""
-        return _HookResult(list(await _maybe_await(self.hook(state, state.round, state.turn_index))))
+        """Run the hook before slot `next_turn` (= state.turn_index on entry). FROZEN convention that
+        runner/wiring.py's _SlotGod adapter relies on: the hook is entered with
+        state.turn_index = next_turn - 1; the engine resets it to next_turn afterwards."""
+        next_turn = state.turn_index
+        state.turn_index = next_turn - 1
+        return _HookResult(list(await _maybe_await(self.hook(state, state.round, next_turn))))
 
 
 class GameEngine:
