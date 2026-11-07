@@ -261,8 +261,8 @@ class GameEngine:
         out: list[MemoryView] = []
         if rc.scratchpad.enabled:
             out += self.memory.views(st, agent, "scratchpad", st.round, rc.scratchpad.window)
-        if rc.cot_mode != "none" and rc.cot_replay_window > 0:
-            out += self.memory.views(st, agent, "cot", st.round, rc.cot_replay_window)
+        if rc.cot_mode != "none" and rc.cot_replay_window > 0:   # past rounds' CoT only
+            out += self.memory.views(st, agent, "cot", st.round - 1, rc.cot_replay_window)
         return out
 
     # ------------------------------------------------------------------ lifecycle
@@ -349,8 +349,13 @@ class GameEngine:
         if self.cfg.reasoning.scratchpad.enabled and out.note:
             _, ev = self.memory.write(st, agent, "scratchpad", st.round, out.note)
             self.emit([ev])
+        # The ledger (the ONE builder; CODE_REVIEW R5): this turn's observation items, then one item
+        # per own action except grep_log (the follow-up prompt shows the hits instead), numbered per
+        # turn. Real runs have always rendered exactly this (formerly via wiring.LedgerSink).
         self.ledgers[agent] += items_from_observation(obs, self.counter)
-        self.ledgers[agent] += own_action_items(agent, st.round, list(out.actions), res.results, self.counter)
+        own = [(a, r) for a, r in zip(out.actions, res.results, strict=True) if not isinstance(a, GrepLog)]
+        self.ledgers[agent] += own_action_items(agent, st.round, [a for a, _ in own], [r for _, r in own],
+                                                self.counter)
 
     async def _play_sequential(self, r: int, n: int) -> None:
         """One agent at a time in priority order; God before EVERY slot (skipped ones too)."""

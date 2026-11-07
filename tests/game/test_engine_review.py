@@ -108,3 +108,22 @@ def test_one_god_stamp_convention_god_and_hook_paths_agree():
     assert forged.turn_index == turn_index(2, 0, 4) - 1
     seen = [e.data.obs for e in a.sink.events if e.type == "turn" and e.data.agent == forged.receiver]
     assert any(m.text == "psst" for o in seen if o.round == 2 for m in o.inbox)
+
+
+def test_engine_ledger_skips_grep_and_numbers_per_turn():
+    """R5: the engine is the one ledger builder; it renders what real runs always rendered
+    (no own-action item for grep_log, own actions numbered 0, 1, ... per turn)."""
+    from swarm.schema import GiveKey, GrepLog, SendMessage
+
+    cfg = run_cfg(game={"max_rounds": 1})
+
+    def decide(obs, g):
+        if obs.agent == "ann":
+            return AgentOutput(actions=[GrepLog(pattern="x"), GiveKey(to="bob", info_id=1),
+                                        SendMessage(to="bob", text="hi")])
+        return AgentOutput(actions=[Noop()])
+    eng = GameEngine(cfg, fresh_game(FOUR), decide, sink=MemorySink())
+    asyncio.run(eng.run())
+    own = [it for it in eng.ledgers["ann"] if it.kind == "own_action"]
+    assert [it.item_id for it in own] == ["ann:1:own_action:0", "ann:1:own_action:1"]
+    assert "searched" not in " ".join(it.text for it in own)

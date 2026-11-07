@@ -57,6 +57,7 @@ def test_defaults_off_and_hash_unchanged():
     for k in ("reasoning_effort", "provider_sort", "provider_order", "allow_fallbacks"):  # later, off
         d["llm"]["openrouter"].pop(k)
     d["run"].pop("resample_from_round")                                 # later field, off by default
+    d["run"].pop("log_prompt_trace")                                    # logging only, never hashed
     d["reasoning"].pop("salvage_truncated")
     assert cfg.config_hash() == sha256_hex(canonical_json(d))       # pre-option hash preserved
     on = RunConfig.model_validate({"game": {"board": {"anonymous": True}}})
@@ -267,6 +268,7 @@ def test_post_skip_hash_unchanged_at_default():
     for k in ("post_skip_rounds", "enabled", "visible_delay_rounds"):    # later board fields, at defaults
         d["game"]["board"].pop(k)
     d["run"].pop("resample_from_round")
+    d["run"].pop("log_prompt_trace")                                    # logging only, never hashed
     d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD
     for k in ("reasoning_effort", "provider_sort", "provider_order", "allow_fallbacks"):
         d["llm"]["openrouter"].pop(k)

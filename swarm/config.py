@@ -67,6 +67,10 @@ class RunCfg(Cfg):
     # the replica tag "<replica>@r<round>" (fresh sampling stream; cache keys differ), before it they
     # are the control's (identical prefix). None = off; left out of config_hash while None.
     resample_from_round: int | None = Field(None, ge=1)
+    # Log prompt provenance in real runs (CODE_REVIEW #5): turn.prompt_hash / prompt_set_hash and one
+    # context_built event per turn. Logging only (never changes play), so it is never hashed; off by
+    # default because it changes events.jsonl.
+    log_prompt_trace: bool = False
 
 
 # ---------------------------------------------------------------- game
@@ -380,6 +384,7 @@ class RunConfig(Cfg):
                     b.pop(k)
         if d["run"]["resample_from_round"] is None:                 # added later; board rule
             d["run"].pop("resample_from_round")
+        d["run"].pop("log_prompt_trace")                            # logging only: never hashed
         # Operational knobs are not game semantics: hash them as fixed values (HASH_OPERATIONAL), so
         # raising a cap, budget or concurrency, renaming a run or moving the cache keeps every hash,
         # game id, seed and cache key. Configs at the base defaults keep their pre-change hash

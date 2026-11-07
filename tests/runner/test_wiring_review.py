@@ -97,3 +97,25 @@ def test_budget_stopped_game_gets_status_budget_exceeded(tmp_path, monkeypatch) 
     man = json.loads((rd / "manifest.json").read_text())
     assert man["status"] == "budget_exceeded"
     assert {g["status"] for g in man["games"]} == {"budget_exceeded"}
+
+
+def test_log_prompt_trace_switch(tmp_path) -> None:
+    """Review #5: with run.log_prompt_trace the real runner logs prompt hashes and context_built;
+    off (default) it logs neither (events.jsonl unchanged). The config hash ignores the switch."""
+    import json
+
+    from tests.runner.conftest import FAKE_OVERRIDES, _run
+
+    base = [*FAKE_OVERRIDES, "game.max_rounds=3", "runner.report=false"]
+    off = _run(tmp_path / "off", "off", base)
+    on = _run(tmp_path / "on", "on", [*base, "run.log_prompt_trace=true"])
+
+    def turns(rd):
+        evs = [json.loads(x) for x in (rd / "games" / "g00-god" / "events.jsonl").read_text().splitlines()]
+        return evs, [e["data"] for e in evs if e["type"] == "turn"]
+    e_off, t_off = turns(off)
+    e_on, t_on = turns(on)
+    assert all(t["prompt_hash"] is None for t in t_off) and not any(e["type"] == "context_built" for e in e_off)
+    assert all(t["prompt_hash"] and t["prompt_set_hash"] for t in t_on)
+    assert sum(e["type"] == "context_built" for e in e_on) == len(t_on)
+    assert e_off[0]["game_id"] == e_on[0]["game_id"]          # same config hash -> same game id

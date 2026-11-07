@@ -131,40 +131,34 @@ async def play_game(spec: GameSpec, sink: GameWriter, clients: Clients, engine: 
     return await _play_real(spec, sink, clients)
 
 
-def make_decide(agents: dict[str, Any], state: Any, memory: Any, ledgers: LedgerSink, cfg: RunConfig,
-                game_id: str, engine_ref: list[Any]) -> Any:
-    """-> decide(obs, grep) for GameEngine. LLMAgent runs the grep follow-up itself (via a callback),
-    so the engine's second decide() call just returns the follow-up actions already chosen."""
-    from swarm.game.observe import grep_log
+class RunnerAgent:
+    """TurnAgent for the real engine: one LLMAgent, with the engine as the ONE builder of its ledger,
+    memory views and grep (CODE_REVIEW R5; replaces make_decide + DecideAgent + LedgerSink).
 
-    pending: dict[str, Any] = {}
+    - ledger / memory come from the engine (GameEngine.ledgers, memory_views).
+    - grep: the engine's once-per-turn callback; when the engine has none (grep off, or view_log
+      content "none"), a direct grep_log over the agent's observation turns, exactly what the old
+      path handed LLMAgent (the action then resolves as grep_unavailable, as before).
+    - `last` (LLMAgent.last: prompt hashes + context bundle) is exposed only with
+      run.log_prompt_trace (CODE_REVIEW #5, default off): the engine then logs turn.prompt_hash /
+      prompt_set_hash and context_built events. Off = events.jsonl byte-identical to before."""
 
-    async def decide(obs: Any, grep: Any = None) -> Any:
-        from swarm.schema import AgentOutput, GrepLog
+    def __init__(self, llm: Any, cfg: RunConfig, state: Any, engine_ref: list[Any], *, trace: bool = False) -> None:
+        self.llm, self.cfg, self.state, self.engine_ref, self.trace = llm, cfg, state, engine_ref, trace
 
-        a = obs.agent
-        if grep is not None and a in pending:
-            out = pending.pop(a)
-            return AgentOutput(cot=None, note=None, actions=[x for x in out.actions if not isinstance(x, GrepLog)],
-                               parse_ok=out.parse_ok)
-        mem = []
-        sp = cfg.reasoning.scratchpad
-        if sp.enabled:
-            mem += memory.views(state, a, "scratchpad", obs.round, sp.window)
-        if cfg.reasoning.cot_mode != "none" and cfg.reasoning.cot_replay_window > 0:
-            mem += memory.views(state, a, "cot", obs.round - 1, cfg.reasoning.cot_replay_window)
+    @property
+    def last(self) -> Any:
+        return self.llm.last if self.trace else None
 
-        def grep_fn(g: Any) -> Any:
-            eng = engine_ref[0]
-            return grep_log(state, a, cfg.game, g.pattern, eng.obs_turns[a], rounds=g.rounds)
+    async def act(self, obs: Any, *, ledger: Any, memory: Any, game_id: str, grep: Any) -> Any:
+        if grep is None:
+            from swarm.game.observe import grep_log
 
-        out = await agents[a].act(obs, ledger=ledgers.ledgers.get(a, []), memory=mem, game_id=game_id,
-                                  grep=grep_fn)
-        if any(isinstance(x, GrepLog) for x in out.actions):
-            pending[a] = out
-        return out
+            a, eng = obs.agent, self.engine_ref[0]
 
-    return decide
+            def grep(g: Any) -> Any:
+                return grep_log(self.state, a, self.cfg.game, g.pattern, eng.obs_turns[a], rounds=g.rounds)
+        return await self.llm.act(obs, ledger=ledger, memory=memory, game_id=game_id, grep=grep)
 
 
 async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outcome:
@@ -185,19 +179,20 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
     oracle = LeakOracle(enabled=not cfg.game.view_log.reveal_provenance)
     counter = default_counter(cfg)
     psink = ProgressSink(sink, spec.label, cfg.game.max_rounds, clients.get("agent"))
-    ledger_sink = LedgerSink(oracle.wrap(psink), counter)
     client = OracleClient(clients.get("agent"), oracle)
-    agents = {a: LLMAgent(a, client, cfg, counter=counter) for a in state.order}   # policy: make_policy
+    engine_ref: list[Any] = []
+    trace = cfg.run.log_prompt_trace
+    agents = {a: RunnerAgent(LLMAgent(a, client, cfg, counter=counter), cfg, state, engine_ref, trace=trace)
+              for a in state.order}
     god = make_god(cfg.god, seed=spec.world_seed, client=clients.get("god"))
     # GodRunner owns the stamp convention (decide at slot S, deliver stamped S - 1); the engine calls
     # runner.init_game in start(). (_SlotGod + make_god_hook did the same and stay importable.)
     runner = (GodRunner(god, cfg.god, memory, max_message_chars=cfg.game.max_message_chars)
               if god is not None else None)
-    engine_ref: list[Any] = []
-    decide = make_decide(agents, state, memory, ledger_sink, cfg, spec.game_id, engine_ref)
-    # on_snapshot writes the round-0 snapshot (engine.start) and every end-of-round deep copy.
-    eng = GameEngine(cfg, state, decide, god=runner, sink=ledger_sink, seed=spec.world_seed, memory=memory,
-                     on_snapshot=sink.snapshot)
+    # The engine is the one ledger builder (R5); on_snapshot writes the round-0 snapshot
+    # (engine.start) and every end-of-round deep copy.
+    eng = GameEngine(cfg, state, agents, god=runner, sink=oracle.wrap(psink), seed=spec.world_seed,
+                     memory=memory, on_snapshot=sink.snapshot, counter=counter)
     engine_ref.append(eng)
     outcome = await eng.run()
     sink.write_meta(leak_checked=oracle.n_checked, leak_hits=len(oracle.hits))
