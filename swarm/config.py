@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from swarm.rng import canonical_json, sha256_hex
 
 DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.6-35b-a3b"
+HASH_GLOBAL_CAP_USD = 2.0   # value config_hash() always uses for llm.openrouter.global_cap_usd
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -319,6 +320,10 @@ class RunConfig(Cfg):
             d["game"].pop("board")
         elif self.game.board.post_skip_rounds == 0:             # added later; same rule
             d["game"]["board"].pop("post_skip_rounds")
+        # The global spend cap is not game semantics: hash it as the legacy $2 whatever its value,
+        # so raising the cap ($2 -> $6, 2026-11-07) keeps every hash, game id, seed and cache key.
+        # (llm.budget_usd stays in the hash: past runs overrode it, so dropping it would re-key them.)
+        d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD
         return sha256_hex(canonical_json(d))
 
     def model_for(self, role: str) -> tuple[str, str]:

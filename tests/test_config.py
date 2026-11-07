@@ -98,3 +98,19 @@ def test_sweep_expansion_and_hash():
     assert len({cc.config_hash() for _, cc in cells}) == 6
     assert RunConfig().config_hash() == RunConfig().config_hash()
     assert from_dict({}, ["run.seed=1"]).config_hash() != RunConfig().config_hash()
+
+
+def test_config_hash_ignores_global_cap():
+    """The $2 -> $6 cap raise must not re-key games: hashes pinned from commit 1993b5c (cap $2)."""
+    from swarm.runner.run import load_experiment
+
+    pinned = {"base": "b442ad7af4a87da8bb2ff289c1e794cd7b98f44742c8a7066966921cfad35ee1",
+              "demo": "e657c252cf92bdb031139dfb827beda2878b0ddd04d8451e06fdedcd6f8d2d38",
+              "demo_openrouter": "29d5b81fed03ede6bbcc85b02f2000dc7fb2020330fc2ee101d0bb523636dbe7"}
+    assert RunConfig().config_hash() == pinned["base"]
+    for name, h in pinned.items():
+        for cap in (None, 2.0, 6.0, 100.0):
+            ov = [] if cap is None else [f"llm.openrouter.global_cap_usd={cap}"]
+            assert load_experiment(REPO_ROOT / "configs" / f"{name}.yaml", ov)[0].config_hash() == h, (name, cap)
+    # budget_usd is still part of the hash (past runs overrode it)
+    assert from_dict({}, ["llm.budget_usd=0.75"]).config_hash() != RunConfig().config_hash()

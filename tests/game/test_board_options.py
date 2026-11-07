@@ -9,7 +9,7 @@ import json
 import pytest
 
 from swarm.agents.llm_agent import LLMAgent, system_context
-from swarm.config import BoardCfg, RunConfig
+from swarm.config import HASH_GLOBAL_CAP_USD, BoardCfg, RunConfig
 from swarm.context.base import items_from_observation
 from swarm.game.engine import GameEngine, play_game
 from swarm.game.observe import ANON_SENDER, grep_log
@@ -53,6 +53,7 @@ def test_defaults_off_and_hash_unchanged():
     assert cfg.game.board == BoardCfg(post_costs_turn=False, anonymous=False)
     d = cfg.model_dump(mode="json", exclude={"sweep"})
     d["game"].pop("board")
+    d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD   # cap is hashed as legacy $2
     assert cfg.config_hash() == sha256_hex(canonical_json(d))       # pre-option hash preserved
     on = RunConfig.model_validate({"game": {"board": {"anonymous": True}}})
     assert on.config_hash() != cfg.config_hash()
@@ -260,6 +261,7 @@ def test_post_skip_hash_unchanged_at_default():
     base = RunConfig.model_validate({"game": {"board": {"post_costs_turn": True}}})
     d = base.model_dump(mode="json", exclude={"sweep"})
     d["game"]["board"].pop("post_skip_rounds")
+    d["llm"]["openrouter"]["global_cap_usd"] = HASH_GLOBAL_CAP_USD
     assert base.config_hash() == sha256_hex(canonical_json(d))
     on = RunConfig.model_validate({"game": {"board": {"post_skip_rounds": 3}}})
     assert on.config_hash() != RunConfig().config_hash()
