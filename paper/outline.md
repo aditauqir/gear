@@ -1,75 +1,65 @@
 # Paper outline: "Keys & God" (Plan A)
 
-Status: draft outline, written Sat 2026-11-07 while the grid runs. **No result numbers appear in
-this file or in `draft.md`.** Every number in the final paper must trace to a run id under `runs/`
-(the grid cells `grid_oss_sim_k2`, `grid_oss_seq_k2`, `grid_oss_sim_k6`) or to a plan doc that
-states it as a planning value.
+Status: updated after the grid, the sweep and the board follow-ups. Every number must trace to
+`plan/GRID_RESULTS.md`, `plan/SWEEP_RESULTS.md`, `plan/CODE_REVIEW.md` or `plan/figs/board_effect.txt`.
+The board follow-up numbers are [VERIFY] until planA-review confirms them.
 
 ## Title options
 
-1. **Keys & God: Paired-Fork Measurement of Message Forgery and Memory Tampering in an LLM Agent Economy** (recommended: says what we built and what we measure)
-2. One Forged Message: Counterfactual Ripple Effects of a Budgeted Adversary in LLM Agent Swarms
-3. Does One Lie Spread? Measuring Adversarial Ripple in a Multi-Agent Key-Trading Game with Paired Forks
-4. Watching God: A Reproducible Testbed for Budgeted Adversaries in LLM Agent Societies
+1. **Channels, Not Liars: A Hidden Forger Is Lost in Sampling Noise, but Removing the Public Board Breaks an LLM Agent Economy** (recommended; it is the current draft title)
+2. Keys & God: Message Forgery Vanishes in the Noise, While the Public Channel Carries the Swarm
+3. The Channel Matters More Than the Liar: Noise-Calibrated Paired Forks in an LLM Agent Economy
+4. Who Breaks the Swarm? A Null Adversary and a Load-Bearing Board in Multi-Agent LLM Trading
 
 ## Track positioning
 
 - **Primary: Track 2, The Science of Agent Networks.** The brief asks "how failures or compromised
-  agents spread through a network". Our central measurement is exactly that: how far one forged DM
-  or one tampered memory entry propagates through a population of trading agents, measured
-  counterfactually (God branch vs. a no-God branch of the *same* world with the *same* sampling
-  seeds) and calibrated against God-free noise branches (whole-game and fork-matched resamples).
+  agents spread through a network". We answer it with two results. A compromised input (a forged
+  DM or a tampered memory) does not spread into outcomes beyond sampling noise. The network's
+  *channel structure* does matter: removing the broadcast channel harms the swarm robustly.
+  Both are measured with noise-calibrated paired forks.
 - **Secondary: Track 1, Sandboxes and Testbeds.** The environment itself is a contribution:
   deterministic world generation, seeded paired forks, a response cache that makes reruns exact, a
   per-prompt "truth leak" oracle that proves agents never see ground-truth labels, typed event
   logs, and pre-registered health/abort checks. Track 1 asks for "secure, reproducible environments
   where multiple LLM agents share resources".
-- **Mention only: Track 4, Oversight and Control.** God's interventions are logged with exact
-  ground-truth labels, so the environment can score monitors non-circularly. Two rule-based
-  monitors exist in the code (`swarm/monitors/`) but are not evaluated in this submission; we list
-  this as future work, not as a result.
+- **Mention: Track 4, Oversight and Control.** There are two implications.
+  - Oversight should protect shared coordination channels (their availability and integrity), not only individual agents.
+  - God's exact ground-truth labels can score monitors non-circularly. The monitors are not evaluated here; that is future work.
 
 Why not lead with Track 4: we have no monitor results. Why not lead with Track 1: judges reward a
 finding; the testbed is the means, and the noise-calibrated (null) God effect plus the chaos result is the finding.
 
-## Contribution statement (one paragraph)
+## Contribution statement
 
-We introduce *Keys & God*, a text-only multi-agent economy. LLM agents trade rivalrous keys, can
-sabotage one another, and are watched by a budgeted adversary, God, who never appears in their
-prompts. God has two powers:
-- *Message fraud*: a forged DM from a trading partner.
-- *CoT control*: an overwrite of one round of an agent's private notes.
+*Keys & God* is a text-only LLM economy: agents trade rivalrous keys over private DMs and a public
+board, and can sabotage each other. An unseen, budgeted God forges messages and overwrites notes.
+We contribute:
+1. the environment, with an invariant checker, a leak oracle and exact cache replay;
+2. **noise-calibrated paired forks**: shared seeds and cache until the intervention, plus God-free
+   branches resampled at the same fork round;
+3. a **bounded null** for the adversary. God's welfare effect is +0.013 [−0.048, +0.073] (n=16),
+   with no effect beyond noise across timing, budget and swarm size. God's divergence is *below*
+   fork-matched noise, so divergence curves measure chaos, not attack spread;
+4. a **robust infrastructure effect** [VERIFY]. Removing the public board cuts welfare by 0.173
+   [0.089, 0.257] (p=0.0003, n=16; it replicates on 10 new worlds). Agents send 1.8× the DMs, give
+   26% fewer keys, and make 3× the wrong defects.
 
-Each world is played as **paired forks**. The God and no-God branches share seeds and a
-deduplicating response cache, so they are identical until God acts. **God-free noise branches**,
-including ones forked at God's round, calibrate what an arbitrary perturbation does.
-
-On 16 shared worlds of 10 gpt-oss-120b agents, God's welfare effect is indistinguishable from zero
-[RESULT: G1 Δwelfare, t95 CI, sign-flip p]. Neither dose nor turn mode has a detectable effect
-[RESULT]. Trajectories, meanwhile, are chaotic: a God-free resample diverges from its twin in almost
-every agent within a few rounds [RESULT].
-
-The contribution is therefore twofold:
-1. a validated testbed: invariant checker, leak oracle, exact cache replay;
-2. a methodological result: in stochastic agent swarms, action-level "ripple" curves must be read
-   against fork-matched noise, and effects must be judged on outcome-level paired differences with
-   t-based CIs and permutation tests, at a stated MDE.
-
-Framing: "chaotic swarm, God indistinguishable from noise at this n", with noise-calibrated
-measurement as the contribution. Not "swarms are robust".
+Framing: "the channel matters more than the liar". The delayed-board God result (+0.122, t95
+includes 0, n=6) is a lead to replicate, not a finding.
 
 ## Section plan and word budget (8 pages, body only)
 
 | Section | Words | Status |
 |---|---|---|
-| Abstract (150-250) | ~220 | draft with placeholders |
-| 1 Introduction | ~600 | full prose |
-| 2 Related Work | ~600 | full prose, 21 verified references |
-| 3 Environment & Method | ~1250 | full prose |
-| 4 Experimental Setup | ~750 | full prose (as planned/launched) |
-| 5 Results | ~500 | STRUCTURE + placeholders only |
-| 6 Discussion | ~350 | STRUCTURE + placeholders only |
-| 7 Conclusion | ~120 | draft with placeholders |
+| Abstract (150-250) | 224 | final framing |
+| 1 Introduction | 341 | done |
+| 2 Related Work | 410 | done, 21 verified references |
+| 3 Environment & Method | 1201 | done |
+| 4 Experimental Setup | 606 | done |
+| 5 Results | 980 | filled (board follow-up [VERIFY]) |
+| 6 Discussion | 264 | done |
+| 7 Conclusion | 98 | done |
 | Appendix A: Limitations and Dual-Use / Ethical Considerations (required) | ~900 | full prose (does not count toward 8 pages) |
 | Appendix B: configs, prompts, decision list | n/a | to assemble from `configs/` and `swarm/prompts/templates/` |
 
@@ -81,7 +71,8 @@ measurement as the contribution. Not "swarms are robust".
 | Fig 2 | Network stills of world g02 (median-|Δwelfare| world of G1, |Δ| 0.067, rule-picked): God branch (A) vs no-God branch (B) at God's first move and at round 20 | `plan/figs/fig2_network.{pdf,png}` (planA-viz, `swarm.viz.paper_figs`) | EXISTS |
 | Fig 3 | Divergence: post-fork share of agents acting differently from no-God, God (filled) vs fork-matched noise B″ (hollow), per sweep factor; shows God below noise | `plan/figs/sweep_{start,k,board,n}_divergence.png` (from `infra/sweep/plot.py`); per-round curves optional via `swarm/viz/figures.ripple_png` | EXISTS (sweep) [VERIFY] |
 | Fig 4 | Effect sizes: (a) grid paired Δ with t95 for G1/G2/G3 + B′ and H2/H3 (from `plan/GRID_RESULTS.md`; plot script paper-side, TO MAKE); (b) sweep A−N (filled) and A−B (hollow) welfare with t95 per factor | (b) `plan/figs/sweep_{start,k,board,n}_welfare.png` | (a) TO MAKE, (b) EXISTS [VERIFY] |
-| Fig 5 (optional) | Per-agent timeline of one attacked world: who gave/burned/won per round, God bands, victim ring | `swarm/viz/figures.timeline_png` | optional |
+| Fig 5 | Board-off mechanism: board on vs. off (no God, 16 worlds), paired per-world differences with t95 for welfare, win rate, DMs, gives, wrong and correct defects | numbers in `plan/figs/board_effect.txt`; plot script paper-side (TO MAKE) [VERIFY] |
+| Fig 6 (optional) | Per-agent timeline of one attacked world: who gave/burned/won per round, God bands, victim ring | `swarm/viz/figures.timeline_png` | optional |
 | Table 1 | Game and model settings (N, rounds, keys/needs/copies, actions per turn, defect rules, visibility, context budget, model, sampling, reasoning effort) | `configs/grid_oss_sim_k2.yaml`, `configs/base.yaml`, run manifests | can fill now (settings, not results) |
 | Table 2 | Grid cells: config, turn mode, God schedule, branches, seeds, cost caps | `plan/GRID_PLAN.md` §2a, `configs/grid_oss_*.yaml` | can fill now (as planned) |
 | Table 3 | Main results: per cell, per metric, mean Δ, t95 CI, sign-flip p, bootstrap CI (secondary), noise baselines, n healthy seeds | `grid_stats` output | after grid |
