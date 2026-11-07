@@ -197,6 +197,8 @@ def draw_panel(ax, title: str, b: Branch, pos, r: int, *, ever=None, new=(), ram
                 lab = "forged DM" if p.power == "message_fraud" else "notes rewritten"
                 x0, y0 = pos[p.target]
                 up = -0.2 <= y0 <= 0.5           # badge above the node, except top and bottom rows (inward)
+                if b.network:                    # network layout: the name label sits under the node -> badge above
+                    up = True
                 ax.text(x0, y0 + (0.19 if up else -0.19), lab, ha="center", va="bottom" if up else "top", fontsize=9.5, fontweight="bold", color="white",
                         zorder=6, bbox=dict(boxstyle="round,pad=0.25", fc=C["god_ink"], ec="none"))
             if hot and p.spoofed in pos:
