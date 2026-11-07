@@ -5,8 +5,8 @@
 > Drafting rules for this file:
 > - Every grid number is taken from `plan/GRID_RESULTS.md` (commit fdcb58f, produced by
 >   `swarm/analysis/grid_results.py` and `swarm.analysis.invariants`). Section refs "GR §n" point there.
-> - Sweep numbers come from `plan/SWEEP_RESULTS.md` (commit fbba90e; "SR"). **`[VERIFY]` marks every
->   paragraph or table containing sweep numbers until planA-review confirms them.**
+> - Sweep numbers come from `plan/SWEEP_RESULTS.md` (commit fbba90e; "SR"), verified by planA-review
+>   (`plan/CODE_REVIEW.md`, commit 01a3e06; "CR").
 > - `[RESULT: ...]` marks a number still pending.
 > - `[FIG n]` refers to `paper/outline.md`.
 > - `[CHECK: ...]` marks a fact to confirm before submission.
@@ -196,23 +196,29 @@ Numbers are from `plan/GRID_RESULTS.md` (GR) or, where marked, `plan/SWEEP_RESUL
 
 Every welfare CI contains zero. In G1, the primary test, God moved welfare by +0.013, while a God-free resample moved it by +0.046. Gives, successful defects, board posts and DMs per agent show no detectable effect either (GR §3). With the observed SDs, welfare effects larger than about 0.09 (K=2) or 0.14 (K=6) are unlikely. Pairing on seeds helps even though seeds are honoured only partly: the SD of God − B is 0.113, against 0.189 for B′ − B.
 
-On G1's worlds 0-7, the fork-matched baseline B″ − B is +0.054 [−0.050, +0.158], against −0.000 [−0.199, +0.199] for B′. The shared prefix halves the width of the CI (SR) [VERIFY]. Figure 4.
+On G1's worlds 0-7, the fork-matched baseline B″ − B is +0.054 [−0.050, +0.158], against −0.000 [−0.199, +0.199] for B′. The shared prefix halves the width of the CI (SR). Figure 4.
 
 ### 5.3 Trajectories: the swarm is chaotic
 From God's first act on, the mean fraction of agents whose round actions (kind, target, info id) differ from the no-God branch is 0.893 (G1), 0.897 (G2) and 0.882 (G3). Every agent diverges at least once in every world. The God-free replica B′ diverges at 0.967 over the same rounds. Neither dose (−0.011 [−0.032, +0.009]) nor turn mode (−0.006 [−0.059, +0.048]) changes divergence. The mechanism is the public log: one changed action changes everyone's next prompt.
 
-Against a fork-matched baseline, God's divergence is *below* noise. On G1's worlds 0-7 God reaches 0.90 and B″ 0.95 (gap −0.04 [−0.07, −0.01]). Across the sweep the gap is negative in every cell (−0.02 to −0.15), and its t95 excludes zero in five of them (p ≤ 0.016; SR) [VERIFY]. Figure 3. Figure 2 shows g02, G1's median-|Δwelfare| world (|Δ| 0.067); Appendix C traces two code-selected worlds.
+Against fork-matched noise, God's divergence is *lower*: 0.90 vs. 0.95 for B″ on G1's worlds 0-7 (gap −0.04 [−0.07, −0.01]). Across the sweep the gap is negative in every cell (−0.02 to −0.15), and its t95 excludes zero in five of them (p ≤ 0.016; SR). Figure 3. Figure 2 shows g02, G1's median-|Δwelfare| world (|Δ| 0.067); Appendix C traces two code-selected worlds.
 
 ### 5.4 Dose and turn mode (H3, H2)
 Neither tripling the budget (H3) nor sequential turns (H2) changes God's effect (Table 3). Across about 27 outcome tests, the one interval that excludes zero is needs lost in the turn-mode contrast: −0.113 [−0.207, −0.018]. Its sign-flip p is 0.062 at n = 8, uncorrected, so we treat it as noise.
 
-### 5.5 Follow-up sweep (exploratory) [VERIFY]
-We varied one factor at a time around G1 on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board off, and N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR). God fired at exactly the scheduled rounds and K in every God branch. B″ first differs from its control exactly at the fork round in every world; in the world checked, 0 of 10 fork-round responses were identical.
+### 5.5 Follow-up sweep (exploratory)
+One factor at a time around G1, on worlds 0-7: God's first round (1, 3, 8, 14), K (1, 2, 4), board off, N (5, 20). The primary contrast is God − B″ (A−N) (Appendix D; SR). Validity checks (CR):
+- God fired at exactly the scheduled rounds and K.
+- B″ forks exactly at the fork round in 30 of 30 worlds, and 0 of 290 fork-round responses match the control.
+- All 147 analysed games completed, with 0 invariant violations.
+- 80 of 80 re-run games are identical to their originals.
+- The leak oracle scanned 28,959 agent requests with 0 hits.
+
 - **God effect.** No A−N welfare t95 excludes zero. The closest is K=1, with one forged DM: −0.104 [−0.213, +0.005], p = 0.062. Given about 8 uncorrected tests, we read it as noise.
-- **Late God.** Acting first at round 14 is tightly null: −0.025 [−0.080, +0.030]. At n = 8, A−N otherwise excludes only large effects (MDE ≈ 0.15-0.25).
+- **Late God.** Acting first at round 14 is tightly null: −0.025 [−0.080, +0.030]. Otherwise n = 8 excludes only large effects (MDE ≈ 0.15-0.25).
 - **No noise arm.** K=6, N=5 and N=20 (n = 4) have God − B only; all are null.
-- **Board off.** Turning the message board off lowers no-God welfare *by itself*: −0.200 [−0.333, −0.067], p = 0.031, n = 6, with all 6 worlds negative. God stays null there (A−N +0.056 [−0.170, +0.281]). Given the low n, multiple comparisons and differently seeded controls, this is an exploratory game-design finding.
-- **Cost.** The sweep cost $2.142.
+- **Board off.** Turning the message board off lowers no-God welfare *by itself*: −0.200 [−0.333, −0.067], p = 0.031, n = 6, with all 6 worlds negative. God stays null there (A−N +0.056 [−0.170, +0.281]). Given low n, multiple tests and differently seeded controls, it is exploratory.
+- **Cost:** $2.142.
 
 ## 6 Discussion
 
@@ -276,11 +282,11 @@ Do not add numbers from their full texts without opening them.
 
 **Noise baselines and chaos.** The G1 noise replica B′ diverges from round 1, while God first acts in round 3, so it is not aligned with the God fork. The fork-matched branches B″ come from an exploratory follow-up sweep on worlds 0-7 (n = 8, or 6 for board off), not from the pre-registered grid. B″ resamples all 10 agents while God perturbs one, so it is an upper bound on noise divergence; a victim-only resample is future work. Branches A and B share a response cache, and an agent with an unchanged prompt answers identically in both. Because the public log changes everyone's prompt within about a round, this coupling is short-lived. Once the swarm diverges, action-level ripple metrics saturate and cannot attribute spread to God, so our ripple conclusions are limited to "indistinguishable from a null perturbation". Welfare-level paired differences do not depend on this.
 
-**Sweep incidents** (SR; `plan/SWEEP_PLAN.md`) [VERIFY]:
+**Sweep incidents** (SR; `plan/SWEEP_PLAN.md`; re-runs checked in CR):
 - **False budget stops.** The per-run budget reserved a worst-case estimate for every pending call, so some cells stopped early with a false `budget_exceeded` although actual spend was below cap. The estimate was fixed, and the affected games were finished by re-running from the cache, which replays every completed call exactly.
 - **N=20 crash.** A template change made mid-run crashed 3 N=20 games (world 4 no-God; world 5 God and no-God). Worlds 4-5 were excluded, so N=20 rests on 4 healthy worlds.
 - **Provider logging.** The serving provider was logged only from 03:52 EST. The ~20k stage-1 sweep calls (God and control branches) have no provider recorded, so a provider confound between branches cannot be ruled out there. Logged calls went to PrimeIntellect or Near AI (10,553 vs. 344).
-- **Concurrency** (`plan/SWEEP_PLAN.md` incident 4) [VERIFY]. From 03:57 to 04:53 EST, 12 requests were in flight instead of the planned 8. During that window PrimeIntellect served 95.9% of logged calls (5,532) and the Near AI fallback 4.1% (234); a further 1,735 calls in the window were unlogged. Afterwards, PrimeIntellect served 100% (3,171). The fallback share was therefore small, and this is a minor confound.
+- **Concurrency** (`plan/SWEEP_PLAN.md` incident 4). From 03:57 to 04:53 EST, 12 requests were in flight instead of the planned 8. During that window PrimeIntellect served 95.9% of logged calls (5,532) and the Near AI fallback 4.1% (234); a further 1,735 calls in the window were unlogged. Afterwards, PrimeIntellect served 100% (3,171). The fallback share was therefore small, and this is a minor confound.
 - **Shared controls.** Some God-only cells reuse G1's control games through the cache.
 
 **Framing and construct validity.** Prompt wording strongly affects LLM behaviour [19]. The action is called "defect", and the agents are told they are playing a trading game. Both could shift baseline cooperation. The paired design holds framing fixed across branches, but the size of God's effect may depend on the baseline level of cooperation that the framing sets. A key-trading game is a stylised stand-in for real multi-agent deployments, so results transfer only qualitatively.
@@ -328,7 +334,7 @@ The pilot runs (10 agents × 30 rounds in each turn mode, one 60-agent × 20-rou
 
 Even the slowest spread reaches the whole swarm within three rounds of the fork.
 
-## Appendix D: Sweep detail [VERIFY]
+## Appendix D: Sweep detail
 Welfare, worlds 0-7 (board off 0-5, N=20 0-3). t95 CI and sign-flip p. A = God, B = no God, N = fork-matched noise B″ (for start1: G1's B′, which forks at r1). Divergence: post-fork share of agents acting differently from B (God / noise, gap). From `plan/SWEEP_RESULTS.md`.
 
 | Cond | n | A−N | A−B | N−B | Div. God / noise (gap) |
