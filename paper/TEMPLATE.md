@@ -22,6 +22,40 @@
 - **Made-up results or references can disqualify a project.** Every `[RESULT: ...]` and `[CHECK: ...]` must be resolved from run data, or the sentence removed, before export.
 - Deadline: Sun 2026-11-08, 23:59 AoE. Team target: 18:00 AoE.
 
+## Template details (from the template exported as HTML, 2026-11-07)
+
+**Page and type:**
+- US Letter, 1 in margins (468 pt text width), one column.
+- Body: 11 pt Old Standard TT (serif). Headings: bold 14 pt. Title: 20 pt, centred.
+
+**Sections in the template:**
+- Title, then six author / affiliation slots, then "With Apart Research".
+- Abstract (150-250 words), then 1 Introduction, 2 Related Work, 3 Methods, 4 Results.
+- 5 Discussion and Limitations, with "Limitations" and "Future Work" subsections.
+- 6 Conclusion.
+- Code and Data; Author Contributions (optional); References; Appendix (optional).
+- LLM Usage Statement.
+
+**Length.** The template's own guidance recommends **4 pages excluding references and appendix**: about 1 page for intro and related work, 2.5 for methods and results, and 0.5 for discussion. The sprint page's hard limit is 8 pages. We target ≤ 8.
+
+**LLM Usage Statement.** The template asks how LLM assistance was used and for confirmation that every claim was verified. It also "strongly encourage[s] that the final version of the submission is primarily written by your team." **The team must write this statement**, and should decide how much of the draft to rewrite in its own words. `draft.md` has a placeholder.
+
+**Other instructions.** Delete all italic guidance text and the info box. Number every figure and table, give each a caption that stands alone, and place it near its first reference.
+
+## Preview build and page check
+
+```bash
+cd ~/projects/swarm_hackathon && python3 paper/build_preview.py   # writes paper/preview.pdf
+```
+
+The build does the following:
+- **Formatting:** approximates the template with Chrome print CSS, using the real Old Standard TT from Google Fonts.
+- **Clean-up:** strips the drafting box and other drafting notes.
+- **Figures:** inlines `plan/figs/paperfig*.png` at the widths set in `WIDTHS`.
+- **Pagination:** starts References on a new page.
+- **Report:** prints the main-body page count, meaning the pages before References.
+- **Caveat:** Google Docs will paginate somewhat differently. Leave at least half a page of slack, and recheck after pasting.
+
 ## Conversion steps (Markdown to Google Docs to PDF)
 
 1. **Make a team copy.** One person opens the copy link and shares the copy with the team (edit access).
@@ -40,8 +74,12 @@
 6. **References.** Paste the numbered reference list as it is. Each entry carries its arXiv id. Keep the bracket numbering [n] used in the body.
 7. **Appendices.** Put Appendix A, "Limitations and Dual-Use / Ethical Considerations", after the references, as the sprint page puts it. Appendix B (configs, prompts, health table) follows it.
 8. **Check the length.** The body, Introduction through Conclusion including figures, must fit in 8 pages.
-   - At about 4,000 words of body plus 4 figures, expect it to be tight.
-   - Cut in this order: Discussion bullets, Section 5.5 qualitative traces (move them to an appendix), the Section 3.1 observation list.
+   - **Cuts already applied** (preview: 8 main pages, page 8 about 88% full):
+     - the Discussion bullets, the 3.1 action and observation lists, and the 5.1 and 5.4 bullets are now prose;
+     - the qualitative traces are in Appendix C;
+     - the power table, the grid table (Table E2) and the board table (Table E3) moved to Appendix E, with their key numbers kept in the text;
+     - the g02 network figure moved to Appendix C (Figure C1).
+   - **Next cuts if the Google Doc runs over:** move 3.5 (agents and logging) and the health-check and invariant paragraphs of Section 4 to an appendix; move Table 1 to Appendix E; shrink the Figure 2b and Figure 3 widths.
 9. **Export.** File → Download → PDF document. Open the PDF and check:
    - the abstract is 150 to 250 words;
    - no `[RESULT` or `[CHECK` strings remain;
