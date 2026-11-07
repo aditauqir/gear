@@ -180,3 +180,44 @@ def test_registry_backends(tmp_path):
     o = from_dict({**TINY, "roles": {**TINY["roles"], "agent": {"backend": "vllm"}},
                    "llm": {"cache": {"mode": "read_write", "path": str(tmp_path / "x.sqlite")}}})
     assert build_client(o, "agent").cache is not None
+
+
+def test_single_flight_shares_one_request_between_concurrent_identical_calls(tmp_path):
+    """Paired fork branches run concurrently: identical pre-fork requests must hit the API once."""
+    n = {"posts": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        n["posts"] += 1
+        await asyncio.sleep(0.05)
+        return httpx.Response(200, json=ok_body("same"))
+
+    c = VLLMClient(transport=httpx.MockTransport(handler), retry=FAST, cache=ResponseCache(tmp_path / "c.sqlite"))
+
+    async def both():
+        return await asyncio.gather(c.chat(req(call_id="a")), c.chat(req(call_id="b")),
+                                    c.chat(req(content="other", call_id="x")))
+
+    a, b, x = run(both())
+    assert n["posts"] == 2                      # "hi" once (shared) + "other" once
+    assert a.text == b.text == "same" and {a.call_id, b.call_id} == {"a", "b"}
+    assert [a.cache_hit, b.cache_hit].count(True) == 1 and x.cache_hit is False
+    assert c.totals.cache_hits == 1 and not c._inflight
+
+
+def test_single_flight_follower_retries_after_leader_failure(tmp_path):
+    n = {"posts": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        n["posts"] += 1
+        await asyncio.sleep(0.02)
+        if n["posts"] == 1:
+            return httpx.Response(400, json={"error": "bad"})
+        return httpx.Response(200, json=ok_body("ok"))
+
+    c = VLLMClient(transport=httpx.MockTransport(handler), retry=FAST, cache=ResponseCache(tmp_path / "c.sqlite"))
+
+    async def both():
+        return await asyncio.gather(c.chat(req(call_id="a")), c.chat(req(call_id="b")), return_exceptions=True)
+
+    a, b = run(both())
+    assert isinstance(a, LLMError) and b.text == "ok" and n["posts"] == 2 and not c._inflight

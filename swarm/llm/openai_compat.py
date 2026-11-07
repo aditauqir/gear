@@ -8,6 +8,9 @@ Per call, `OpenAICompatClient.chat(req)` does, in order:
   with full-jitter exponential backoff. 400 is never retried; 401/403 raise AuthError at once.
 - Requests carry messages and params only. Headers (and any API key) never reach a log, an
   exception message, the cache or an LLMCall.
+- Single-flight: concurrent calls with the same cache key share ONE request (the followers get the
+  leader's response marked cache_hit, cost 0). This lets paired fork branches run concurrently and
+  still see an identical pre-fork prefix (needs the cache to be on; key = cache_key()).
 - Semaphores and the httpx client are created per running event loop, so one client object can
   be reused across `asyncio.run` calls (tests, sweeps).
 
@@ -94,6 +97,7 @@ class OpenAICompatClient:
         self._sleep = sleep or asyncio.sleep
         self._jitter = random.Random(0)   # backoff jitter only; never affects logged content
         self._per_loop: dict[int, tuple[asyncio.Semaphore, httpx.AsyncClient]] = {}
+        self._inflight: dict[str, asyncio.Future[ChatResponse]] = {}
         self.totals = Totals()
 
     def __repr__(self) -> str:   # never show the key
@@ -235,6 +239,13 @@ class OpenAICompatClient:
         key = cache_key(self.backend, self.model, req) if self.cache is not None else None
         if self.cache is not None and key is not None:
             hit = self.cache.get(key)
+            if hit is None:
+                fut = self._inflight.get(key)
+                if fut is not None and fut.get_loop() is asyncio.get_running_loop():
+                    try:
+                        hit = await asyncio.shield(fut)
+                    except Exception:
+                        hit = None          # the leader failed: make our own call below
             if hit is not None:
                 resp = hit.model_copy(update={"call_id": req.call_id, "cache_hit": True, "latency_s": 0.0,
                                               "cost_usd": 0.0, "retries": 0})
@@ -242,6 +253,27 @@ class OpenAICompatClient:
                 self.totals.cache_hits += 1
                 self._record(req, key, resp, None)
                 return resp
+            if key not in self._inflight or self._inflight[key].get_loop() is not asyncio.get_running_loop():
+                fut = asyncio.get_running_loop().create_future()
+                self._inflight[key] = fut
+                try:
+                    resp = await self._chat_miss(req, key)
+                except BaseException as e:
+                    if not fut.done():
+                        fut.set_exception(e if isinstance(e, Exception) else LLMError("cancelled"))
+                        fut.exception()     # mark retrieved: no 'never retrieved' warning
+                    raise
+                else:
+                    if not fut.done():
+                        fut.set_result(resp)
+                    return resp
+                finally:
+                    if self._inflight.get(key) is fut:
+                        del self._inflight[key]
+        return await self._chat_miss(req, key)
+
+    async def _chat_miss(self, req: ChatRequest, key: str | None) -> ChatResponse:
+        """Budget hook -> retry loop -> cost hook -> cache write -> accounting."""
         token = await self._before_call(req)
         try:
             resp = await self._call_with_retry(req)

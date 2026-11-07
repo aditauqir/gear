@@ -37,7 +37,7 @@ runner:
   fork:
     enabled: true                 # paired fork: same seed with God vs without God
     noise_replica: false          # true adds B' (no God, replica 1) = sampling-noise floor
-    serial_pair: true             # run God branch first, then control (cache-warm prefix)
+    serial_pair: false            # branches run concurrently; single-flight dedup shares the pre-fork prefix
 roles:
   agent:
     backend: openrouter

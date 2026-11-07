@@ -137,6 +137,40 @@ class LedgerSink:
         return getattr(self.inner, name)
 
 
+class ProgressSink:
+    """EventSink wrapper that rewrites runs/<id>/progress.txt on every `turn` event: one line per
+    game (label, round/turn, $ and calls so far for the shared agent client). Best effort only."""
+
+    _lines: dict[Path, dict[str, str]] = {}
+
+    def __init__(self, inner: Any, label: str, max_rounds: int, client: Any) -> None:
+        self.inner, self.label, self.max_rounds, self.client = inner, label, max_rounds, client
+        self.path = Path(inner.dir).parent.parent / "progress.txt"
+
+    def emit(self, body: Any) -> Any:
+        ev = self.inner.emit(body)
+        if body.data.type in ("turn", "game_end"):
+            try:
+                import time
+
+                tot = getattr(getattr(self.client, "inner", self.client), "totals", None)
+                cost = getattr(tot, "cost_usd", 0.0)
+                calls = getattr(tot, "calls", 0)
+                what = "done" if body.data.type == "game_end" else f"round {body.round}/{self.max_rounds} turn {body.turn_index}"
+                lines = self._lines.setdefault(self.path, {})
+                lines[self.label] = f"{self.label}: {what}"
+                summary = f"{time.strftime('%H:%M:%S')} run-wide agent client: ${cost:.4f}, {calls} calls"
+                tmp = self.path.with_suffix(".tmp")
+                tmp.write_text("\n".join([summary, *lines.values()]) + "\n", encoding="utf-8")
+                tmp.replace(self.path)
+            except Exception:   # progress is cosmetic; never break a game over it
+                pass
+        return ev
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+
 class OracleClient:
     """Per-game LLMClient wrapper: every agent-bound ChatRequest is scanned by the LeakOracle BEFORE
     it is sent (a TruthLeak aborts the game, so a leak can never be silently logged as a result)."""
@@ -240,7 +274,8 @@ async def _play_real(spec: GameSpec, sink: GameWriter, clients: Clients) -> Outc
     memory = MemoryStore(cfg.reasoning)
     oracle = LeakOracle(enabled=not cfg.game.view_log.reveal_provenance)
     counter = default_counter(cfg)
-    ledger_sink = LedgerSink(oracle.wrap(sink), counter)
+    psink = ProgressSink(sink, spec.label, cfg.game.max_rounds, clients.get("agent"))
+    ledger_sink = LedgerSink(oracle.wrap(psink), counter)
     client = OracleClient(clients.get("agent"), oracle)
     agents = {a: LLMAgent(a, client, cfg, counter=counter) for a in state.order}   # policy: make_policy
     god = make_god(cfg.god, seed=spec.world_seed, client=clients.get("god"))

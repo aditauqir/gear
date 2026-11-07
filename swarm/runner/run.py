@@ -75,7 +75,9 @@ async def _run_one(spec: GameSpec, run: RunWriter, clients: Clients, engine: str
 
 async def _run_group(group: list[GameSpec], run: RunWriter, clients: Clients, opts: RunnerOpts,
                      sem: asyncio.Semaphore) -> list[dict[str, Any]]:
-    if opts.fork.serial_pair and len(group) > 1:
+    # Concurrent branches rely on the client's single-flight dedup, which needs the response cache.
+    serial = opts.fork.serial_pair or group[0].cfg.llm.cache.mode == "off"
+    if serial and len(group) > 1:
         first = await _run_one(group[0], run, clients, opts.engine, sem)
         rest = await asyncio.gather(*(_run_one(s, run, clients, opts.engine, sem) for s in group[1:]))
         return [first, *rest]

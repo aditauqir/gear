@@ -26,7 +26,9 @@ BRANCH_GOD, BRANCH_NOGOD, BRANCH_NOISE, BRANCH_MAIN = "god", "nogod", "noise", "
 class ForkOpts:
     enabled: bool = False
     noise_replica: bool = False
-    serial_pair: bool = True     # run A first, then B/B' (warm cache => identical pre-fork prefix)
+    # False (default): branches run concurrently; the LLM client's single-flight dedup gives B the
+    # same pre-fork responses as A. True: A first, then B/B' (warm cache). Forced on if cache is off.
+    serial_pair: bool = False
 
 
 @dataclass(frozen=True)

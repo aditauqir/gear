@@ -8,7 +8,7 @@ run:
   name: demo
   seed: 0
   n_games: 1
-  max_concurrency_games: 2        # both fork branches share the vLLM batch when serial_pair=false
+  max_concurrency_games: 2        # both fork branches run at once (serial_pair=false)
 game:
   n_agents: 20
   max_rounds: 15
@@ -40,4 +40,4 @@ runner:
   fork:
     enabled: true                 # paired fork: same seed with God vs without God
     noise_replica: false          # true adds B' (no God, replica 1) = sampling-noise floor
-    serial_pair: true             # run God branch first, then control (cache-warm prefix)
+    serial_pair: false            # branches run concurrently; single-flight dedup shares the pre-fork prefix
