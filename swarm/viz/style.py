@@ -18,6 +18,7 @@ GRID = "#e4e3df"
 C = {
     "dm": "#9a9993",
     "give": "#1baf7a",      # aqua
+    "give_ink": "#0f7a55",  # darker aqua for thin marks (known-names ring) on the light surface
     "defect": "#e34948",    # red
     "win": "#eda100",       # yellow
     # God (any power): magenta; the two powers are told apart by line style / hatch, never by hue alone.

@@ -78,6 +78,18 @@ class Branch:
     gives: list[tuple[int, str, str, int]] = field(default_factory=list)       # (round, from, to, info_id)
     defects: list[tuple[int, str, str, bool]] = field(default_factory=list)    # (round, actor, target, correct)
     budget: int | None = None                                                 # God's K (cost + budget_left)
+    network: dict[str, Any] | None = None     # game.network on: {mode, topology, contacts, edges, degree}; None = complete
+    known: dict[int, dict[str, set[str]]] = field(default_factory=dict)       # known_ids: round -> agent -> names
+
+    def known_share(self, r: int) -> float | None:
+        """Mean share of the other agents whose names each agent knows (swarm.analysis.network's S-curve)."""
+        if not self.known:
+            return None
+        ks = [k for k in self.known if k <= r]
+        if not ks:
+            return None
+        kn, n = self.known[max(ks)], len(self.agents)
+        return sum(len(v) for v in kn.values()) / max(1, n * (n - 1))
 
     def welfare(self, r: int) -> float:
         s = self.score_at(r)
@@ -98,6 +110,36 @@ def is_done(game_dir: str | Path) -> bool:
         return False
 
 
+def network_info(start: dict[str, Any], meta: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Contact graph of a game from game_start (AgentState.contacts); None when game.network is off (complete)."""
+    contacts = {a: s.get("contacts") for a, s in start["agents"].items()}
+    if all(c is None for c in contacts.values()):
+        return None
+    contacts = {a: sorted(c or []) for a, c in contacts.items()}
+    edges = sorted({tuple(sorted((a, b))) for a, nb in contacts.items() for b in nb})
+    mode = "known_ids" if any(s.get("known") is not None for s in start["agents"].values()) else "contacts"
+    net = (meta or {}).get("network") or {}
+    return {"mode": net.get("mode", mode), "topology": net.get("topology", "?"), "contacts": contacts,
+            "edges": [list(e) for e in edges], "degree": {a: len(c) for a, c in contacts.items()}}
+
+
+def known_by_round(game_dir: str | Path) -> dict[int, dict[str, set[str]]]:
+    """known_ids mode: round -> agent -> names known, from snapshots.jsonl (empty when not tracked)."""
+    out: dict[int, dict[str, set[str]]] = {}
+    p = Path(game_dir) / "snapshots.jsonl"
+    if not p.exists():
+        return out
+    with open(p, encoding="utf-8") as f:
+        for ln in f:
+            if '"known"' not in ln:
+                continue
+            snap = json.loads(ln)
+            ag = snap["state"]["agents"]
+            if any(x.get("known") is not None for x in ag.values()):
+                out[int(snap["round"])] = {a: set(x.get("known") or []) for a, x in ag.items()}
+    return out
+
+
 def load_branch(game_dir: str | Path) -> Branch:
     game_dir = Path(game_dir)
     ev = [json.loads(ln) for ln in open(game_dir / "events.jsonl", encoding="utf-8")]
@@ -107,6 +149,13 @@ def load_branch(game_dir: str | Path) -> Branch:
     scores: dict[int, dict[str, float]] = {0: {a: 0.0 for a in agents}}
     wins: dict[int, list[str]] = {}
     b = Branch(game_dir.name, agents, R, R, "", edges, scores, wins)
+    try:
+        meta = json.loads((game_dir / "meta.json").read_text())
+    except (OSError, ValueError):
+        meta = {}
+    b.network = network_info(start, meta)
+    if b.network and b.network["mode"] == "known_ids":
+        b.known = known_by_round(game_dir)
     for e in ev:
         r, t, d = e["round"], e["type"], e["data"]
         if r not in edges:
@@ -166,6 +215,8 @@ def round_series(b: Branch, ever: dict[int, set[str]] | None = None) -> list[dic
         row = {"round": r, "welfare": b.welfare(r), "winners": len(b.won_by(r)), **{k: float(acc[k]) for k in (
             "gives", "defects", "defects_correct", "board_posts", "dms", "god_moves")}}
         row["diverged"] = float(len((ever or {}).get(r, ()))) if ever is not None else float("nan")
+        ks = b.known_share(r)
+        row["known_share"] = ks if ks is not None else float("nan")
         out.append(row)
     return out
 
@@ -533,6 +584,29 @@ def design_effect(ref_runs: str | list[str | Path], var_runs: str | list[str | P
         pairs[i] = (game_metrics(a[i])[metric], game_metrics(b[i])[metric])
     return {"pairs": pairs, "dropped": dropped,
             "stats": summarize([v - r for r, v in pairs.values()]) if len(pairs) >= 2 else {}}
+
+
+def network_cell(run_dir: str | Path | CellSpec) -> dict[str, Any] | None:
+    """Network numbers of a cell from swarm.analysis.network (graph stats per world, name-coverage S-curves,
+    gives by hop distance, Spearman centrality summary, God victims' centrality) plus the per-agent centrality
+    rows; None when the run has no game.network. Finished games only."""
+    from swarm.analysis import network as na
+
+    spec = parse_spec(run_dir)
+    dirs = [d for brs in branch_dirs(spec.run).values() for d in brs.values() if is_done(d)]
+    if not dirs or network_info(next(json.loads(ln)["data"] for ln in open(dirs[0] / "events.jsonl", encoding="utf-8")
+                                     if '"type":"game_start"' in ln)) is None:
+        return None
+    res = na.analyse_run(spec.run)
+    games = [g for g in na.load_run(spec.run) if is_done(g["dir"])]
+    stats = {}
+    rows = []
+    for g in games:
+        st = stats.setdefault(g["game_idx"], na.graph_stats(g["graph"]))
+        rows += [{**r, "branch": g["branch"]} for r in na.centrality_rows(g, st, na.brokering(g))]
+    res["centrality_rows"] = rows
+    res["mode"] = next((g["mode"] for g in games), None)
+    return res
 
 
 def load_cell(run_dir: str | Path | CellSpec, with_health: bool = True, with_pairs: bool = True) -> dict[str, Any]:

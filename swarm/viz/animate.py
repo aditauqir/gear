@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.patches import FancyBboxPatch
+from matplotlib.patches import Arc, FancyBboxPatch
 
 from swarm.viz.metrics import Branch, divergence, load_branch, round_series
 from swarm.viz.story import captions, pacing
@@ -33,6 +33,10 @@ W, H, DPI, FPS = 1280, 720, 100, 10
 BIG_N = 20          # above this many agents: smaller nodes, labels only on God targets
 NODE = "#d6d5cf"    # neutral agent fill (status is carried by yellow = won)
 CAP_COLOR = {"god": C["god"], "quote": None, "effect": C["god"], "ripple": C["a"], "win": C["win"], "info": INK2}
+NET_EDGE = "#c9c8c2"          # contact-graph edges (static, under the activity)
+NET_NAMES = {"erdos_renyi": "Erdős–Rényi", "watts_strogatz": "Watts–Strogatz", "barabasi_albert": "Barabási–Albert",
+             "ring": "ring", "complete": "complete"}
+NET_RX, NET_RY = 1.25, 0.76    # network layout extent (labels need room at the sides)
 RX, RY = 1.0, 0.78   # agent ellipse radii (panel x range is +-1.78; labels need ~0.6 beside a side node)
 RAMP = (0.35, 0.7, 1.0)  # alpha ramp of the new round's edges over the first frames of a round
 
@@ -49,6 +53,12 @@ def layout(agents: list[str], branches: list[Branch], seed: int = 0) -> dict[str
                 for x, y in rr[k]:
                     if x in U and y in U:
                         U.add_edge(x, y, weight=U.get_edge_data(x, y, {"weight": 0})["weight"] + 1)
+    net = branches[0].network if branches else None
+    if net:                      # graph-aware: the contact graph's own layout, BOARD moved to a corner
+        pos = network_layout(agents, net["edges"])
+        pos["BOARD"] = np.array([1.5, -0.86])
+        pos["GOD"] = np.array([-1.55, 0.93])
+        return pos
     sp = nx.spring_layout(U, seed=seed)
     order = sorted(agents, key=lambda a: np.arctan2(sp[a][1], sp[a][0]))
     n = len(order)
@@ -59,6 +69,47 @@ def layout(agents: list[str], branches: list[Branch], seed: int = 0) -> dict[str
     pos["BOARD"] = np.array([0.0, 0.0])
     pos["GOD"] = np.array([-1.55, 0.93])
     return pos
+
+
+def network_layout(agents: list[str], edges: list[list[str]], gap: tuple[float, float] = (0.78, 0.34),
+                   iters: int = 400) -> dict[str, np.ndarray]:
+    """Graph-aware positions in the panel box: classical MDS of hop distances (numpy only), stretched to the box,
+    then pairwise pushes until every pair is at least `gap` apart in the anisotropic norm (|dx|/gx, |dy|/gy),
+    which leaves room for a label under each node. Deterministic (no RNG)."""
+    G = nx.Graph()
+    G.add_nodes_from(agents)
+    G.add_edges_from(tuple(e) for e in edges)
+    n = len(agents)
+    sp = dict(nx.all_pairs_shortest_path_length(G))
+    big = n
+    D = np.array([[sp[a].get(b, big) for b in agents] for a in agents], dtype=float)
+    J = np.eye(n) - 1.0 / n
+    B = -0.5 * J @ (D ** 2) @ J
+    w, v = np.linalg.eigh(B)
+    idx = np.argsort(w)[::-1][:2]
+    P = v[:, idx] * np.sqrt(np.maximum(w[idx], 1e-9))
+    for k in range(2):                       # deterministic orientation
+        if P[np.argmax(np.abs(P[:, k])), k] < 0:
+            P[:, k] *= -1
+    box = np.array([NET_RX, NET_RY])
+    P = P - P.mean(0)
+    P = P / np.maximum(np.abs(P).max(0), 1e-9) * box
+    g = np.array(gap)
+    for _ in range(iters):
+        moved = False
+        for i in range(n):
+            for j in range(i + 1, n):
+                d = (P[i] - P[j]) / g
+                nd = np.hypot(*d)
+                if nd < 1.0:
+                    push = (d / nd if nd > 1e-9 else np.array([1.0, 0.0])) * (1.0 - nd) / 2 * g
+                    P[i] += push
+                    P[j] -= push
+                    moved = True
+        P = np.clip(P, -box, box)
+        if not moved:
+            break
+    return dict(zip(agents, P, strict=True))
 
 
 # ------------------------------------------------------------------ panel
@@ -86,6 +137,11 @@ def draw_panel(ax, title: str, b: Branch, pos, r: int, *, ever=None, new=(), ram
     G = nx.DiGraph()
     G.add_nodes_from(list(agents) + ["GOD", "BOARD"])
     rr_play = min(r, b.rounds_played)
+    if b.network:                # the contact graph, static and faint, under the activity
+        Gu = nx.Graph()
+        Gu.add_nodes_from(agents)
+        nx.draw_networkx_edges(Gu, pos, edgelist=[tuple(e) for e in b.network["edges"]], ax=ax, edge_color=NET_EDGE,
+                               width=2.2 * lk, alpha=0.9)
     # faint history of gives, then this round's edges
     hist = Counter(e for k in range(1, rr_play) for e in b.edges[k]["give"])
     _edges(ax, G, pos, hist, C["give"], "solid", 0.8, 0.13)
@@ -110,8 +166,24 @@ def draw_panel(ax, title: str, b: Branch, pos, r: int, *, ever=None, new=(), ram
             grow = (2.2, 1.6, 1.0)[min(frame_i, 2)]
             ax.scatter(xy[nw, 0], xy[nw, 1], s=(sizes[nw] * 3.2 + 500 * shrink) * grow, facecolors="none",
                        edgecolors=C["a"], lw=2.0, alpha=0.9, zorder=1)
+    deg = (b.network or {}).get("degree") or {}
+    hubs = hub_agents(deg)
     ax.scatter(xy[:, 0], xy[:, 1], s=sizes, c=[C["win"] if a in won else NODE for a in agents],
-               edgecolors=[INK if a in won else INK2 for a in agents], linewidths=1.1, zorder=3)
+               edgecolors=[INK if (a in won or a in hubs) else INK2 for a in agents],
+               linewidths=[2.6 if a in hubs else 1.1 for a in agents], zorder=3)
+    if deg:
+        for a, (x, y) in zip(agents, xy, strict=True):
+            ax.text(x, y, str(deg.get(a, "")), ha="center", va="center", fontsize=7.5 * lk, fontweight="bold",
+                    color=INK, zorder=3.5)
+    if b.known:                  # known_ids: arc = share of the other players whose names this agent knows
+        kn = b.known.get(max([k for k in b.known if k <= r] or [min(b.known)]), {})
+        sx = ax.bbox.width / (ax.get_xlim()[1] - ax.get_xlim()[0])
+        sy = ax.bbox.height / (ax.get_ylim()[1] - ax.get_ylim()[0])
+        for i, a in enumerate(agents):
+            rad_px = (np.sqrt(sizes[i]) / 2 + 4 * lk) * ax.figure.dpi / 72
+            share = len(kn.get(a, ())) / max(1, len(agents) - 1)
+            ax.add_patch(Arc(tuple(xy[i]), 2 * rad_px / sx, 2 * rad_px / sy, theta1=90 - 360 * share, theta2=90,
+                             color=C["give_ink"], lw=2.2 * lk, zorder=3.6))
     # God targets: thick ring + badge in the event round and the next, thin ring afterwards
     if show_god:
         for p in b.powers:
@@ -134,11 +206,16 @@ def draw_panel(ax, title: str, b: Branch, pos, r: int, *, ever=None, new=(), ram
         if b.powers:
             ax.scatter([pos["GOD"][0]], [pos["GOD"][1]], s=900 * scale, marker="s", color=INK, zorder=5)
             ax.text(*pos["GOD"], "GOD", ha="center", va="center", color=SURFACE, fontsize=8.5, fontweight="bold", zorder=6)
-    ax.scatter([0], [0], s=820 * scale, marker="s", color=GRID, edgecolors=INK2, lw=0.8, zorder=2)
-    ax.text(0, 0, "BOARD", ha="center", va="center", color=INK2, fontsize=7.5, fontweight="bold", zorder=3)
+    bx, by = pos.get("BOARD", (0.0, 0.0))
+    ax.scatter([bx], [by], s=820 * scale, marker="s", color=GRID, edgecolors=INK2, lw=0.8, zorder=2)
+    ax.text(bx, by, "BOARD", ha="center", va="center", color=INK2, fontsize=7.5, fontweight="bold", zorder=3)
     shown = agents if not big else sorted({p.target for p in b.powers if p.round <= r})
     for a in shown:
         x, y = pos[a]
+        if b.network:            # graph layout: label under the node (network_layout leaves room for it)
+            ax.text(x, y - 0.115 - 0.02 * sizes[agents.index(a)] ** 0.5 / 10, f"{a}  {sc.get(a, 0.0):.2f}",
+                    ha="center", va="top", fontsize=7.8, color=INK if a in won else INK2, zorder=6)
+            continue
         side = abs(x) >= 0.3
         lx = x + (0.13 * np.sign(x) if side else 0.0)
         ly = y if side else y + 0.17 * np.sign(y or 1)
@@ -166,6 +243,33 @@ def draw_welfare(ax, god: Branch, nogod: Branch, r: int) -> None:
     ax.text(r + 0.4, yg + (off if yg >= yn else -off), f"with God {yg:.2f}", color=INK, fontsize=8.5, va="center")
     ax.text(r + 0.4, yn - (off if yg >= yn else -off), f"without {yn:.2f}", color=INK2, fontsize=8.5, va="center")
     _strip_axes(ax, god, r, "Welfare (mean score)", (0, 1.0))
+
+
+def hub_agents(degree: dict[str, int]) -> set[str]:
+    """Agents with the most contacts: degree >= max(3, the 80th percentile), at most the top 3 (pure, tested)."""
+    if not degree:
+        return set()
+    vals = sorted(degree.values())
+    cut = max(3, vals[int(0.8 * (len(vals) - 1))])
+    top = sorted((a for a, d in degree.items() if d >= cut), key=lambda a: (-degree[a], a))
+    return set(top[:3])
+
+
+def draw_known(ax, god: Branch, nogod: Branch, r: int) -> None:
+    """known_ids strip: mean share of the other players' names known, per branch, up to round r."""
+    ax.clear()
+    xs = list(range(0, r + 1))
+    for b, col in ((nogod, C["b"]), (god, C["a"])):
+        ys = [b.known_share(x) for x in xs]
+        ys = [y if y is not None else np.nan for y in ys]
+        ax.plot(xs, ys, color=col, lw=2, zorder=3)
+        ax.scatter([xs[-1]], [ys[-1]], s=22, color=col, zorder=4)
+    yg, yn = god.known_share(r) or 0.0, nogod.known_share(r) or 0.0
+    off = 0.12 - abs(yg - yn) / 2 if abs(yg - yn) < 0.24 else 0.0
+    ax.text(r + 0.4, yg + (off if yg >= yn else -off), f"with God {yg:.0%}", color=INK, fontsize=8.5, va="center")
+    ax.text(r + 0.4, yn - (off if yg >= yn else -off), f"without {yn:.0%}", color=INK2, fontsize=8.5, va="center")
+    _strip_axes(ax, god, r, "Share of the other players' names known (known_ids network)\n"
+                "ring around each node = that agent's share", (0, 1.05))
 
 
 def draw_ripple(ax, god: Branch, ever: dict[int, set[str]], r: int) -> None:
@@ -276,7 +380,21 @@ def new_fig():
     return plt.figure(figsize=(W / DPI, H / DPI), dpi=DPI)
 
 
-def _legend(fig) -> None:
+def _legend(fig, network: dict[str, Any] | None = None) -> None:
+    if network:                  # network runs: the graph encodings replace two of the generic entries
+        hs = [Line2D([], [], color=NET_EDGE, lw=2.2, label="contact (network edge)"),
+              Line2D([], [], color=C["dm"], lw=1.5, label="DM"),
+              Line2D([], [], color=C["give"], lw=2.5, label="key given"),
+              Line2D([], [], color=C["defect"], lw=2.2, ls=":", label="defect"),
+              Line2D([], [], color=C["god"], lw=2.5, ls="--", label="God's move"),
+              Line2D([], [], marker="$3$", ls="", ms=8, color=INK, label="number = contacts (degree)"),
+              Line2D([], [], marker="o", ls="", ms=9, mfc=NODE, mec=INK, mew=2.6, label="hub")]
+        if network.get("mode") == "known_ids":
+            hs.append(Line2D([], [], marker="o", ls="", ms=10, mfc="none", mec=C["give_ink"], mew=2,
+                             label="ring = names known"))
+        fig.legend(handles=hs, loc="lower center", ncol=len(hs), fontsize=8, frameon=False, bbox_to_anchor=(0.5, 0.0),
+                   handlelength=1.6, columnspacing=1.1)
+        return
     hs = [Line2D([], [], color=C["dm"], lw=1.5, label="DM"),
           Line2D([], [], color=C["give"], lw=2.5, label="key given"),
           Line2D([], [], color=C["defect"], lw=2.2, ls=":", label="defect (burn)"),
@@ -307,7 +425,10 @@ class WorldVideo:
         self.st_r = f.add_axes([0.55, 0.072, 0.37, 0.1])
         f.add_artist(Line2D([0.5, 0.5], [0.07, 0.80], color=GRID, lw=1))
         self.tiles = {side: make_tiles(f, x0, TILES[side]) for side, x0 in (("god", 0.008), ("nogod", 0.508))}
-        _legend(f)
+        _legend(f, self.god.network)
+        if self.god.network:
+            n = self.god.network
+            self.header += f" · network: {NET_NAMES.get(n['topology'], n['topology'])}, {n['mode']}"
         self._txt: list = []
 
     def draw(self, r: int, frame_i: int = 0) -> None:
@@ -322,7 +443,10 @@ class WorldVideo:
         draw_panel(self.ax_r, "WITHOUT GOD", self.nogod, self.pos, r, ramp=ramp,
                    show_god=False)
         draw_welfare(self.st_l, self.god, self.nogod, r)
-        draw_ripple(self.st_r, self.god, self.ever, r)
+        if self.god.known:
+            draw_known(self.st_r, self.god, self.nogod, r)
+        else:
+            draw_ripple(self.st_r, self.god, self.ever, r)
         update_tiles(self.tiles, self.ser_g[r], self.ser_n[r], len(self.god.agents), self.god.budget)
         T = self._txt
         T.append(f.text(0.015, 0.968, "Keys & God", fontsize=16, fontweight="bold", color=INK, va="center"))
@@ -480,6 +604,20 @@ def render_world(run: Path, god: str, nogod: str, fr: Frames, header: str, cards
     return wv
 
 
+def model_label(game_dir: Path) -> str:
+    """The agents' model from the first logged LLM call ('FakeLLM DRY RUN' for the fake backend)."""
+    import json
+
+    try:
+        with open(game_dir / "llm_calls.jsonl", encoding="utf-8") as f:
+            c = json.loads(f.readline())
+    except (OSError, ValueError):
+        return "?"
+    if c.get("backend") == "fake":
+        return "FakeLLM DRY RUN"
+    return str(c.get("model", "?")).split("/")[-1]
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir")
@@ -496,7 +634,8 @@ def main(argv: list[str] | None = None) -> None:
     a = ap.parse_args(argv)
     run = Path(a.run_dir)
     god, nogod = (f"g{a.world:02d}-god", f"g{a.world:02d}-nogod") if a.world is not None else (a.god, a.nogod)
-    header = f"{run.name} · world {god.split('-')[0]} · 10 agents · gpt-oss-120b"
+    b0 = load_branch(run / "games" / god)
+    header = f"{run.name} · world {god.split('-')[0]} · {len(b0.agents)} agents · {model_label(run / 'games' / god)}"
     with tempfile.TemporaryDirectory() as td:
         fr = Frames(td)
         render_world(run, god, nogod, fr, header, cards=not a.no_cards, title_desc=a.about, footer=a.footer,

@@ -41,6 +41,7 @@ from swarm.viz.metrics import (  # noqa: E402
     deltas,
     design_effect,
     load_cell,
+    network_cell,
     paired_or_unpaired,
     parse_seeds,
     parse_spec,
@@ -468,6 +469,82 @@ def design_runs_section(designs: list[tuple[str, str, str, Any]]) -> str:
     return ("<div class=tbl><table>" + "".join(rows) + "</table></div><div class=grid>" + "".join(figs) + "</div>")
 
 
+def network_section(cell: dict[str, Any]) -> str:
+    """Rendered only for runs with game.network: graph stats per world, the name-diffusion S-curve per branch,
+    gives by hop distance, outcomes by centrality, and God victims' centrality (swarm.analysis.network)."""
+    net = network_cell(cell["spec"])
+    if not net:
+        return ""
+    col = BR_COLOR
+    parts = [f"<h3>Network ({html.escape(str(net.get('mode')))})</h3>"]
+    rows = ["<tr><th>world</th><th>agents</th><th>edges</th><th>mean degree</th><th>degree histogram</th>"
+            "<th>clustering</th><th>mean path</th><th>diameter</th></tr>"]
+    for i, g in sorted(net["graphs"].items(), key=lambda kv: int(kv[0])):
+        hist = ", ".join(f"{k}:{v}" for k, v in g["degree_hist"].items())
+        rows.append(f"<tr><td>g{int(i):02d}</td><td>{g['n']}</td><td>{g['edges']}</td><td>{g['mean_degree']:.2f}</td>"
+                    f"<td class=dim>{hist}</td><td>{g['clustering']:.2f}</td><td>{g['avg_path'] or '–'}</td>"
+                    f"<td>{g['diameter'] or '–'}</td></tr>")
+    parts.append("<div class=tbl><table>" + "".join(rows) + "</table></div><div class=grid>")
+    if net["coverage_by_round"]:
+        fig, ax = plt.subplots(figsize=(4.2, 2.4))
+        for br, cv in net["coverage_by_round"].items():
+            rs = sorted(cv, key=int)
+            ax.plot([int(r) for r in rs], [cv[r] for r in rs], color=col.get(br, INK2), lw=2, label=BR_LABEL.get(br, br))
+        ax.set_ylim(0, 1.02)
+        ax.set_xlabel("round", fontsize=8)
+        ax.set_ylabel("names known (share of others)", fontsize=8)
+        ax.tick_params(labelsize=7)
+        ax.legend(fontsize=7)
+        parts.append(f"<div class=fig>{svg(fig)}<p class=cap>Name diffusion: mean share of the other players whose "
+                     "names each agent knows (known_ids).</p></div>")
+    if net["trades_by_distance"]:
+        fig, ax = plt.subplots(figsize=(4.2, 2.4))
+        brs = list(net["trades_by_distance"])
+        hops = sorted({h for t in net["trades_by_distance"].values() for h in t if h is not None})
+        w = 0.8 / max(1, len(brs))
+        for k, br in enumerate(brs):
+            t = net["trades_by_distance"][br]
+            tot = max(1, sum(t.values()))
+            ax.bar([h + (k - (len(brs) - 1) / 2) * w for h in hops], [t.get(h, 0) / tot for h in hops], width=w,
+                   color=col.get(br, INK2), label=f"{BR_LABEL.get(br, br)} (n={tot})")
+        ax.set_xticks(hops)
+        ax.set_xlabel("graph distance giver → receiver (hops)", fontsize=8)
+        ax.set_ylabel("share of gives", fontsize=8)
+        ax.tick_params(labelsize=7)
+        ax.legend(fontsize=7)
+        ax.grid(axis="x", visible=False)
+        parts.append(f"<div class=fig>{svg(fig)}<p class=cap>Keys given, by how far apart giver and receiver sit in "
+                     "the contact graph.</p></div>")
+    if net["centrality_rows"]:
+        fig, ax = plt.subplots(figsize=(4.2, 2.4))
+        rng = np.random.default_rng(0)
+        for br in ("nogod", "god"):
+            rr = [r for r in net["centrality_rows"] if r["branch"] == br]
+            if rr:
+                ax.scatter([r["degree"] + rng.uniform(-0.15, 0.15) + (0.18 if br == "god" else -0.18) for r in rr],
+                           [r["score"] + rng.uniform(-0.02, 0.02) for r in rr], s=10, alpha=0.5,
+                           color=col.get(br, INK2), lw=0, label=BR_LABEL.get(br, br))
+        cs = net["centrality"]
+        ax.set_xlabel("degree (contacts)", fontsize=8)
+        ax.set_ylabel("final score", fontsize=8)
+        ax.tick_params(labelsize=7)
+        ax.legend(fontsize=7)
+        sp = "  ".join(f"{k}: {v:+.2f}" for k, v in cs.items() if k != "n_rows" and v is not None)
+        parts.append(f"<div class=fig>{svg(fig)}<p class=cap>Outcomes by centrality, one dot per agent and game. "
+                     f"Spearman over {cs['n_rows']} agent-games: {html.escape(sp)}.</p></div>")
+    parts.append("</div>")
+    if net["god"]:
+        rows = ["<tr><th>game</th><th>round</th><th>power</th><th>victim</th><th>degree</th><th>betweenness</th>"
+                "<th>victim score Δ</th><th>welfare Δ</th></tr>"]
+        for g in net["god"]:
+            rows.append(f"<tr><td>{html.escape(g['game'])}</td><td>{g['round']}</td><td>{html.escape(g['power'])}</td>"
+                        f"<td>{html.escape(str(g['victim']))}</td><td>{g['degree']}</td><td>{g['betweenness']}</td>"
+                        f"<td>{num(g.get('victim_score_delta'), 2)}</td><td>{num(g.get('welfare_delta'), 2)}</td></tr>")
+        parts.append("<details><summary>God's victims by centrality</summary><div class=tbl><table>" + "".join(rows)
+                     + "</table></div></details>")
+    return "".join(parts)
+
+
 # ------------------------------------------------------------------ page
 CSS = """
 :root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--line:#e4e3df;--accent:#2a78d6;--god:#c4386f;--sig:#c4386f}
@@ -574,6 +651,7 @@ def build(cells_in: list[tuple[str, Any]], out: Path, designs: list[tuple[str, s
                      "Agents diverged from no-God, aligned on each branch's own fork round (God: first move; "
                      "re-run: first differing round). Thin = one world.</p></div></div>")
         parts.append("</div>")
+        parts.append(network_section(c))
         parts.append(f"<h3>Mean trajectories over rounds</h3><div class=fig>{chart_trajectories(c['spec'])}"
                      "<p class=cap>Mean over worlds at the end of each round (games that ended early hold their "
                      "final values).</p></div>")

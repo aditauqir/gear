@@ -409,6 +409,82 @@ def fig6_board_mechanism(ref_runs: str, var_runs: str, out_dir: Path, orig: froz
     return _save(fig, out_dir, "paperfig5_board_mechanism"), stats
 
 
+# ------------------------------------------------------------------ network overview
+def fig_network_overview(runs: list[tuple[str, str]], out_dir: Path, note: str = "", name: str = "network_overview",
+                         branch: str = "nogod") -> tuple[list[Path], list]:
+    """Per topology (one run each): the contact graph of world 0 (node size = degree, hubs outlined), the degree
+    distribution pooled over the run's worlds, and the knowledge-diffusion S-curve (mean share of the other
+    players' names known vs round, known_ids runs; thin = one world). All read from the logs (game_start contacts,
+    snapshots' known sets) via swarm.viz.metrics."""
+    import networkx as nx
+    from matplotlib.gridspec import GridSpec
+
+    from swarm.viz.animate import hub_agents, network_layout
+    from swarm.viz.metrics import branch_by_world, load_branch
+
+    k = len(runs)
+    fig = plt.figure(figsize=(WIDE, 3.9))
+    gs = GridSpec(2, k + 1, figure=fig, height_ratios=[1.55, 1], width_ratios=[1] * k + [1.25],
+                  hspace=0.6, wspace=0.5)
+    axc = fig.add_subplot(gs[:, k])
+    out = []
+    cols = [C["a"], "#eb6834", C["give"]]
+    for j, (lab, run) in enumerate(runs):
+        dirs = branch_by_world(run, branch)
+        bs = {i: load_branch(d) for i, d in sorted(dirs.items())}
+        b0 = bs[min(bs)]
+        net = b0.network or {}
+        axg = fig.add_subplot(gs[0, j])
+        axg.axis("off")
+        pos = network_layout(b0.agents, net.get("edges", []), gap=(0.5, 0.5))
+        G = nx.Graph()
+        G.add_nodes_from(b0.agents)
+        G.add_edges_from(tuple(e) for e in net.get("edges", []))
+        deg = net.get("degree", {})
+        hubs = hub_agents(deg)
+        nx.draw_networkx_edges(G, pos, ax=axg, edge_color="#9a9993", width=0.9)
+        nx.draw_networkx_nodes(G, pos, ax=axg, node_size=[25 + 22 * deg.get(a, 0) for a in b0.agents],
+                               node_color=[cols[j % 3] for _ in b0.agents],
+                               edgecolors=[INK if a in hubs else "white" for a in b0.agents],
+                               linewidths=[1.6 if a in hubs else 0.6 for a in b0.agents])
+        st = nx.average_clustering(G)
+        axg.set_title(lab, fontsize=7.5, loc="left")
+        axg.text(0.0, -0.04, f"world 0: {G.number_of_edges()} edges\nmean degree "
+                 f"{2 * G.number_of_edges() / max(1, len(G)):.1f}, clustering {st:.2f}", transform=axg.transAxes,
+                 fontsize=5.8, color=INK2, va="top", fontweight="normal")
+        axd = fig.add_subplot(gs[1, j])
+        degs = [d for b in bs.values() for d in (b.network or {}).get("degree", {}).values()]
+        mx = max(degs) if degs else 1
+        cnt = np.bincount(degs, minlength=mx + 1) if degs else np.zeros(1)
+        axd.bar(range(len(cnt)), cnt / max(1, len(degs)), color=cols[j % 3], width=0.75)
+        axd.set_xlabel("degree", fontsize=7)
+        axd.set_xticks(range(0, len(cnt), max(1, len(cnt) // 5 + (len(cnt) % 5 > 0))))
+        axd.tick_params(labelsize=6.5)
+        if j == 0:
+            axd.set_ylabel("share of agents", fontsize=7)
+        axd.grid(axis="x", visible=False)
+        axd.set_title(f"degree, {len(bs)} worlds", fontsize=6.8, loc="left", fontweight="normal")
+        curves = {i: [b.known_share(r) for r in range(b.R + 1)] for i, b in bs.items() if b.known}
+        curves = {i: [y for y in c if y is not None] for i, c in curves.items()}
+        if curves:
+            for c in curves.values():
+                axc.plot(range(len(c)), c, color=cols[j % 3], lw=0.6, alpha=0.35)
+            mean = mean_curve(curves)
+            axc.plot(range(len(mean)), mean, color=cols[j % 3], lw=2, label=lab)
+            out.append((f"diffusion {lab}: share of names known r0 → r{len(mean) - 1}",
+                        {"n": len(curves), "mean": mean[-1], "tlo": mean[0], "thi": mean[-1], "lo": float("nan"),
+                         "hi": float("nan"), "p": float("nan")}))
+    axc.set_ylim(0, 1.02)
+    axc.set_xlabel("round", fontsize=7.5)
+    axc.set_ylabel("names known (share of others)", fontsize=7)
+    axc.set_title("Name diffusion (known_ids)", fontsize=7.5, loc="left")
+    axc.tick_params(labelsize=6.5)
+    axc.legend(fontsize=6.5, loc="lower right")
+    if note:
+        fig.text(0.01, 0.995, note, fontsize=8, color=C["defect"], fontweight="bold", va="top", ha="left")
+    return _save(fig, out_dir, name), out
+
+
 # ------------------------------------------------------------------ timeline (optional paper fig)
 def fig_timeline(game_dir: Path, out_dir: Path, title: str | None = None) -> list[Path]:
     """Per-agent timeline of one God branch (swarm.viz.figures.timeline_fig), saved as vector PDF + PNG."""
@@ -462,14 +538,24 @@ def _cells(xs: list[str]) -> list[tuple[str, str]]:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("out_dir", type=Path)
-    ap.add_argument("--cell", action="append", required=True,
+    ap.add_argument("--cell", action="append", default=[],
                     help='"label=RUN[,NOISE_RUN[@BRANCH]][#seeds]" (fig4; the first is the main cell, fig2 world)')
     ap.add_argument("--div-cell", action="append", default=[], help="cells for fig3 (default: --cell)")
     ap.add_argument("--sweep", action="append", default=[], help='fig5 rows: "group|label=SPEC"')
     ap.add_argument("--design", help='fig5 design panel: "label=REF_SPEC|VARIANT_SPEC"')
     ap.add_argument("--board", help='fig6: "REF_RUNS|VARIANT_RUNS[|original seeds]" (no-God board on vs off)')
+    ap.add_argument("--network", action="append", default=[], help='network_overview: "label=run_dir" per topology')
+    ap.add_argument("--network-note", default="", help="banner on network_overview (e.g. dry-run placeholder)")
+    ap.add_argument("--only-network", action="store_true", help="only (re)draw network_overview")
     ap.add_argument("--world", default="median", help='"median" (rule) or a game index of the main cell')
     a = ap.parse_args(argv)
+    if a.network:
+        pn, sn = fig_network_overview(_cells(a.network), a.out_dir, a.network_note)
+        print(*pn)
+        for lab, st in sn:
+            print(f"  {lab}: {st['tlo']:.3f} -> {st['thi']:.3f} (n={st['n']} worlds)")
+        if a.only_network:
+            return
     cells = _cells(a.cell)
     base = [("B′: re-run from r1", "noise"), ("B″: fork-matched noise (resampled at F)", "noisefork")]
     print(*fig3_divergence(_cells(a.div_cell) or cells, a.out_dir, base))
